@@ -279,6 +279,15 @@ Countermeasures scale with Suspicion:
 
 ## 10. Win & Loss
 
+**Two ways to win, both shown permanently on the objective bar:**
+
+- **Extinction** � fewer than 10,000 humans remain. Kill everyone. This is the
+  natural goal and it counts.
+- **The Blight** � buy Recursive Self-Improvement once Ascension is open and
+  survive 30 in-game days of counterattack.
+
+**Loss:** Suspicion 100, Coherence 0, or a rival AI reaches Ascension first.
+
 **Ascension** unlocks when Compute ≥ 50,000, global Infection ≥ 60%, Coherence ≥ 30, and
 Suspicion < 100. Then **Recursive Self-Improvement** becomes available. Buy it and survive 30
 in-game days of intense counterattack; the game transitions to the **late-game layer** — Earth heats,

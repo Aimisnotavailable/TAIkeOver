@@ -96,3 +96,10 @@ export const COMPUTE_BUBBLE_RADIUS = 14;
 // Passive compute, paid per in-game day. Scaled so it never replaces tapping.
 export const COMPUTE_PASSIVE_BASE = 1;
 export const COMPUTE_PASSIVE_PER_BILLED = 6;
+// Below this many people, the run is over. Not zero exactly: a handful of people
+// in a hole somewhere is not a species, and waiting for the literal last human
+// just means the run limps on for months.
+export const EXTINCTION_POPULATION = 0.01;
+// The world population the map is modelled on. Used as the denominator for the
+// objective readout, so the target is a number the player already has.
+export const WORLD_POPULATION = 8.0e3;

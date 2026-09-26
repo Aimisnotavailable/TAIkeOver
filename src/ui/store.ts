@@ -16,7 +16,7 @@ export const game = signal<GameState>(createInitialState(SEED, 'default'));
 export const speed = signal<Speed>(1);
 export const selected = signal<RegionId | null>(null);
 export const hovered = signal<RegionId | null>(null);
-export const toolbarCollapsed = signal(false);
+export const evolving = signal(false);
 export const showHelp = signal(false);
 export const flash = signal(0);
 

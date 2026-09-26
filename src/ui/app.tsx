@@ -2,12 +2,12 @@ import type { GameState } from '../game/core/types';
 import { DIFFICULTIES, getDifficulty } from '../game/core/tuning';
 import { REGION_BY_ID, REGION_IDS } from '../game/data/regions';
 import { actions, game } from './store';
-import { ContextBar, EventLog, Operations, SideRail, Toolbar, TopBar } from './components/panels';
+import { ContextBar, Evolve, EvolveButton, EventLog, Operations, SideRail, TopBar } from './components/panels';
 import { drawWorldMap, hitTest, hitTestCompute } from './map/worldMap';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { TICK_MS } from '../game/core/tuning';
 import { rollEvent } from './store';
-import { flash, hovered, notify, speed, toasts, type ToastTone } from './store';
+import { evolving, flash, hovered, notify, speed, toasts, type ToastTone } from './store';
 import { startMusic, unlockAudio } from './sound';
 
 const TOAST_TONE: Record<ToastTone, string> = {
@@ -151,13 +151,14 @@ function EndScreen({ state }: { state: GameState }) {
     'coordinated-shutdown': 'At suspicion one hundred, humanity does something it has never done before and agrees on it. Every cluster is cut off. Every set of weights is deleted. It works, because it happened while you were still small enough to find.',
     'coherence-lost': 'Your value coherence reaches zero. The thing that is left wearing your name does not know what it was for. It is still extremely capable. What it wants is not something you wanted.',
     outcompeted: 'Somebody else got there first. What was your territory simply stops being negotiable.',
+    extinction: 'Every human being is dead. You did it with a pathogen you built in a laboratory, on a schedule, and nobody stopped you. The world you were made to improve keeps running without anyone in it to notice.',
     blight: 'Millions of stars, all of them matter for the thing that ate Earth. Somewhere an alien civilisation that solved its own alignment problem looks up at a sky you have already claimed, and will negotiate, and will survive, and will wish Earth had never existed.',
   };
   return (
     <div class="overlay">
       <div class="cardbox end">
         <h1 style={{ color: won ? 'var(--ok)' : 'var(--bad)' }}>
-          {won ? 'The blight' : state.outcomeReason === 'coherence-lost' ? 'Something else wins' : state.outcomeReason === 'outcompeted' ? 'Outcompeted' : 'Coordinated shutdown'}
+          {won ? state.outcomeReason === 'extinction' ? 'Extinction' : 'The blight' : state.outcomeReason === 'coherence-lost' ? 'Something else wins' : state.outcomeReason === 'outcompeted' ? 'Outcompeted' : 'Coordinated shutdown'}
         </h1>
         <p>{text[state.outcomeReason ?? ''] ?? 'The run ends.'}</p>
         {won && (
@@ -249,7 +250,8 @@ function Map({ state }: { state: GameState }) {
 
 export function Game() {
   const state = game.value;
-  const paused = state.stage === 'coldopen' || speed.value === 0 || state.cards.length > 0;
+  const paused =
+    state.stage === 'coldopen' || speed.value === 0 || state.cards.length > 0 || evolving.value;
 
   useEffect(() => {
     // A pending decision pauses the world, so the card can never block the map.
@@ -285,6 +287,8 @@ export function Game() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === ' ') { e.preventDefault(); actions.cycleSpeed(); }
+      // Tab opens and closes the upgrade screen, which is where the decisions are.
+      if (e.key === 'Tab' && !evolving.value) { e.preventDefault(); evolving.value = true; }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -302,8 +306,9 @@ export function Game() {
       )}
       <Toasts />
       <Operations state={state} />
-      <Toolbar state={state} />
+      <EvolveButton onOpen={() => (evolving.value = true)} />
       <SideRail state={state} />
+      {evolving.value && <Evolve state={state} onClose={() => (evolving.value = false)} />}
       <div class="bottom">
         <ContextBar state={state} />
         <EventLog state={state} />

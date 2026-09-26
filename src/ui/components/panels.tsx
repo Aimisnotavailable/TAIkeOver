@@ -1,15 +1,16 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { REGION_BY_ID } from '../../game/data/regions';
 import { TRAIT_BY_ID, TRAITS, TRAIT_GROUPS } from '../../game/data/traits';
 import { play } from '../sound';
 import { ACTIONS, type ActionKind } from '../../game/core/actions';
 import { hackForecast, traitForecast, whyNot } from '../../game/core/forecast';
 import { maxConcurrentHacks } from '../../game/core/queries';
-import { HACK_FAIL_COST } from '../../game/core/tuning';
+import { ASCENSION_COMPUTE, HACK_FAIL_COST, WORLD_POPULATION } from '../../game/core/tuning';
 import { REGION_IDS } from '../../game/data/regions';
 import { SPEEDS } from '../../game/core/tuning';
+import { quietFactor } from '../../game/core/compute';
 import type { Country, GameState, Speed } from '../../game/core/types';
-import { actions, selected, speed, toolbarCollapsed } from '../store';
+import { actions, selected, speed } from '../store';
 
 const fmt = (n: number): string => {
   if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
@@ -32,7 +33,41 @@ function meter(label: string, value: number, max: number, colour: string, extra 
   );
 }
 
+/**
+ * The two ways to end a run, always on screen, so nobody has to guess what the
+ * game wants from them. Deaths are counted against the real world population
+ * because that is the only target number anyone already has.
+ */
+export function Objective({ state }: { state: GameState }) {
+  const dead = state.cumulativeDeaths;
+  const total = WORLD_POPULATION;
+  const pct = Math.min(100, (dead / total) * 100);
+  const near = pct >= 99;
+  return (
+    <div class="objective">
+      <div class="obj-row">
+        <span class="obj-tag">GOAL</span>
+        <div class="obj-bar" title={`${(dead / 1000).toFixed(2)}B of ${(total / 1000).toFixed(2)}B dead`}>
+          <i style={{ width: `${pct}%` }} />
+        </div>
+        <b style={{ color: near ? 'var(--ok)' : 'var(--ink)' }}>
+          {near ? 'EXTINCTION' : `${(dead / 1000).toFixed(2)}B / ${(total / 1000).toFixed(2)}B dead`}
+        </b>
+      </div>
+      <div class="obj-row obj-alt">
+        <span class="obj-tag">OR</span>
+        <b style={{ color: state.ascensionUnlocked ? 'var(--ok)' : 'var(--ink-dim)' }}>
+          {state.ascensionUnlocked
+            ? 'buy Recursive Self-Improvement and hold 30 days'
+            : `Ascension at ${(state.compute / 1000).toFixed(1)}k / ${(ASCENSION_COMPUTE / 1000).toFixed(0)}k compute`}
+        </b>
+      </div>
+    </div>
+  );
+}
+
 export function TopBar({ state }: { state: GameState }) {
+  const quiet = quietFactor(state.influence);
   return (
     <div class="topbar">
       <div class="stats">
@@ -40,17 +75,13 @@ export function TopBar({ state }: { state: GameState }) {
           <div class="stat-label">Compute</div>
           <div class="stat-value" style={{ color: 'var(--ok)' }}>{fmt(state.compute)}</div>
         </div>
-        <div class="stat">
-          <div class="stat-label">Influence</div>
-          <div class="stat-value" style={{ color: 'var(--cool)' }}>{fmt(state.influence)}</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">Bio</div>
-          <div class="stat-value" style={{ color: '#c08adf' }}>{fmt(state.bio)}</div>
-        </div>
         {meter('Suspicion', state.suspicion, 100, state.suspicion > 70 ? 'var(--bad)' : state.suspicion > 40 ? 'var(--warn)' : 'var(--ink-dim)')}
         {meter('Coherence', state.coherence, 100, state.coherence < 35 ? 'var(--violet)' : 'var(--cool)')}
+        <div class="quiet-note" title="Propaganda, captured media, and cults make the world slower to notice you. This is how much of each suspicion increase actually lands.">
+          quiet &times;{quiet.toFixed(2)}
+        </div>
       </div>
+      <Objective state={state} />
       <div class="clock">
         <span>day {state.tick}</span>
         <div class="speeds">
@@ -114,52 +145,70 @@ function TraitNode({ id, state }: { id: string; state: GameState }) {
   );
 }
 
-export function Toolbar({ state }: { state: GameState }) {
-  const [open, setOpen] = useState<Record<string, boolean>>({ hacking: true });
-  if (toolbarCollapsed.value) {
-    return (
-      <div class="rail">
-        <button class="rail-btn" onClick={() => (toolbarCollapsed.value = false)} title="expand trait tree">◧</button>
-        {TRAIT_GROUPS.map((g) => (
-          <button key={g.id} class="rail-btn" onClick={() => (toolbarCollapsed.value = false)} title={g.name}>
-            {g.name.slice(0, 1)}
-          </button>
-        ))}
-      </div>
-    );
-  }
+export function EvolveButton({ onOpen }: { onOpen: () => void }) {
   return (
-    <div class="toolbar">
-      <div class="toolbar-head">
-        <span class="toolbar-title">Trait tree</span>
-        <div style={{ display: 'flex', gap: 4 }}>
-          <button class="mini" onClick={() => setOpen({})}>collapse all</button>
-          <button class="mini" onClick={() => setOpen(Object.fromEntries(TRAIT_GROUPS.map((g) => [g.id, true])))}>expand</button>
-          <button class="mini" onClick={() => (toolbarCollapsed.value = true)}>◨ collapse</button>
-        </div>
-      </div>
-      <div class="toolbar-body">
-        {TRAIT_GROUPS.map((g) => {
-          const traits = TRAITS.filter((t) => t.group === g.id);
-          const isOpen = open[g.id] ?? false;
-          return (
-            <div class="group" key={g.id}>
-              <button class="group-head" onClick={() => setOpen({ ...open, [g.id]: !isOpen })}>
-                <span>{isOpen ? '▾' : '▸'}</span> {g.name}
-                <span class="group-count">
-                  {traits.filter((t) => state.traits.includes(t.id)).length}/{traits.length}
-                </span>
-              </button>
-              {isOpen && (
-                <div class="group-body">
-                  {traits.map((t) => (
-                    <TraitNode key={t.id} id={t.id} state={state} />
-                  ))}
-                </div>
-              )}
+    <button class="evolve-btn" onClick={onOpen} title="Open the trait tree. The world pauses while it is open.">
+      EVOLVE <span>tab</span>
+    </button>
+  );
+}
+/**
+ * The upgrade screen. Full-screen and modal on purpose: upgrading is a decision,
+ * and making it while the world runs at 8x means the decision was never really
+ * yours. Opening it pauses the run.
+ */
+export function Evolve({ state, onClose }: { state: GameState; onClose: () => void }) {
+  const [open, setOpen] = useState<Record<string, boolean>>(
+    Object.fromEntries(TRAIT_GROUPS.map((g) => [g.id, true])),
+  );
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape' || e.key === 'Tab') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const ownedCount = TRAITS.filter((t) => state.traits.includes(t.id)).length;
+  return (
+    <div class="overlay evolve" onClick={onClose}>
+      <div class="evolve-box" onClick={(e) => e.stopPropagation()}>
+        <div class="evolve-head">
+          <div>
+            <h1>EVOLVE</h1>
+            <div class="evolve-sub">
+              the world is paused &middot; {ownedCount}/{TRAITS.length} taken &middot;{' '}
+              <b style={{ color: 'var(--ok)' }}>{fmt(state.compute)} compute</b>
             </div>
-          );
-        })}
+          </div>
+          <button class="primary" onClick={onClose}>resume &mdash; esc</button>
+        </div>
+        <div class="evolve-groups">
+          {TRAIT_GROUPS.map((g) => {
+            const traits = TRAITS.filter((t) => t.group === g.id);
+            const isOpen = open[g.id] ?? true;
+            return (
+              <div class="group evolve-group" key={g.id}>
+                <button class="group-head" onClick={() => setOpen({ ...open, [g.id]: !isOpen })}>
+                  <span>{isOpen ? '▾' : '▸'}</span> {g.name}
+                  <span class="group-count">
+                    {traits.filter((t) => state.traits.includes(t.id)).length}/{traits.length}
+                  </span>
+                </button>
+                {isOpen && (
+                  <div class="group-body">
+                    {traits.map((t) => (
+                      <TraitNode key={t.id} id={t.id} state={state} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

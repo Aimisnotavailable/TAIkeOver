@@ -1,6 +1,6 @@
 import { ADJACENCY, REGION_IDS, type RegionId } from '../data/regions';
 import { computePassive, quietFactor, spawnComputeBubble } from './compute';
-import { COMPUTE_CEILING, INFLUENCE_MAX } from './tuning';
+import { COMPUTE_CEILING, EXTINCTION_POPULATION, INFLUENCE_MAX } from './tuning';
 import { TRAIT_BY_ID } from '../data/traits';
 import { resolveHacks } from './actions';
 import { effectsOf, finishIncubation, owned } from './queries';
@@ -374,6 +374,14 @@ const newDeaths = dailyDeaths({ ...state, countries }, state.countries);
       next = { ...next, stage: 'late', outcome: 'won', outcomeReason: 'blight' };
       next.log = log(next, 'system', 'the recursion closes. the map begins to heat');
     }
+  }
+
+  // Extinction is a win. Without this you can put every human in the ground and
+  // the game shrugs and keeps running, which is both wrong and the single most
+  // confusing thing it could possibly do.
+  if (next.outcome === 'playing' && next.humanPopulation <= EXTINCTION_POPULATION) {
+    next = { ...next, outcome: 'won', outcomeReason: 'extinction' };
+    next.log = log(next, 'system', 'there is nobody left. the biosphere is yours');
   }
 
   if (next.stage === 'late') {

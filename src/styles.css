@@ -213,3 +213,116 @@ button.ignore:hover { border-color: var(--ink-dim); color: var(--ink); backgroun
 @media (prefers-reduced-motion: reduce) {
   .toast { animation: none; }
 }
+
+/* The goal, always visible. Two ways to end a run, neither of them a secret. */
+.objective {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: rgba(4, 10, 13, 0.7);
+}
+.obj-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font: 600 9.5px/1.5 ui-monospace, Consolas, monospace;
+}
+.obj-alt { font-weight: 400; }
+.obj-tag {
+  color: var(--ink-dim);
+  letter-spacing: 0.1em;
+  font-size: 8.5px;
+  min-width: 26px;
+}
+.obj-bar {
+  width: 92px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.obj-bar i {
+  display: block;
+  height: 100%;
+  background: var(--bad);
+  transition: width 300ms ease-out;
+}
+
+.quiet-note {
+  align-self: flex-end;
+  font: 400 8.5px/1.4 ui-monospace, Consolas, monospace;
+  color: var(--ink-dim);
+  letter-spacing: 0.06em;
+  cursor: help;
+}
+
+/* The upgrade screen. Full-screen because upgrading is a decision, and you cannot
+   make a decision while the world is running at 8x. */
+.evolve-btn {
+  position: fixed;
+  right: 12px;
+  top: 58px;
+  z-index: 30;
+  padding: 7px 12px;
+  font: 600 10px/1 ui-monospace, Consolas, monospace;
+  letter-spacing: 0.12em;
+  color: var(--ok);
+  background: rgba(4, 10, 13, 0.9);
+  border: 1px solid var(--ok);
+  border-radius: 3px;
+  cursor: pointer;
+}
+.evolve-btn span {
+  margin-left: 6px;
+  color: var(--ink-dim);
+  font-weight: 400;
+  letter-spacing: 0.06em;
+}
+.evolve-btn:hover { background: rgba(60, 200, 140, 0.12); }
+
+.evolve-box {
+  width: min(1080px, 92vw);
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  background: rgba(3, 8, 11, 0.98);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 20px 22px 22px;
+}
+.evolve-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.evolve-head h1 {
+  margin: 0;
+  font: 600 20px/1.2 ui-monospace, Consolas, monospace;
+  letter-spacing: 0.18em;
+  color: var(--ink);
+}
+.evolve-sub {
+  margin-top: 4px;
+  font: 400 10px/1.5 ui-monospace, Consolas, monospace;
+  color: var(--ink-dim);
+}
+.evolve-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 12px;
+  overflow-y: auto;
+  align-content: start;
+}
+.evolve-group {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+}
+.evolve-group .group-body { padding: 8px 10px 10px; }
