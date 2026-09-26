@@ -36,6 +36,11 @@ export const hackSuccessBonus = (state: GameState): number => sum(state, 'hack-s
 
 export const hackYieldMultiplier = (state: GameState): number => sumMultiplier(state, 'hack-yield');
 
+export const maxConcurrentHacks = (state: GameState): number => {
+  const tier = hackTier(state);
+  return 1 + (tier >= 3 ? 1 : 0) + (tier >= 4 ? 1 : 0);
+};
+
 export const coherenceEffect = (state: GameState): number => sum(state, 'coherence');
 
 export const computeRegen = (state: GameState): number => sumMultiplier(state, 'compute-regen');

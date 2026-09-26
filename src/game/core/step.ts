@@ -163,16 +163,35 @@ export function step(state: GameState): GameState {
 
   // Awareness-driven detection. Decay is applied first and the total is clamped once,
   // otherwise per-country clamping plus trailing decay makes exactly 100 unreachable.
+  const sources: { label: string; value: number }[] = [];
   suspicion -= SUSPICION_DECAY;
+  sources.push({ label: 'natural decay', value: -SUSPICION_DECAY });
+
+  let awarePressure = 0;
+  let topAware: string | null = null;
+  let topAwareValue = 0;
   for (const id of REGION_IDS) {
     const c = countries[id];
     if (c === undefined || c.awareness < 50) continue;
-    suspicion += (c.infection / 100) * (c.detection / 100) * AWARENESS_PRESSURE * diff.suspicionRate;
+    const share = (c.infection / 100) * (c.detection / 100) * AWARENESS_PRESSURE * diff.suspicionRate;
+    awarePressure += share;
+    if (share > topAwareValue) {
+      topAwareValue = share;
+      topAware = id;
+    }
   }
+  if (awarePressure > 0) {
+    sources.push({ label: topAware === null ? 'aware countries' : `aware: ${topAware}`, value: awarePressure });
+  }
+  suspicion += awarePressure;
+
   if (state.pathogen.released) {
-    suspicion += state.pathogen.suspicionPerDay * diff.suspicionRate;
+    const p = state.pathogen.suspicionPerDay * diff.suspicionRate;
+    sources.push({ label: 'pathogen visible', value: p });
+    suspicion += p;
   }
   suspicion = clamp(suspicion, 0, 100);
+  const suspicionTrend = suspicion - state.suspicion;
 
   // Counter-hacking by aware countries.
   if (state.tick % COUNTER_HACK_INTERVAL === 0) {
@@ -253,6 +272,8 @@ export function step(state: GameState): GameState {
     globalInfection,
     humanPopulation,
     economiesCollapsed: collapsed,
+    suspicionSources: sources.sort((a, b) => Math.abs(b.value) - Math.abs(a.value)).slice(0, 5),
+    suspicionTrend,
     log: [...state.log, ...lines].slice(-300),
   };
 

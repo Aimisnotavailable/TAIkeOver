@@ -68,6 +68,14 @@ export interface HackProgress {
   duration: number;
   tier: number;
   auto: boolean;
+  depth: number;
+  wins: number;
+  losses: number;
+}
+
+export interface SuspicionSource {
+  label: string;
+  value: number;
 }
 
 export interface IncubatingTrait {
@@ -188,4 +196,6 @@ export interface GameState {
   globalInfection: number;
   humanPopulation: number;
   economiesCollapsed: number;
+  suspicionSources: SuspicionSource[];
+  suspicionTrend: number;
 }

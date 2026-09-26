@@ -137,3 +137,32 @@ button.mini { padding: 2px 6px; font-size: 9px; }
 .trait-bar { height: 3px; background: #0f1f26; margin-top: 4px; }
 .trait-bar i { display: block; height: 100%; background: var(--warn); }
 .trait-why { font-size: 9px; color: var(--warn); margin-top: 3px; }
+
+.ops { position: absolute; top: 52px; left: 196px; width: 470px; background: var(--pane); border: 1px solid var(--edge); border-radius: 2px; padding: 7px 9px; }
+.ops-head { display: flex; justify-content: space-between; font-size: 8.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-dim); margin-bottom: 5px; }
+.ops-cap { color: var(--ink); }
+.ops-empty { font-size: 10px; color: var(--ink-dim); }
+.op { border-top: 1px solid var(--edge); padding: 5px 0 2px; }
+.op:first-of-type { border-top: 0; }
+.op-top { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+.op-top b { color: var(--ink-bright); }
+.op-depth { color: var(--warn); font-size: 9.5px; }
+.op-top button { margin-left: auto; }
+.op-bar { height: 4px; background: #0f1f26; margin: 4px 0 3px; }
+.op-bar i { display: block; height: 100%; background: var(--warn); }
+.op-detail { font-size: 9.5px; color: var(--ink-dim); }
+.op-odds { color: var(--ok); }
+.op-bonus { color: var(--cool); }
+
+.sit-row { display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 2px; }
+.sit-row b { color: var(--ink-bright); }
+.sit-src { display: flex; justify-content: space-between; font-size: 9.5px; color: var(--ink-dim); }
+.sit-src.dim { color: var(--ink-dim); opacity: 0.6; }
+
+.logline.k-hack { color: var(--warn); }
+.logline.k-economy { color: var(--cool); }
+.logline.k-bio { color: #c08adf; }
+.logline.k-event { color: var(--ink-bright); }
+.logline.k-trait { color: var(--ok); }
+.logline.k-rival { color: var(--violet); }
+.logline .s { color: var(--bad); margin-left: 5px; font-size: 9px; }

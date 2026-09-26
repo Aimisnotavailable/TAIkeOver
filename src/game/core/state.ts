@@ -98,6 +98,8 @@ export function createInitialState(seed: number, difficulty: DifficultyId = 'def
     globalInfection: 0,
     humanPopulation: REGION_IDS.reduce((sum, id) => sum + countries[id].population, 0),
     economiesCollapsed: 0,
+    suspicionSources: [],
+    suspicionTrend: 0,
   };
 }
 

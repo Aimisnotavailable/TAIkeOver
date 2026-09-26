@@ -76,18 +76,18 @@ describe('hack forecast', () => {
     expect(f.days).toBeGreaterThan(0);
   });
 
-  it('blocks a third concurrent hack and says so', () => {
+  it('blocks a second concurrent hack at Hack I and says so', () => {
     let s = withTrait(start(), 'hack-1');
-    const targets = REGION_IDS.filter((id) => s.countries[id].tier <= 3).slice(0, 3);
-    for (const id of targets.slice(0, 2)) s = doHack(s, id);
-    const f = hackForecast(s, targets[2] ?? 'us');
+    const targets = REGION_IDS.filter((id) => s.countries[id].tier <= 3);
+    s = doHack(s, targets[0] ?? 'us');
+    const f = hackForecast(s, targets[1] ?? 'us');
     expect(f.available).toBe(false);
-    expect(f.reason).toContain('two hacks');
+    expect(f.reason).toContain('one breach');
   });
 });
 
 function doHack(s: GameState, id: RegionId): GameState {
-  return { ...s, activeHacks: [...s.activeHacks, { key: s.hackCounter, country: id, startTick: s.tick, resolveTick: s.tick + 3, duration: 3, tier: 1, auto: false }] };
+  return { ...s, activeHacks: [...s.activeHacks, { key: s.hackCounter, country: id, startTick: s.tick, resolveTick: s.tick + 3, duration: 3, tier: 1, auto: false, depth: 0, wins: 0, losses: 0 }] };
 }
 
 describe('action reasons', () => {

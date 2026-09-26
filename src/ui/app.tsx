@@ -2,7 +2,7 @@ import type { GameState } from '../game/core/types';
 import { DIFFICULTIES, getDifficulty } from '../game/core/tuning';
 import { REGION_BY_ID } from '../game/data/regions';
 import { actions, game } from './store';
-import { ContextBar, EventLog, SideRail, Toolbar, TopBar } from './components/panels';
+import { ContextBar, EventLog, Operations, SideRail, Toolbar, TopBar } from './components/panels';
 import { drawWorldMap, hitTest } from './map/worldMap';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { TICK_MS } from '../game/core/tuning';
@@ -188,6 +188,7 @@ export function Game() {
     <div class="game">
       <Map state={state} />
       <TopBar state={state} />
+      <Operations state={state} />
       <Toolbar state={state} />
       <SideRail state={state} />
       <div class="bottom">

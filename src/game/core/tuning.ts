@@ -42,7 +42,10 @@ export const COLLAPSED_THRESHOLD = 20;
 export const ECONOMY_COLLAPSE_COUNT = 3;
 
 export const SUSPICION_DECAY = 0.9;
-export const MAX_ACTIVE_HACKS = 2;
+export const HACK_CYCLE_DAYS = 5;
+export const HACK_FAIL_COST: Record<number, number> = { 1: 45, 2: 110, 3: 280, 4: 650 };
+export const DEPTH_YIELD_STEP = 0.4;
+export const MAX_DEPTH = 8;
 export const AWARENESS_PRESSURE = 0.1;
 export const COUNTERMEASURE_TIERS = [20, 40, 60, 80] as const;
 export const AIR_GAP_TIER = 2;

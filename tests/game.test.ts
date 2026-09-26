@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { canDo, doAction } from '../src/game/core/actions';
-import { canBuyTrait, hackTier, owned } from '../src/game/core/queries';
+import { canBuyTrait, hackTier, maxConcurrentHacks, owned } from '../src/game/core/queries';
 import { createInitialState } from '../src/game/core/state';
 import { computeIncome, step } from '../src/game/core/step';
-import { DIFFICULTIES, ASCENSION_COMPUTE, MAX_ACTIVE_HACKS, TICK_MS } from '../src/game/core/tuning';
+import { DIFFICULTIES, ASCENSION_COMPUTE, TICK_MS } from '../src/game/core/tuning';
 import { TRAITS, TRAIT_BY_ID } from '../src/game/data/traits';
-import { REGION_IDS } from '../src/game/data/regions';
+import { REGION_IDS, type RegionId } from '../src/game/data/regions';
 import type { GameState } from '../src/game/core/types';
 
 const play = (state: GameState, days: number): GameState => {
@@ -125,23 +125,54 @@ describe('hacking', () => {
     let s = withTrait(start(), 'hack-1');
     const targets = REGION_IDS.filter((id) => s.countries[id].tier <= 3);
     for (const id of targets) s = doAction(s, id, 'hack');
-    expect(s.activeHacks).toHaveLength(MAX_ACTIVE_HACKS);
+    expect(s.activeHacks).toHaveLength(maxConcurrentHacks(s));
   });
 
-  it('resolves hacks after their duration and pays out on success', () => {
+  it('keeps hacking the same country after the first result', () => {
     let s = withTrait(start(), 'hack-1');
-    s = doAction(s, 'us', 'hack').activeHacks.length === 0 ? s : s;
-    for (const id of REGION_IDS) {
-      if (s.activeHacks.length >= MAX_ACTIVE_HACKS) break;
-      s = doAction(s, id, 'hack');
-    }
-    expect(s.activeHacks.length).toBeGreaterThan(0);
-    const days = 20;
-    s = play(s, days);
+    const id = REGION_IDS.find((x) => s.countries[x].tier <= 3) as RegionId;
+    s = doAction(s, id, 'hack');
+    s = play(s, 20);
+    expect(s.activeHacks).toHaveLength(1);
+    expect(s.activeHacks[0]?.country).toBe(id);
+    expect(s.activeHacks[0]?.wins ?? 0).toBeGreaterThan(0);
+  });
+
+  it('escalates depth on consecutive successes', () => {
+    let s = withTrait(start(), 'hack-1');
+    const id = REGION_IDS.find((x) => s.countries[x].tier <= 3) as RegionId;
+    s = doAction(s, id, 'hack');
+    s = play(s, 40);
+    expect(s.activeHacks[0]?.depth ?? 0).toBeGreaterThan(0);
+  });
+
+  it('costs compute when a hack is traced', () => {
+    const base = start();
+    const id = REGION_IDS.find((x) => base.countries[x].tier <= 3) as RegionId;
+    let s = withTrait(base, 'hack-1');
+    s = doAction(s, id, 'hack');
+    s = play(s, 120);
+    const burned = s.log.filter((l) => l.kind === 'hack' && (l.computeDelta ?? 0) < 0);
+    expect(burned.length).toBeGreaterThan(0);
+  });
+
+  it('allows one concurrent hack at Hack I, more as tiers unlock', () => {
+    const base = start();
+    expect(maxConcurrentHacks(withTrait(base, 'hack-1'))).toBe(1);
+    expect(maxConcurrentHacks(withTrait(base, 'hack-1', 'hack-2', 'hack-3'))).toBe(2);
+    expect(maxConcurrentHacks(withTrait(base, 'hack-1', 'hack-2', 'hack-3', 'hack-4'))).toBe(3);
+    let s = withTrait(base, 'hack-1');
+    for (const x of REGION_IDS.filter((y) => s.countries[y].tier <= 3)) s = doAction(s, x, 'hack');
+    expect(s.activeHacks).toHaveLength(1);
+  });
+
+  it('ceases a running hack on request', () => {
+    const base = start();
+    const id = REGION_IDS.find((x) => base.countries[x].tier <= 3) as RegionId;
+    let s = doAction(withTrait(base, 'hack-1'), id, 'hack');
+    expect(s.activeHacks).toHaveLength(1);
+    s = doAction(s, id, 'cease-hack');
     expect(s.activeHacks).toHaveLength(0);
-    const resolved = s.log.filter((l) => l.kind === 'hack' && l.text.includes('yielded'));
-    const failed = s.log.filter((l) => l.kind === 'hack' && l.text.includes('failed'));
-    expect(resolved.length + failed.length).toBeGreaterThan(0);
   });
 
   it('raises suspicion from a resolved hack', () => {

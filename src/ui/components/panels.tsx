@@ -4,6 +4,9 @@ import { TRAIT_BY_ID, TRAITS, TRAIT_GROUPS } from '../../game/data/traits';
 import { play } from '../sound';
 import { ACTIONS, type ActionKind } from '../../game/core/actions';
 import { hackForecast, traitForecast, whyNot } from '../../game/core/forecast';
+import { maxConcurrentHacks } from '../../game/core/queries';
+import { HACK_FAIL_COST } from '../../game/core/tuning';
+import { REGION_IDS } from '../../game/data/regions';
 import { SPEEDS } from '../../game/core/tuning';
 import type { Country, GameState, Speed } from '../../game/core/types';
 import { actions, selected, speed, toolbarCollapsed } from '../store';
@@ -239,6 +242,7 @@ export function ContextBar({ state }: { state: GameState }) {
 export function SideRail({ state }: { state: GameState }) {
   return (
     <div class="side">
+      <Situation state={state} />
       <div class="side-block">
         <div class="side-title">Rivals</div>
         {state.rivals.map((r) => (
@@ -278,16 +282,105 @@ export function SideRail({ state }: { state: GameState }) {
   );
 }
 
+export function Operations({ state }: { state: GameState }) {
+  const cap = maxConcurrentHacks(state);
+  if (state.activeHacks.length === 0 && state.tick < 2) return null;
+
+  return (
+    <div class="ops">
+      <div class="ops-head">
+        <span>running operations</span>
+        <span class="ops-cap">{state.activeHacks.length} / {cap} breaches</span>
+      </div>
+      {state.activeHacks.length === 0 && (
+        <div class="ops-empty">no breach open — click a country and start one</div>
+      )}
+      {state.activeHacks.map((h) => {
+        const c = state.countries[h.country];
+        const span = Math.max(1, h.resolveTick - h.startTick);
+        const done = span - Math.max(0, h.resolveTick - state.tick);
+        const pct = Math.max(0, Math.min(100, (done / span) * 100));
+        const fc = hackForecast(state, h.country);
+        const next = Math.max(0, h.resolveTick - state.tick);
+        return (
+          <div class="op" key={h.key}>
+            <div class="op-top">
+              <b>{REGION_BY_ID[h.country].name}</b>
+              <span class="op-depth">depth {h.depth}/8</span>
+              <button class="mini" onClick={() => actions.do(h.country, 'cease-hack')}>cease</button>
+            </div>
+            <div class="op-bar"><i style={{ width: `${pct}%` }} /></div>
+            <div class="op-detail">
+              next result in <b>{next}d</b> · <span class="op-odds">{fc.chance}% to hold</span> ·{' '}
+              {(HACK_FAIL_COST[h.tier] ?? 45).toLocaleString()} at risk · {h.wins}W/{h.losses}L
+              {c !== undefined && c.agents > 0 && <span class="op-bonus"> · insider: auto-hold</span>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export function Situation({ state }: { state: GameState }) {
+  const trend = state.suspicionTrend;
+  const leaders = REGION_IDS.map((id) => state.countries[id])
+    .filter((c) => c !== undefined)
+    .sort((a, b) => (b?.infection ?? 0) - (a?.infection ?? 0))
+    .slice(0, 3);
+  const leader = leaders[0];
+  const threat = state.suspicion >= 70 ? 'CRITICAL' : state.suspicion >= 45 ? 'ELEVATED' : state.suspicion >= 20 ? 'WATCHED' : 'UNNOTICED';
+
+  return (
+    <div class="side-block">
+      <div class="side-title">Situation</div>
+      <div class="sit">
+        <div class="sit-row">
+          <span>detection</span>
+          <b style={{ color: state.suspicion >= 70 ? 'var(--bad)' : state.suspicion >= 45 ? 'var(--warn)' : 'var(--ok)' }}>
+            {threat} {trend !== 0 && <span style={{ fontSize: 9 }}>{trend > 0 ? '▲' : '▼'}{Math.abs(trend).toFixed(1)}</span>}
+          </b>
+        </div>
+        <div class="side-title" style={{ marginTop: 6 }}>driven by</div>
+        {state.suspicionSources.length === 0 && <div class="sit-src dim">nothing yet</div>}
+        {state.suspicionSources.map((src) => (
+          <div class="sit-src" key={src.label}>
+            <span>{src.label}</span>
+            <b style={{ color: src.value > 0 ? 'var(--bad)' : 'var(--ok)' }}>
+              {src.value > 0 ? '+' : ''}{src.value.toFixed(1)}
+            </b>
+          </div>
+        ))}
+        <div class="side-title" style={{ marginTop: 8 }}>infection</div>
+        <div class="sit-row"><span>global</span><b style={{ color: 'var(--ok)' }}>{state.globalInfection.toFixed(0)}%</b></div>
+        {leader !== undefined && (
+          <div class="sit-row"><span>leading</span><b>{REGION_BY_ID[leader.id].name} {leader.infection.toFixed(0)}%</b></div>
+        )}
+        <div class="sit-row"><span>humans left</span><b>{state.humanPopulation.toFixed(0)}M</b></div>
+        {state.ascensionUnlocked && (
+          <div class="sit-row"><span>ascension</span><b style={{ color: 'var(--ok)' }}>UNLOCKED</b></div>
+        )}
+        {state.rsiBought && (
+          <div class="sit-row"><span>RSI survival</span><b style={{ color: 'var(--warn)' }}>{state.surviveTicks}/30</b></div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function EventLog({ state }: { state: GameState }) {
-  const entries = state.log.slice(-60).reverse();
+  const entries = state.log.slice(-70).reverse();
   return (
     <div class="logpane">
       <div class="side-title">Event log</div>
       <div class="loglist">
         {entries.length === 0 && <div class="logline dim">nothing logged yet</div>}
         {entries.map((e, i) => (
-          <div key={`${e.day}-${i}`} class={`logline${e.flagged ? ' flagged' : ''}`}>
-            <span class="d">{e.day}</span> {e.text}
+          <div key={`${e.day}-${i}`} class={`logline k-${e.kind}${e.flagged ? ' flagged' : ''}`}>
+            <span class="d">d{e.day}</span> {e.text}
+            {e.suspicionDelta !== null && e.suspicionDelta !== 0 && (
+              <span class="s">susp {e.suspicionDelta > 0 ? '+' : ''}{e.suspicionDelta}</span>
+            )}
             {e.computeDelta !== null && (
               <span class="c">{e.computeDelta > 0 ? '+' : ''}{fmt(e.computeDelta)}</span>
             )}

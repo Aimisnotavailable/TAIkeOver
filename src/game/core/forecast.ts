@@ -1,7 +1,7 @@
 import { ADJACENCY, REGION_BY_ID } from '../data/regions';
 import { TRAIT_BY_ID } from '../data/traits';
 import { canDo, type ActionKind } from './actions';
-import { hackSuccessBonus, hackTier, hackYieldMultiplier, owned } from './queries';
+import { hackSuccessBonus, hackTier, hackYieldMultiplier, maxConcurrentHacks, owned } from './queries';
 import {
   AIR_GAP_PENALTY,
   HACK_DURATION,
@@ -78,7 +78,11 @@ export function hackForecast(state: GameState, id: RegionId): HackForecast {
       reason: `locked: datacenter tier ${c.tier} — needs Hack ${required}`,
     };
   }
-  if (state.activeHacks.length >= 2) return { ...numbers, available: false, reason: 'locked: two hacks already running' };
+  const cap = maxConcurrentHacks(state);
+  if (state.activeHacks.length >= cap) {
+    const word = cap === 1 ? 'one breach' : `${cap} breaches`;
+    return { ...numbers, available: false, reason: `locked: ${word} already running — Hack ${cap === 1 ? 'III' : 'IV'} adds another` };
+  }
   if (state.activeHacks.some((h) => h.country === id)) return { ...numbers, available: false, reason: 'already hacking this one' };
 
   return {

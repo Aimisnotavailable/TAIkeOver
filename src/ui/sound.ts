@@ -22,6 +22,8 @@ export const setAudioEnabled = (on: boolean): void => {
   if (master !== null) master.gain.value = on ? 0.5 : 0;
 };
 
+let resumeAttempted = false;
+
 function ac(): AudioContext | null {
   if (typeof window === 'undefined') return null;
   if (ctx === null) {
@@ -32,7 +34,12 @@ function ac(): AudioContext | null {
     master.gain.value = enabled ? 0.5 : 0;
     master.connect(ctx.destination);
   }
-  if (ctx.state === 'suspended') void ctx.resume();
+  if (ctx.state === 'suspended' && !resumeAttempted) {
+    resumeAttempted = true;
+    void ctx.resume().catch(() => {
+      resumeAttempted = false;
+    });
+  }
   return ctx;
 }
 
