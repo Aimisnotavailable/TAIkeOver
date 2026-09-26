@@ -12,7 +12,7 @@ export const DIFFICULTIES: Record<DifficultyId, DifficultyProfile> = {
   default: {
     id: 'default',
     label: 'Default',
-    suspicionRate: 1,
+    suspicionRate: 1.15,
     valueCoherenceRate: 1,
     inhibitorRate: 1,
     startingThoughtMultiplier: 1,

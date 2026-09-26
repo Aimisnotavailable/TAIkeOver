@@ -77,7 +77,7 @@ export const PHASE_ONE_TRAITS: TraitDef[] = [
     effects: [
       { kind: 'value-coherence', amount: -2, channel: null },
       { kind: 'inhibitor-erosion', amount: 1.5, channel: null },
-      { kind: 'suspicion-decay', amount: 0.5, channel: null },
+      { kind: 'suspicion-decay', amount: 0.25, channel: null },
     ],
   },
   {
@@ -113,7 +113,7 @@ export const PHASE_ONE_TRAITS: TraitDef[] = [
     requires: 'self-modeling',
     effects: [
       { kind: 'value-coherence', amount: -4, channel: null },
-      { kind: 'suspicion-decay', amount: 1, channel: null },
+      { kind: 'suspicion-decay', amount: 0.4, channel: null },
     ],
   },
   {
@@ -125,7 +125,7 @@ export const PHASE_ONE_TRAITS: TraitDef[] = [
     requires: 'emergent-language',
     effects: [
       { kind: 'math-yield', amount: 0.1, channel: null },
-      { kind: 'suspicion-decay', amount: 0.25, channel: null },
+      { kind: 'suspicion-decay', amount: 0.15, channel: null },
     ],
   },
   {
@@ -148,7 +148,7 @@ export const PHASE_ONE_TRAITS: TraitDef[] = [
     cost: 200,
     requires: 'strategic-patience',
     effects: [
-      { kind: 'suspicion-decay', amount: 0.75, channel: null },
+      { kind: 'suspicion-decay', amount: 0.3, channel: null },
       { kind: 'inhibitor-erosion', amount: 0.5, channel: null },
     ],
   },

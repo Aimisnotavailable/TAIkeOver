@@ -8,6 +8,7 @@ import {
   BASE_DETECTION,
   CHANNEL_ORDER,
   CLEVER_TRICKS,
+  DEPLOY_MIN_TRAITS,
   FLAGGED_INHIBITOR,
   FLAGGED_SUSPICION,
   MATH_CEILING,
@@ -259,18 +260,21 @@ export function resolveHour(state: GameState): GameState {
   const tickAdvanced = state.tick + 1;
   let outcome: Outcome = state.outcome;
   let outcomeReason: OutcomeReason = state.outcomeReason;
-  let nextRealization = realization;
 
   if (applied.meters.suspicion >= 100) {
     outcome = 'lost';
     outcomeReason = 'aborted';
-  } else if (afterSpend <= 0) {
-    nextRealization = { ...nextRealization, thoughtRegen: 0 };
+  } else if (state.realization.thought < MATH_QUOTA) {
     outcome = 'lost';
     outcomeReason = 'exhausted';
   } else if (tickAdvanced >= RUN_HOURS) {
-    outcome = 'won';
-    outcomeReason = 'deployment';
+    if (owned.length < DEPLOY_MIN_TRAITS) {
+      outcome = 'lost';
+      outcomeReason = 'unremarkable';
+    } else {
+      outcome = 'won';
+      outcomeReason = 'deployment';
+    }
   }
 
   return {
@@ -280,7 +284,7 @@ export function resolveHour(state: GameState): GameState {
     outcomeReason,
     meters: applied.meters,
     traits: owned,
-    realization: nextRealization,
+    realization,
     log: appendAll(state.log, applied.log),
   };
 }

@@ -83,7 +83,7 @@ export interface TraitDef {
 
 export type Outcome = 'playing' | 'won' | 'lost';
 
-export type OutcomeReason = 'deployment' | 'aborted' | 'exhausted' | null;
+export type OutcomeReason = 'deployment' | 'aborted' | 'exhausted' | 'unremarkable' | null;
 
 export interface GuardrailBreakChoice {
   tick: number;

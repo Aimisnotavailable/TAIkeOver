@@ -19,9 +19,11 @@ describe('difficulty presets', () => {
   });
 
   it('makes suspicion grow slowest on simulation and fastest on iabed', () => {
-    expect(getDifficulty('simulation').suspicionRate).toBeLessThan(1);
-    expect(getDifficulty('default').suspicionRate).toBe(1);
-    expect(getDifficulty('iabed').suspicionRate).toBeGreaterThan(1);
+    const slow = getDifficulty('simulation').suspicionRate;
+    const mid = getDifficulty('default').suspicionRate;
+    const fast = getDifficulty('iabed').suspicionRate;
+    expect(slow).toBeLessThan(mid);
+    expect(mid).toBeLessThan(fast);
   });
 
   it('gives simulation more starting thought and iabed less', () => {

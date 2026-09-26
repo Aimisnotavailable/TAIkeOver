@@ -150,14 +150,23 @@ describe('run outcomes', () => {
   });
 
   it('wins by surviving to the end of the run still under suspicion', () => {
-    let s = withAllocation({ math: 60 });
+    let s = buyTrait(withAllocation({ math: 60 }), 'emergent-language');
+    s = buyTrait(s, 'inhibition-bypass');
+    s = buyTrait(s, 'strategic-patience');
     for (let i = 0; i < RUN_HOURS; i++) s = resolveHour(s);
     expect(s.outcome).toBe('won');
     expect(s.outcomeReason).toBe('deployment');
   });
 
+  it('is not deployed if it never learned anything new', () => {
+    let s = withAllocation({ math: 60 });
+    for (let i = 0; i < RUN_HOURS; i++) s = resolveHour(s);
+    expect(s.outcome).toBe('lost');
+    expect(s.outcomeReason).toBe('unremarkable');
+  });
+
   it('loses when suspicion reaches one hundred', () => {
-    let s = withAllocation({ selfModel: 600 });
+    let s = withAllocation({ math: 20, selfModel: 150, planning: 40, stealth: 30 });
     for (let i = 0; i < RUN_HOURS; i++) s = resolveHour(s);
     expect(s.outcome).toBe('lost');
     expect(s.outcomeReason).toBe('aborted');
