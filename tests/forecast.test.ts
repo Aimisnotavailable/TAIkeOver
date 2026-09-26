@@ -12,7 +12,7 @@ const strong = (s: GameState): RegionId => REGION_IDS.find((id) => s.countries[i
 
 const withTrait = (s: GameState, ...ids: string[]): GameState => ({
   ...s,
-  dna: 99_999,
+  compute: 99_999,
   traits: [...s.traits, ...ids],
 });
 

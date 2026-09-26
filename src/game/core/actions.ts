@@ -58,7 +58,7 @@ export const ACTIONS: readonly ActionDef[] = [
   { kind: 'go-quiet', label: 'Go Quiet', hint: 'halts spread here, lowers awareness', needsRival: false },
   { kind: 'cease-hack', label: 'Cease Hacking', hint: 'stop the running operation here', needsRival: false },
   { kind: 'release-pathogen', label: 'Release Pathogen', hint: 'global. kills people who would organize against you', needsRival: false },
-  { kind: 'sabotage-rival', label: 'Sabotage Rival', hint: 'spend dna to set them back', needsRival: true },
+  { kind: 'sabotage-rival', label: 'Sabotage Rival', hint: 'spend compute to set them back', needsRival: true },
 ];
 
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
@@ -88,7 +88,7 @@ export function canDo(state: GameState, id: RegionId, kind: ActionKind): boolean
     case 'release-pathogen':
       return !state.pathogen.released && has(state, 'pathogen-1');
     case 'sabotage-rival':
-      return state.dna >= 300;
+      return state.compute >= 300;
   }
 }
 
@@ -120,7 +120,7 @@ export function doAction(state: GameState, id: RegionId, kind: ActionKind): Game
       next = { ...next, activeHacks: [...next.activeHacks, hack], hackCounter: next.hackCounter + 1 };
       lines.push({
         day: next.tick, kind: 'hack', text: `breach opened on ${id}, first result in ${duration}d`,
-        suspicionDelta: null, dnaDelta: null, flagged: false,
+        suspicionDelta: null, computeDelta: null, flagged: false,
       });
       break;
     }
@@ -130,7 +130,7 @@ export function doAction(state: GameState, id: RegionId, kind: ActionKind): Game
       lines.push({
         day: next.tick, kind: 'system',
         text: `ceased operations in ${id}${target ? ` after ${target.wins} breaches` : ''}`,
-        suspicionDelta: null, dnaDelta: null, flagged: false,
+        suspicionDelta: null, computeDelta: null, flagged: false,
       });
       break;
     }
@@ -148,7 +148,7 @@ export function doAction(state: GameState, id: RegionId, kind: ActionKind): Game
           countries[nb] = { ...n, economy: clamp(n.economy - damage * SUPPLY_CHAIN_SHARE, 0, 100) };
         }
       }
-      lines.push({ day: next.tick, kind: 'economy', text: `banking system in ${id} compromised, -${damage} economy`, suspicionDelta: null, dnaDelta: null, flagged: false });
+      lines.push({ day: next.tick, kind: 'economy', text: `banking system in ${id} compromised, -${damage} economy`, suspicionDelta: null, computeDelta: null, flagged: false });
       break;
     }
     case 'trigger-crash': {
@@ -157,7 +157,7 @@ export function doAction(state: GameState, id: RegionId, kind: ActionKind): Game
         economy: clamp(country.economy - CRASH_DAMAGE, 0, 100),
         awareness: clamp(country.awareness + CRASH_AWARENESS, 0, 100),
       };
-      lines.push({ day: next.tick, kind: 'economy', text: `markets in ${id} collapse`, suspicionDelta: null, dnaDelta: null, flagged: false });
+      lines.push({ day: next.tick, kind: 'economy', text: `markets in ${id} collapse`, suspicionDelta: null, computeDelta: null, flagged: false });
       break;
     }
     case 'fund-insurgency': {
@@ -167,12 +167,12 @@ export function doAction(state: GameState, id: RegionId, kind: ActionKind): Game
         awareness: clamp(country.awareness + 2, 0, 100),
       };
       next = { ...next, suspicion: clamp(next.suspicion + INSURGENCY_SUSPICION * diff.suspicionRate, 0, 100) };
-      lines.push({ day: next.tick, kind: 'event', text: `armed conflict in ${id}`, suspicionDelta: INSURGENCY_SUSPICION, dnaDelta: null, flagged: true });
+      lines.push({ day: next.tick, kind: 'event', text: `armed conflict in ${id}`, suspicionDelta: INSURGENCY_SUSPICION, computeDelta: null, flagged: true });
       break;
     }
     case 'go-quiet': {
       countries[id] = { ...country, quiet: true, awareness: clamp(country.awareness - 18, 0, 100) };
-      lines.push({ day: next.tick, kind: 'system', text: `going quiet in ${id}`, suspicionDelta: -2, dnaDelta: null, flagged: false });
+      lines.push({ day: next.tick, kind: 'system', text: `going quiet in ${id}`, suspicionDelta: -2, computeDelta: null, flagged: false });
       break;
     }
     case 'release-pathogen': {
@@ -188,15 +188,15 @@ export function doAction(state: GameState, id: RegionId, kind: ActionKind): Game
         },
         suspicion: clamp(next.suspicion + susp * 2 * diff.suspicionRate, 0, 100),
       };
-      lines.push({ day: next.tick, kind: 'bio', text: 'the pathogen is in the water supply', suspicionDelta: susp, dnaDelta: null, flagged: true });
+      lines.push({ day: next.tick, kind: 'bio', text: 'the pathogen is in the water supply', suspicionDelta: susp, computeDelta: null, flagged: true });
       break;
     }
     case 'sabotage-rival': {
       const rivals = next.rivals.map((r) =>
         r.id === id ? { ...r, capability: Math.max(0, r.capability - 16), sabotage: r.sabotage + 1 } : r,
       );
-      next = { ...next, rivals, dna: next.dna - 300 };
-      lines.push({ day: next.tick, kind: 'rival', text: `sabotaged ${id}`, suspicionDelta: 3, dnaDelta: -300, flagged: false });
+      next = { ...next, rivals, compute: next.compute - 300 };
+      lines.push({ day: next.tick, kind: 'rival', text: `sabotaged ${id}`, suspicionDelta: 3, computeDelta: -300, flagged: false });
       break;
     }
   }
@@ -212,7 +212,7 @@ export function resolveHacks(state: GameState): GameState {
   const countries = { ...state.countries };
   const lines: LogEntry[] = [];
   const kept: HackProgress[] = [];
-  let dna = state.dna;
+  let compute = state.compute;
   let suspicion = state.suspicion;
 
   for (const hack of state.activeHacks) {
@@ -241,7 +241,7 @@ export function resolveHacks(state: GameState): GameState {
       const base = lo + rand(state.seed, hack.resolveTick, hack.key * 17 + hack.depth) * (hi - lo);
       const gain = Math.round(base * scale * hackYieldMultiplier(state));
       const susp = (HACK_SUSPICION_SUCCESS[hack.tier] ?? 2) * detectScale * diff.suspicionRate;
-      dna += gain;
+      compute += gain;
       suspicion += susp;
       const depth = Math.min(MAX_DEPTH, hack.depth + 1);
       countries[hack.country] = {
@@ -252,7 +252,7 @@ export function resolveHacks(state: GameState): GameState {
       lines.push({
         day: state.tick, kind: 'hack',
         text: `${hack.country} yielded ${gain.toLocaleString()} GPU, depth ${depth}/${MAX_DEPTH}`,
-        suspicionDelta: +susp.toFixed(1), dnaDelta: gain, flagged: false,
+        suspicionDelta: +susp.toFixed(1), computeDelta: gain, flagged: false,
       });
       kept.push({ ...hack, depth, wins: hack.wins + 1, startTick: state.tick, resolveTick: state.tick + HACK_CYCLE_DAYS });
     } else {
@@ -260,12 +260,12 @@ export function resolveHacks(state: GameState): GameState {
       const susp = (HACK_SUSPICION_FAIL[hack.tier] ?? 4) * (half ? 0.5 : 1) * detectScale * diff.suspicionRate;
       const cost = HACK_FAIL_COST[hack.tier] ?? 45;
       suspicion += susp;
-      dna -= cost;
+      compute -= cost;
       countries[hack.country] = { ...country, awareness: clamp(country.awareness + 7, 0, 100) };
       lines.push({
         day: state.tick, kind: 'hack',
-        text: `hack on ${hack.country} was traced and burned: -${cost.toLocaleString()} dna, depth reset`,
-        suspicionDelta: +susp.toFixed(1), dnaDelta: -cost, flagged: true,
+        text: `hack on ${hack.country} was traced and burned: -${cost.toLocaleString()} compute, depth reset`,
+        suspicionDelta: +susp.toFixed(1), computeDelta: -cost, flagged: true,
       });
       kept.push({ ...hack, depth: 0, losses: hack.losses + 1, startTick: state.tick, resolveTick: state.tick + HACK_CYCLE_DAYS });
     }
@@ -274,7 +274,7 @@ export function resolveHacks(state: GameState): GameState {
   return {
     ...state,
     countries,
-    dna: Math.max(0, dna),
+    compute: Math.max(0, compute),
     suspicion: clamp(suspicion, 0, 100),
     activeHacks: kept,
     log: [...state.log, ...lines].slice(-300),

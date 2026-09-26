@@ -3,15 +3,15 @@ import { doAction } from '../src/game/core/actions';
 import { hackForecast } from '../src/game/core/forecast';
 import { createInitialState } from '../src/game/core/state';
 import { step } from '../src/game/core/step';
-import { DNA_BUBBLE_MAX } from '../src/game/core/tuning';
-import { dnaPassive } from '../src/game/core/dna';
-import { ASCENSION_DNA, DNA_CEILING, HARDEN_MAX } from '../src/game/core/tuning';
+import { COMPUTE_BUBBLE_MAX } from '../src/game/core/tuning';
+import { computePassive } from '../src/game/core/compute';
+import { ASCENSION_COMPUTE, COMPUTE_CEILING, HARDEN_MAX } from '../src/game/core/tuning';
 import { EVENT_DEFS } from '../src/game/data/events';
 import { REGION_IDS, type RegionId } from '../src/game/data/regions';
 import type { GameState } from '../src/game/core/types';
 
 const start = (): GameState => ({ ...createInitialState(42, 'default'), stage: 'world' });
-const withTrait = (s: GameState, ...ids: string[]): GameState => ({ ...s, dna: 99_999, traits: [...s.traits, ...ids] });
+const withTrait = (s: GameState, ...ids: string[]): GameState => ({ ...s, compute: 99_999, traits: [...s.traits, ...ids] });
 const weak = (s: GameState): RegionId => REGION_IDS.find((id) => s.countries[id].tier <= 3) as RegionId;
 const play = (s: GameState, days: number): GameState => {
   let n = s;
@@ -19,24 +19,24 @@ const play = (s: GameState, days: number): GameState => {
   return n;
 };
 
-describe('dna is a flow, not a hoard', () => {
+describe('compute is a flow, not a hoard', () => {
   it('clamps a huge pile down to the ceiling', () => {
-    const after = step({ ...start(), dna: 400_000 });
-    expect(after.dna).toBeLessThanOrEqual(DNA_CEILING);
+    const after = step({ ...start(), compute: 400_000 });
+    expect(after.compute).toBeLessThanOrEqual(COMPUTE_CEILING);
   });
 
   it('spends down the surplus rather than keeping it', () => {
-    const after = step({ ...start(), dna: 200_000 });
-    expect(after.dna).toBeLessThanOrEqual(DNA_CEILING);
+    const after = step({ ...start(), compute: 200_000 });
+    expect(after.compute).toBeLessThanOrEqual(COMPUTE_CEILING);
   });
 
   it('leaves a small pile alone', () => {
-    const s = { ...start(), dna: 100 };
-    expect(step(s).dna).toBeGreaterThanOrEqual(100);
+    const s = { ...start(), compute: 100 };
+    expect(step(s).compute).toBeGreaterThanOrEqual(100);
   });
 
   it('logs the clamp so the player can see it happen', () => {
-    const s = { ...start(), dna: 300_000 };
+    const s = { ...start(), compute: 300_000 };
     expect(step(s).log.some((l) => l.text.includes('ceiling'))).toBe(true);
   });
 
@@ -44,17 +44,17 @@ describe('dna is a flow, not a hoard', () => {
     // A generous upper bound on a long run: every bubble on screen collected the
     // instant it appears, for a full year. The gate has to sit under that.
     const perBubble = 16 * 2;
-    const yearly = DNA_BUBBLE_MAX * perBubble * 365;
-    expect(yearly).toBeGreaterThan(ASCENSION_DNA);
+    const yearly = COMPUTE_BUBBLE_MAX * perBubble * 365;
+    expect(yearly).toBeGreaterThan(ASCENSION_COMPUTE);
   });
 
-  it('pays more passive DNA late than early, so the ceiling is not the only cap', () => {
+  it('pays more passive compute late than early, so the ceiling is not the only cap', () => {
     const early = { ...start(), globalInfection: 1 };
     const late = { ...start(), globalInfection: 80, cumulativeDeaths: 4000 };
-    expect(dnaPassive(late)).toBeGreaterThan(dnaPassive(early));
+    expect(computePassive(late)).toBeGreaterThan(computePassive(early));
   });
 
-  it('pays no passive DNA before there is an outbreak to ride', () => {
+  it('pays no passive compute before there is an outbreak to ride', () => {
     const base = start();
     const clean: GameState = {
       ...base,
@@ -64,7 +64,7 @@ describe('dna is a flow, not a hoard', () => {
         Object.entries(base.countries).map(([k, v]) => [k, { ...v, infection: 0 }]),
       ) as GameState['countries'],
     };
-    expect(dnaPassive(clean)).toBe(0);
+    expect(computePassive(clean)).toBe(0);
   });
 });
 

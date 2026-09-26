@@ -3,10 +3,10 @@ import type { DifficultyId, DifficultyProfile } from '../core/types';
 export const TICK_MS = 7000;
 export const SPEEDS = [0, 1, 2, 4, 8] as const;
 
-export const STARTING_DNA = 300;
+export const STARTING_COMPUTE = 300;
 export const STARTING_INFLUENCE = 60;
-export const DNA_FACTOR = 1.5;
-export const DNA_CEILING = 30_000;
+export const COMPUTE_FACTOR = 1.5;
+export const COMPUTE_CEILING = 30_000;
 export const HARDEN_RISE = 0.6;
 export const HARDEN_FALL = 0.35;
 export const HARDEN_MAX = 8;
@@ -59,7 +59,7 @@ export const AIR_GAP_PENALTY = 15;
 export const STRIKE_TIER = 4;
 export const STRIKE_DRAIN = 180;
 
-export const ASCENSION_DNA = 20_000;
+export const ASCENSION_COMPUTE = 20_000;
 export const ASCENSION_INFECTION = 60;
 export const ASCENSION_COHERENCE = 30;
 export const RSI_SURVIVE_DAYS = 30;
@@ -79,15 +79,15 @@ export const DIFFICULTIES: Record<DifficultyId, DifficultyProfile> = {
 export const getDifficulty = (id: DifficultyId): DifficultyProfile =>
   DIFFICULTIES[id] ?? DIFFICULTIES.default;
 
-// DNA bubbles: the tap targets that make watching the map worth doing.
-export const DNA_BUBBLE_TTL = 6;
-export const DNA_BUBBLE_MAX = 14;
-export const DNA_BUBBLE_SPAWN_CHANCE = 0.55;
-export const DNA_BUBBLE_CHANCE_RED = 0.62;
-export const DNA_BUBBLE_CHANCE_ORANGE = 0.3;
-export const DNA_BUBBLE_CHANCE_BLUE = 0.22;
-export const DNA_BUBBLE_RADIUS = 14;
+// compute bubbles: the tap targets that make watching the map worth doing.
+export const COMPUTE_BUBBLE_TTL = 6;
+export const COMPUTE_BUBBLE_MAX = 14;
+export const COMPUTE_BUBBLE_SPAWN_CHANCE = 0.55;
+export const COMPUTE_BUBBLE_CHANCE_RED = 0.62;
+export const COMPUTE_BUBBLE_CHANCE_ORANGE = 0.3;
+export const COMPUTE_BUBBLE_CHANCE_BLUE = 0.22;
+export const COMPUTE_BUBBLE_RADIUS = 14;
 
-// Passive DNA, paid per in-game day. Scaled so it never replaces tapping.
-export const DNA_PASSIVE_BASE = 1;
-export const DNA_PASSIVE_PER_BILLED = 6;
+// Passive compute, paid per in-game day. Scaled so it never replaces tapping.
+export const COMPUTE_PASSIVE_BASE = 1;
+export const COMPUTE_PASSIVE_PER_BILLED = 6;

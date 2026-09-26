@@ -3,7 +3,7 @@ import { DIFFICULTIES, getDifficulty } from '../game/core/tuning';
 import { REGION_BY_ID } from '../game/data/regions';
 import { actions, game } from './store';
 import { ContextBar, EventLog, Operations, SideRail, Toolbar, TopBar } from './components/panels';
-import { drawWorldMap, hitTest, hitTestDna } from './map/worldMap';
+import { drawWorldMap, hitTest, hitTestCompute } from './map/worldMap';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { TICK_MS } from '../game/core/tuning';
 import { rollEvent } from './store';
@@ -148,7 +148,7 @@ function Map({ state }: { state: GameState }) {
           plague: state.pathogen.released,
           airGapped: state.countermeasures.airGappedLab,
           rivalHomes: state.rivals.filter((r) => r.alive).map((r) => r.home),
-          dnaBubbles: state.dnaBubbles,
+          computeBubbles: state.computeBubbles,
           tick: state.tick,
         },
         now,
@@ -168,11 +168,11 @@ function Map({ state }: { state: GameState }) {
       }}
       onClick={(e) => {
         const el = e.currentTarget;
-        // A bubble takes the click and nothing else. Collecting DNA and inspecting
+        // A bubble takes the click and nothing else. Collecting compute and inspecting
         // a country are separate intentions, so one click must not do both.
-        const bubble = hitTestDna(e.offsetX, e.offsetY, el.width, el.height, state.dnaBubbles);
+        const bubble = hitTestCompute(e.offsetX, e.offsetY, el.width, el.height, state.computeBubbles);
         if (bubble !== null) {
-          actions.collectDna(bubble);
+          actions.collectCompute(bubble);
           return;
         }
         const hit = hitTest(e.offsetX, e.offsetY, el.width, el.height, state.countries);

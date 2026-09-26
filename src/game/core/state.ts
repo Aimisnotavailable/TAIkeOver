@@ -1,6 +1,6 @@
 import { REGIONS, REGION_IDS, type RegionId } from '../data/regions';
 import { rand } from './rng';
-import { DIFFICULTIES, STARTING_DNA, STARTING_INFLUENCE } from './tuning';
+import { DIFFICULTIES, STARTING_COMPUTE, STARTING_INFLUENCE } from './tuning';
 import type { Country, DifficultyId, GameState, LogEntry, RivalState } from './types';
 
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
@@ -64,7 +64,7 @@ export function createInitialState(seed: number, difficulty: DifficultyId = 'def
     stage: 'coldopen',
     outcome: 'playing',
     outcomeReason: null,
-    dna: STARTING_DNA,
+    compute: STARTING_COMPUTE,
     influence: STARTING_INFLUENCE,
     bio: 0,
     suspicion: 0,
@@ -100,7 +100,7 @@ export function createInitialState(seed: number, difficulty: DifficultyId = 'def
     humanPopulation: REGION_IDS.reduce((sum, id) => sum + countries[id].population, 0),
     economiesCollapsed: 0,
     cumulativeDeaths: 0,
-    dnaBubbles: [],
+    computeBubbles: [],
     bubbleCounter: 0,
     breaches: Object.fromEntries(REGION_IDS.map((id) => [id, 0])) as Record<RegionId, number>,
     suspicionSources: [],
@@ -112,7 +112,7 @@ export const log = (
   state: GameState,
   kind: LogEntry['kind'],
   text: string,
-  extra: Partial<Pick<LogEntry, 'suspicionDelta' | 'dnaDelta' | 'flagged'>> = {},
+  extra: Partial<Pick<LogEntry, 'suspicionDelta' | 'computeDelta' | 'flagged'>> = {},
 ): LogEntry[] => [
   ...state.log,
   {
@@ -120,7 +120,7 @@ export const log = (
     kind,
     text,
     suspicionDelta: extra.suspicionDelta ?? null,
-    dnaDelta: extra.dnaDelta ?? null,
+    computeDelta: extra.computeDelta ?? null,
     flagged: extra.flagged ?? false,
   },
 ];

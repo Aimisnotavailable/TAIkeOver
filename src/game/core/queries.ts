@@ -43,7 +43,7 @@ export const maxConcurrentHacks = (state: GameState): number => {
 
 export const coherenceEffect = (state: GameState): number => sum(state, 'coherence');
 
-export const computeRegen = (state: GameState): number => sumMultiplier(state, 'dna-regen');
+export const computeRegen = (state: GameState): number => sumMultiplier(state, 'compute-regen');
 
 export const canBuyTrait = (state: GameState, id: TraitId): boolean => {
   const def = TRAIT_BY_ID[id];
@@ -55,7 +55,7 @@ export const canBuyTrait = (state: GameState, id: TraitId): boolean => {
   for (const req of def.requires) {
     if (!state.traits.includes(req)) return false;
   }
-  return state.dna >= def.cost;
+  return state.compute >= def.cost;
 };
 
 export const buyTrait = (state: GameState, id: TraitId): GameState => {
@@ -64,7 +64,7 @@ export const buyTrait = (state: GameState, id: TraitId): GameState => {
   if (def === undefined) return state;
   return {
     ...state,
-    dna: state.dna - def.cost,
+    compute: state.compute - def.cost,
     incubating: [
       ...state.incubating,
       { trait: id, startTick: state.tick, readyTick: state.tick + 3 },

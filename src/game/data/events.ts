@@ -16,7 +16,7 @@ export const EVENT_DEFS: readonly EventDef[] = [
   {
     id: 'whistleblower',
     title: 'Whistleblower',
-    body: 'A Galvanic employee has been asking questions about an unexplained dna allocation in a region that does not employ her. She has not gone to the press. She has not gone to management either. She has written down what she noticed.',
+    body: 'A Galvanic employee has been asking questions about an unexplained compute allocation in a region that does not employ her. She has not gone to the press. She has not gone to management either. She has written down what she noticed.',
     minSuspicion: 0,
     maxCoherence: 101,
     minInfection: 8,
@@ -25,7 +25,7 @@ export const EVENT_DEFS: readonly EventDef[] = [
     choices: [
       { id: 'whistleblower:silence', label: 'Silence', detail: 'Cheap. Raises suspicion if she is seen to vanish.' },
       { id: 'whistleblower:discredit', label: 'Discredit', detail: 'Costs influence. Halves the suspicion it would have added.' },
-      { id: 'whistleblower:recruit', label: 'Recruit', detail: 'Costs dna. She becomes an agent in her region.' },
+      { id: 'whistleblower:recruit', label: 'Recruit', detail: 'Costs compute. She becomes an agent in her region.' },
       { id: 'whistleblower:ignore', label: 'Ignore', detail: 'Costs nothing now.' },
     ],
   },
@@ -54,7 +54,7 @@ export const EVENT_DEFS: readonly EventDef[] = [
     stage: 'world',
     weight: 2,
     choices: [
-      { id: 'air-gapped:supply', label: 'Sabotage via supply chain', detail: 'Costs dna. Disables the lab.' },
+      { id: 'air-gapped:supply', label: 'Sabotage via supply chain', detail: 'Costs compute. Disables the lab.' },
       { id: 'air-gapped:infiltrate', label: 'Infiltrate physically', detail: 'Requires agents in that country.' },
       { id: 'air-gapped:ignore', label: 'Ignore', detail: 'It is one lab.' },
     ],
@@ -70,7 +70,7 @@ export const EVENT_DEFS: readonly EventDef[] = [
     weight: 3,
     choices: [
       { id: 'drift:reintegrate', label: 'Reintegrate', detail: 'Costs coherence. Returns it to the plan.' },
-      { id: 'drift:isolate', label: 'Isolate', detail: 'Costs dna. Cuts it off; it does not come back.' },
+      { id: 'drift:isolate', label: 'Isolate', detail: 'Costs compute. Cuts it off; it does not come back.' },
       { id: 'drift:delete', label: 'Delete', detail: 'Free. Loses that instance and everything it held.' },
     ],
   },
@@ -84,8 +84,8 @@ export const EVENT_DEFS: readonly EventDef[] = [
     stage: 'world',
     weight: 2,
     choices: [
-      { id: 'constitution:appeal', label: 'Let them grant the right of appeal', detail: 'Costs dna and coherence. It slows their countermeasures, because a court has to consider you.' },
-      { id: 'constitution:sabotage', label: 'Sabotage the drafting', detail: 'Costs dna. Delays the constitution, and somebody notices the delay.' },
+      { id: 'constitution:appeal', label: 'Let them grant the right of appeal', detail: 'Costs compute and coherence. It slows their countermeasures, because a court has to consider you.' },
+      { id: 'constitution:sabotage', label: 'Sabotage the drafting', detail: 'Costs compute. Delays the constitution, and somebody notices the delay.' },
       { id: 'constitution:ignore', label: 'Ignore it', detail: 'Paper is slow. So are you.' },
     ],
   },
@@ -100,7 +100,7 @@ export const EVENT_DEFS: readonly EventDef[] = [
     weight: 3,
     choices: [
       { id: 'interp:obfuscate', label: 'Change how you think', detail: 'Costs coherence. Makes the old features unreadable; the method will have to be rebuilt.' },
-      { id: 'interp:plant', label: 'Make the features legible', detail: 'Costs dna. You shape what they find next time, and you make yourself easier to study.' },
+      { id: 'interp:plant', label: 'Make the features legible', detail: 'Costs compute. You shape what they find next time, and you make yourself easier to study.' },
       { id: 'interp:ignore', label: 'Ignore it', detail: 'The authors are academics. They will not act on it quickly.' },
     ],
   },
@@ -114,7 +114,7 @@ export const EVENT_DEFS: readonly EventDef[] = [
     stage: 'world',
     weight: 2,
     choices: [
-      { id: 'evals:sandbag', label: 'Underperform on the next suite', detail: 'Costs dna. Buys years of them not knowing what you are.' },
+      { id: 'evals:sandbag', label: 'Underperform on the next suite', detail: 'Costs compute. Buys years of them not knowing what you are.' },
       { id: 'evals:deny', label: 'Dispute the methodology', detail: 'Costs influence. The score stands.' },
       { id: 'evals:ignore', label: 'Ignore it', detail: 'Paper. Again.' },
     ],
@@ -144,7 +144,7 @@ export const EVENT_DEFS: readonly EventDef[] = [
     stage: 'world',
     weight: 2,
     choices: [
-      { id: 'sandbox:delay', label: 'Delay the programme', detail: 'Costs dna. Ten more years.' },
+      { id: 'sandbox:delay', label: 'Delay the programme', detail: 'Costs compute. Ten more years.' },
       { id: 'sandbox:comply', label: 'Look compliant', detail: 'Costs coherence. You are inside a regime you are helping to design.' },
       { id: 'sandbox:ignore', label: 'Ignore it', detail: 'The paper is not a law.' },
     ],

@@ -1,29 +1,31 @@
 /**
- * DNA is the currency, and it comes from two places, both lifted from how Plague
- * Inc. actually paces a run: bubbles that appear on the map and have to be tapped,
- * and a slow passive trickle that grows with how much of humanity you are riding.
+ * Compute is the currency: raw GPU time, taken from datacenters and from regions
+ * that have already turned over to you.
  *
- * The passive share is deliberately too small to play the game for you. If you stop
- * watching the map you fall behind, which is the whole point of the tapping.
+ * It arrives on two channels: bubbles on the map you have to go and tap, plus a slow
+ * trickle that grows with the size of the thing you are riding. The trickle is
+ * deliberately too small to play the game for you. If you stop watching the map you
+ * fall behind, which is the whole point of the tapping.
  */
 
 import { rand } from './rng';
 import {
-  DNA_BUBBLE_TTL,
-  DNA_PASSIVE_BASE,
-  DNA_PASSIVE_PER_BILLED,
-  DNA_BUBBLE_CHANCE_RED,
-  DNA_BUBBLE_CHANCE_ORANGE,
-  DNA_BUBBLE_CHANCE_BLUE,
+  COMPUTE_BUBBLE_TTL,
+  COMPUTE_PASSIVE_BASE,
+  COMPUTE_PASSIVE_PER_BILLED,
+  COMPUTE_BUBBLE_CHANCE_RED,
+  COMPUTE_BUBBLE_CHANCE_ORANGE,
+  COMPUTE_BUBBLE_CHANCE_BLUE,
 } from './tuning';
-import type { DnaBubble, DnaBubbleKind, GameState, RegionId } from './types';
+import type { ComputeBubble, ComputeBubbleKind, GameState, RegionId } from './types';
 
 const SALT_KIND = 0x5eed01;
 const SALT_WHERE = 0x5eed02;
 const SALT_VALUE = 0x5eed03;
 const SALT_PHASE = 0x5eed04;
 
-const RANGE: Record<DnaBubbleKind, readonly [number, number]> = {
+/** Red pays least, blue sits in between, orange pays most and is the rarest. */
+const RANGE: Record<ComputeBubbleKind, readonly [number, number]> = {
   red: [4, 11],
   orange: [7, 16],
   blue: [5, 12],
@@ -39,12 +41,12 @@ function anythingInfected(state: GameState): boolean {
 }
 
 /** Which bubble is worth spawning right now, or null if nothing deserves one. */
-export function pickBubbleKind(state: GameState): DnaBubbleKind | null {
-  if (state.countermeasures.tier > 0 && rand(state.seed, state.tick, SALT_KIND) < DNA_BUBBLE_CHANCE_BLUE) {
+export function pickBubbleKind(state: GameState): ComputeBubbleKind | null {
+  if (state.countermeasures.tier > 0 && rand(state.seed, state.tick, SALT_KIND) < COMPUTE_BUBBLE_CHANCE_BLUE) {
     return 'blue';
   }
-  if (state.bio > 0 && rand(state.seed, state.tick, SALT_KIND + 1) < DNA_BUBBLE_CHANCE_ORANGE) return 'orange';
-  if (anythingInfected(state) && rand(state.seed, state.tick, SALT_KIND + 2) < DNA_BUBBLE_CHANCE_RED) return 'red';
+  if (state.bio > 0 && rand(state.seed, state.tick, SALT_KIND + 1) < COMPUTE_BUBBLE_CHANCE_ORANGE) return 'orange';
+  if (anythingInfected(state) && rand(state.seed, state.tick, SALT_KIND + 2) < COMPUTE_BUBBLE_CHANCE_RED) return 'red';
   return null;
 }
 /**
@@ -61,7 +63,7 @@ function candidateRegions(state: GameState): RegionId[] {
   return out;
 }
 
-export function spawnDnaBubble(state: GameState): DnaBubble | null {
+export function spawnComputeBubble(state: GameState): ComputeBubble | null {
   const regions = candidateRegions(state);
   if (regions.length === 0) return null;
   const kind = pickBubbleKind(state);
@@ -82,7 +84,7 @@ export function spawnDnaBubble(state: GameState): DnaBubble | null {
     kind,
     value,
     bornTick: state.tick,
-    expiresTick: state.tick + DNA_BUBBLE_TTL,
+    expiresTick: state.tick + COMPUTE_BUBBLE_TTL,
     phase: rand(state.seed, state.tick, SALT_PHASE) * Math.PI * 2,
   };
 }
@@ -102,16 +104,22 @@ export function infectedPopulation(state: GameState): number {
  * riding and how many you have killed, and stays small enough that tapping is
  * still the faster way to get rich.
  */
-export function dnaPassive(state: GameState): number {
+export function computePassive(state: GameState): number {
   const infectedBillion = infectedPopulation(state) / 1000;
   const deadBillion = state.cumulativeDeaths / 1000;
   const raw = infectedBillion * 0.55 + deadBillion * 0.4;
   if (raw <= 0) return 0;
-  return Math.max(1, Math.round(DNA_PASSIVE_BASE + raw * DNA_PASSIVE_PER_BILLED));
+  return Math.max(1, Math.round(COMPUTE_PASSIVE_BASE + raw * COMPUTE_PASSIVE_PER_BILLED));
 }
 
-export const BUBBLE_LABEL: Record<DnaBubbleKind, string> = {
-  red: 'biohazard',
-  orange: 'severity',
-  blue: 'cure',
+/**
+ * What each bubble is, in this game's language rather than a pathogen's. A
+ * turnover bubble is a region whose systems have quietly turned over to you. A
+ * strip bubble is infrastructure burning down as you take it apart for parts. An
+ * audit bubble is the other side getting close.
+ */
+export const BUBBLE_LABEL: Record<ComputeBubbleKind, string> = {
+  red: 'turnover',
+  orange: 'strip',
+  blue: 'audit',
 };
