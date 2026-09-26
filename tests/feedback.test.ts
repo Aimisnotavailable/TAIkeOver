@@ -40,7 +40,7 @@ describe('confirming an action', () => {
   });
 
   it('announces an economic collapse', () => {
-    game.value = start({ compute: 3000, traits: ['banking-1', 'banking-2', 'market-manipulation'] });
+    game.value = start({ compute: 3000, traits: ['banking-1', 'market-manipulation'] });
     const id = REGION_IDS.find((r) => (game.value.countries[r]?.infection ?? 0) >= 10) ?? 'mexico';
     const base = game.value;
     game.value = {
@@ -91,7 +91,7 @@ describe('what influence is for', () => {
     const base = start();
     const propped: GameState = {
       ...base,
-      traits: [...base.traits, 'propaganda-1', 'propaganda-2'],
+      traits: [...base.traits, 'propaganda-1', 'cult'],
     };
     let plain = base;
     let loud = propped;

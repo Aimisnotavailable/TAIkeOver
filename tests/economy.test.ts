@@ -104,13 +104,13 @@ describe('datacenters defend themselves', () => {
   });
 
   it('means rotating targets beats sitting on one', () => {
-    // Three concurrent breaches need Hack III; at Hack I you cannot spread at all.
-    const base = withTrait(start(), 'hack-1', 'hack-2', 'hack-3', 'hack-4');
+    // Breach slots come from the hack tier: one at Hack I, three at Hack III.
+    const base = withTrait(start(), 'hack-1', 'hack-2', 'hack-3');
     const stick = play(doAction(base, weak(base), 'hack'), 60);
-    const targets = REGION_IDS.filter((id) => base.countries[id].tier <= 3).slice(0, 3) as RegionId[];
+    const targets = REGION_IDS.filter((id) => base.countries[id].tier <= 3).slice(0, 2) as RegionId[];
     let rot = base;
     for (const id of targets) rot = doAction(rot, id, 'hack');
-    expect(rot.activeHacks).toHaveLength(3);
+    expect(rot.activeHacks).toHaveLength(2);
     rot = play(rot, 60);
     // Hardening is per-country and saturates, and depth accrues per breach, so
     // picking a different target is not inherently better. What actually pays is

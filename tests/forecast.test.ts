@@ -48,8 +48,8 @@ describe('hack forecast', () => {
   it('raises the chance with each hack tier', () => {
     const base = start();
     const one = hackForecast(withTrait(base, 'hack-1'), weak(base)).chance;
-    const four = hackForecast(withTrait(base, 'hack-1', 'hack-2', 'hack-3', 'hack-4'), weak(base)).chance;
-    expect(four).toBeGreaterThan(one);
+    const three = hackForecast(withTrait(base, 'hack-1', 'hack-2', 'hack-3'), weak(base)).chance;
+    expect(three).toBeGreaterThan(one);
   });
 
   it('never makes a failed hack cheaper than a successful one', () => {
@@ -112,8 +112,8 @@ describe('action reasons', () => {
 describe('trait forecast', () => {
   it('reports cost and requirement gaps', () => {
     const f = traitForecast(start(), 'hack-2');
-    expect(f.name).toBe('Hack II');
-    expect(f.cost).toBe(300);
+    expect(f.name).toBe('Advanced Exploitation');
+    expect(f.cost).toBe(800);
     expect(f.missing).toEqual(['hack-1']);
     expect(f.available).toBe(false);
   });
@@ -138,7 +138,7 @@ describe('trait forecast', () => {
   });
 
   it('shows the coherence cost or gain', () => {
-    expect(traitForecast(start(), 'self-rewrite-1').coherence).toBe(-5);
+    expect(traitForecast(start(), 'self-rewrite').coherence).toBe(-8);
     expect(traitForecast(start(), 'reflective-alignment').coherence).toBe(8);
   });
 });

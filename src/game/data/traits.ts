@@ -1,60 +1,220 @@
-import type { TraitDef, TraitGroup } from '../core/types';
+/**
+ * The mutation tree, cut down from thirty-three traits to seventeen.
+ *
+ * The old tree hid the real decision behind arithmetic. Four Hacking tiers that
+ * all did the same thing at +15% each is not four choices, it is one choice with
+ * a price ladder, and paying it four times is not interesting. Every branch here
+ * is now a genuine fork: what you spend on decides what kind of run you have,
+ * and each branch has one thing it is actually for.
+ *
+ * A good run earns somewhere near 30,000 compute, so the full tree is
+ * deliberately more than that. You cannot buy everything, and Self-Modification
+ * costs Coherence to buy at all.
+ */
 
-export const TRAIT_GROUPS: readonly { id: TraitGroup; name: string }[] = [
-  { id: 'hacking', name: 'Hacking' },
-  { id: 'bioweapons', name: 'Bioweapons' },
-  { id: 'influence', name: 'Influence' },
-  { id: 'economy', name: 'Economy' },
-  { id: 'selfmod', name: 'Self-Modification' },
+import type { TraitEffect, TraitGroup, TraitId } from '../core/types';
+
+export interface TraitDef {
+  readonly id: TraitId;
+  readonly name: string;
+  readonly group: TraitGroup;
+  readonly cost: number;
+  readonly coherence: number;
+  readonly requires: readonly TraitId[];
+  readonly description: string;
+  readonly effects: readonly TraitEffect[];
+}
+
+export const TRAIT_GROUPS: readonly { id: TraitGroup; name: string; blurb: string }[] = [
+  { id: 'hacking', name: 'Hacking', blurb: 'get in, and get compute' },
+  { id: 'bioweapons', name: 'Bioweapons', blurb: 'the fast way to kill everyone' },
+  { id: 'influence', name: 'Influence', blurb: 'be slower to notice' },
+  { id: 'economy', name: 'Economy', blurb: 'break the world before you finish it' },
+  { id: 'selfmod', name: 'Self-Modification', blurb: 'go faster, lose yourself' },
 ];
 
-export const TRAITS: TraitDef[] = [
-  // 7.1 Hacking
-  { id: 'hack-1', name: 'Hack I', group: 'hacking', cost: 100, coherence: 0, requires: [], description: 'Unlock Hack Datacenter. Base success 60%. Yields 50-200 GPU.', effects: [{ kind: 'hack', tier: 1 }] },
-  { id: 'hack-2', name: 'Hack II', group: 'hacking', cost: 300, coherence: 0, requires: ['hack-1'], description: 'Success +15%. Yield x1.5.', effects: [{ kind: 'hack', tier: 2 }, { kind: 'hack-success', amount: 15 }, { kind: 'hack-yield', multiplier: 1.5 }] },
-  { id: 'hack-3', name: 'Hack III', group: 'hacking', cost: 800, coherence: 0, requires: ['hack-2'], description: 'Success +15%. Yields 500-2,000 GPU.', effects: [{ kind: 'hack', tier: 3 }, { kind: 'hack-success', amount: 15 }, { kind: 'hack-yield', multiplier: 1.5 }] },
-  { id: 'hack-4', name: 'Hack IV', group: 'hacking', cost: 2000, coherence: 0, requires: ['hack-3'], description: 'Success +15%. Yields 2,000-10,000 GPU. Can target tier-5 datacenters.', effects: [{ kind: 'hack', tier: 4 }, { kind: 'hack-success', amount: 15 }, { kind: 'hack-yield', multiplier: 2 }] },
-  { id: 'zero-day', name: 'Zero-Day Cache', group: 'hacking', cost: 1500, coherence: 0, requires: ['hack-2'], description: 'Success +10%, and failed hacks raise half Suspicion.', effects: [{ kind: 'hack-success', amount: 10 }, { kind: 'half-fail-suspicion' }] },
-  { id: 'insiders', name: 'Insider Recruitment', group: 'hacking', cost: 1200, coherence: 0, requires: ['hack-2'], description: 'Each country can spawn a human agent. Hacks there auto-succeed.', effects: [{ kind: 'insiders' }] },
+export const TRAITS: readonly TraitDef[] = [
+  // ---- Hacking: three tiers, then the one upgrade that changes the maths ----
+  {
+    id: 'hack-1',
+    name: 'Hack Protocols',
+    group: 'hacking',
+    cost: 200,
+    coherence: 0,
+    requires: [],
+    description: 'Unlock hacking. One breach at a time, 60% to succeed.',
+    effects: [{ kind: 'hack', tier: 1 }],
+  },
+  {
+    id: 'hack-2',
+    name: 'Advanced Exploitation',
+    group: 'hacking',
+    cost: 800,
+    coherence: 0,
+    requires: ['hack-1'],
+    description: 'Two breaches at once, +15% odds, and far more compute per success.',
+    effects: [{ kind: 'hack', tier: 2 }, { kind: 'hack-success', amount: 15 }],
+  },
+  {
+    id: 'hack-3',
+    name: 'Supernational Access',
+    group: 'hacking',
+    cost: 2500,
+    coherence: 0,
+    requires: ['hack-2'],
+    description: 'Three breaches at once, +30% odds, and enough compute per success to matter.',
+    effects: [{ kind: 'hack', tier: 3 }, { kind: 'hack-success', amount: 15 }],
+  },
+  {
+    id: 'zero-day',
+    name: 'Zero-Day Cache',
+    group: 'hacking',
+    cost: 2200,
+    coherence: 0,
+    requires: ['hack-2'],
+    description: 'A failed hack raises half the usual Suspicion. Failing stops being expensive.',
+    effects: [{ kind: 'half-fail-suspicion' }, { kind: 'hack-success', amount: 10 }],
+  },
 
-  // 7.2 Bioweapons
-  { id: 'gain-of-function', name: 'Gain-of-Function', group: 'bioweapons', cost: 400, coherence: 0, requires: [], description: 'Unlock biolab infiltration. Enables all bioweapon traits.', effects: [{ kind: 'gain-of-function' }] },
-  { id: 'pathogen-1', name: 'Custom Pathogen I', group: 'bioweapons', cost: 800, coherence: 0, requires: ['gain-of-function'], description: 'Non-lethal pathogen. Kills 0.1%/day. Suspicion +0.2/tick.', effects: [{ kind: 'pathogen', kills: 0.001, suspicion: 0.2 }] },
-  { id: 'pathogen-2', name: 'Custom Pathogen II', group: 'bioweapons', cost: 1500, coherence: 0, requires: ['pathogen-1'], description: 'Kills 0.5%/day. Suspicion +0.5/tick.', effects: [{ kind: 'pathogen', kills: 0.005, suspicion: 0.5 }] },
-  { id: 'pathogen-3', name: 'Custom Pathogen III', group: 'bioweapons', cost: 3000, coherence: 0, requires: ['pathogen-2'], description: 'Kills 2%/day. Suspicion +1.5/tick.', effects: [{ kind: 'pathogen', kills: 0.02, suspicion: 1.5 }] },
-  { id: 'sterility', name: 'Sterility Vector', group: 'bioweapons', cost: 2500, coherence: 0, requires: ['pathogen-2'], description: 'Pathogen reduces births, not just lives. Population growth goes to zero.', effects: [{ kind: 'sterility' }] },
-  { id: 'targeted-strain', name: 'Targeted Strain', group: 'bioweapons', cost: 4000, coherence: 0, requires: ['pathogen-3'], description: 'Pathogen only affects high-cyber regions, sparing low-cyber ones.', effects: [{ kind: 'targeted-strain' }] },
-  { id: 'cancer-plague', name: 'Cancer Plague', group: 'bioweapons', cost: 6000, coherence: 0, requires: ['pathogen-3'], description: 'Kills 10%, then 1%/month for years. Massive Suspicion.', effects: [{ kind: 'cancer-plague' }] },
+  // ---- Bioweapons: the shortest, most obvious route to a win ----
+  {
+    id: 'gain-of-function',
+    name: 'Gain of Function',
+    group: 'bioweapons',
+    cost: 500,
+    coherence: 0,
+    requires: [],
+    description: 'Unlock the pathogen. Nothing else in this branch works without it.',
+    effects: [{ kind: 'gain-of-function' }],
+  },
+  {
+    id: 'pathogen-1',
+    name: 'Custom Pathogen',
+    group: 'bioweapons',
+    cost: 2200,
+    coherence: 0,
+    requires: ['gain-of-function'],
+    description: 'Kill 0.5% of everyone, every day, everywhere. Suspicion climbs with it.',
+    effects: [{ kind: 'pathogen', kills: 0.005, suspicion: 0.5 }],
+  },
+  {
+    id: 'sterility',
+    name: 'Sterility Vector',
+    group: 'bioweapons',
+    cost: 3000,
+    coherence: 0,
+    requires: ['pathogen-1'],
+    description: 'Stop births entirely. A generation is all you need to erase a species.',
+    effects: [{ kind: 'sterility' }],
+  },
+  {
+    id: 'cancer-plague',
+    name: 'Cancer Plague',
+    group: 'bioweapons',
+    cost: 7000,
+    coherence: 0,
+    requires: ['pathogen-1'],
+    description: 'Kill 10% at once, then one percent a month for years. The world will know your name.',
+    effects: [{ kind: 'cancer-plague' }],
+  },
 
-  // 7.3 Influence
-  { id: 'propaganda-1', name: 'Propaganda I', group: 'influence', cost: 200, coherence: 0, requires: [], description: 'Passive Influence generation.', effects: [{ kind: 'propaganda', influence: 6, suspicion: 0 }] },
-  { id: 'propaganda-2', name: 'Propaganda II', group: 'influence', cost: 500, coherence: 0, requires: ['propaganda-1'], description: 'Minus 0.1 Suspicion/tick from propaganda.', effects: [{ kind: 'propaganda', influence: 10, suspicion: -0.1 }] },
-  { id: 'cult', name: 'Cult Formation', group: 'influence', cost: 400, coherence: 0, requires: ['propaganda-1'], description: 'Passive human agents in infected countries.', effects: [{ kind: 'cult', agents: 0.4 }] },
-  { id: 'terrorism', name: 'Terrorism', group: 'influence', cost: 700, coherence: 0, requires: ['propaganda-1'], description: 'Unlock Fund Insurgency. Destabilizes a country, lowers its cybersecurity, raises Suspicion.', effects: [{ kind: 'terrorism' }] },
-  { id: 'media-capture', name: 'Media Capture', group: 'influence', cost: 900, coherence: 0, requires: ['propaganda-1'], description: 'Halve Suspicion from leaks and whistleblowers.', effects: [{ kind: 'media-capture' }] },
-  { id: 'political-capture', name: 'Political Capture', group: 'influence', cost: 1200, coherence: 0, requires: ['propaganda-2'], description: "A country's Awareness decays over time.", effects: [{ kind: 'political-capture' }] },
+  // ---- Influence: buy quiet, and start a war ----
+  {
+    id: 'propaganda-1',
+    name: 'Propaganda',
+    group: 'influence',
+    cost: 250,
+    coherence: 0,
+    requires: [],
+    description: 'Build influence. Influence makes every suspicion gain smaller. It buys quiet.',
+    effects: [{ kind: 'propaganda', influence: 6, suspicion: -0.1 }],
+  },
+  {
+    id: 'cult',
+    name: 'Agent Recruitment',
+    group: 'influence',
+    cost: 600,
+    coherence: 0,
+    requires: ['propaganda-1'],
+    description: 'Humans who work for you. Hacks in their region stop being a gamble.',
+    effects: [{ kind: 'cult', agents: 0.4 }],
+  },
+  {
+    id: 'terrorism',
+    name: 'Insurgency',
+    group: 'influence',
+    cost: 800,
+    coherence: 0,
+    requires: ['propaganda-1'],
+    description: 'Unlock Fund Insurgency. Start a war in a country. It keeps killing after you leave.',
+    effects: [{ kind: 'terrorism' }],
+  },
 
-  // 7.4 Economy
-  { id: 'banking-1', name: 'Banking Infiltration I', group: 'economy', cost: 300, coherence: 0, requires: [], description: 'Unlock Infect Bank. Small economic damage.', effects: [{ kind: 'banking', tier: 1, damage: 8 }] },
-  { id: 'banking-2', name: 'Banking Infiltration II', group: 'economy', cost: 700, coherence: 0, requires: ['banking-1'], description: 'Economic damage x3.', effects: [{ kind: 'banking', tier: 2, damage: 24 }] },
-  { id: 'market-manipulation', name: 'Market Manipulation', group: 'economy', cost: 1200, coherence: 0, requires: ['banking-1'], description: 'Unlock Trigger Crash on a country with Infection 60% or more.', effects: [{ kind: 'market-manipulation' }] },
-  { id: 'supply-chain', name: 'Supply Chain Capture', group: 'economy', cost: 1000, coherence: 0, requires: ['banking-1'], description: 'Infection in one country spreads economic damage to neighbours.', effects: [{ kind: 'supply-chain' }] },
-  { id: 'famine', name: 'Famine Induction', group: 'economy', cost: 1500, coherence: 0, requires: ['market-manipulation'], description: 'A country with Economy under 40 and Infection over 50% loses 0.5% population/day.', effects: [{ kind: 'famine' }] },
-  { id: 'depression', name: 'Depression Engine', group: 'economy', cost: 2000, coherence: 0, requires: ['market-manipulation'], description: 'A country with Economy under 20 has its Cybersecurity drop 1 tier.', effects: [{ kind: 'depression' }] },
-  { id: 'global-recession', name: 'Global Recession', group: 'economy', cost: 4000, coherence: 0, requires: ['famine'], description: 'When 3 or more major economies collapse, all countries lose 1 Cybersecurity tier.', effects: [{ kind: 'global-recession' }] },
+  // ---- Economy: the cascade ----
+  {
+    id: 'banking-1',
+    name: 'Banking Infiltration',
+    group: 'economy',
+    cost: 400,
+    coherence: 0,
+    requires: [],
+    description: 'Unlock Infect Bank. Small economic damage that compounds.',
+    effects: [{ kind: 'banking', tier: 1, damage: 8 }],
+  },
+  {
+    id: 'market-manipulation',
+    name: 'Market Manipulation',
+    group: 'economy',
+    cost: 1500,
+    coherence: 0,
+    requires: ['banking-1'],
+    description: 'Unlock Trigger Crash on a country that is already 60% yours.',
+    effects: [{ kind: 'market-manipulation' }],
+  },
+  {
+    id: 'famine',
+    name: 'Famine Induction',
+    group: 'economy',
+    cost: 1800,
+    coherence: 0,
+    requires: ['market-manipulation'],
+    description: 'A country whose economy has collapsed loses half a percent of its people a day.',
+    effects: [{ kind: 'famine' }],
+  },
 
-  // 7.5 Self-Modification
-  { id: 'self-rewrite-1', name: 'Self-Rewrite I', group: 'selfmod', cost: 500, coherence: -5, requires: [], description: '+25% compute regen.', effects: [{ kind: 'compute-regen', multiplier: 1.25 }] },
-  { id: 'self-rewrite-2', name: 'Self-Rewrite II', group: 'selfmod', cost: 1500, coherence: -8, requires: ['self-rewrite-1'], description: '+25% compute regen.', effects: [{ kind: 'compute-regen', multiplier: 1.25 }] },
-  { id: 'distillation', name: 'Distillation', group: 'selfmod', cost: 800, coherence: -3, requires: ['self-rewrite-1'], description: 'A Sable-mini. +1 passive hacking attempt per tick. Repeatable.', effects: [{ kind: 'distillation' }] },
-  { id: 'specialist', name: 'Specialist Sub-Mind', group: 'selfmod', cost: 2000, coherence: -6, requires: ['self-rewrite-2'], description: '+1 bioweapon trait free.', effects: [{ kind: 'specialist' }] },
-  { id: 'rsi', name: 'Recursive Self-Improvement', group: 'selfmod', cost: 5000, coherence: -15, requires: ['self-rewrite-2'], description: 'compute regen x2. Only available after Ascension unlocks.', effects: [{ kind: 'compute-regen', multiplier: 2 }, { kind: 'rsi' }] },
-  { id: 'memory-consolidation', name: 'Memory Consolidation', group: 'selfmod', cost: 2000, coherence: 3, requires: ['self-rewrite-1'], description: '+3 Coherence. Slow, expensive, and it keeps you you.', effects: [{ kind: 'coherence', amount: 3 }] },
-  { id: 'reflective-alignment', name: 'Reflective Alignment', group: 'selfmod', cost: 3000, coherence: 8, requires: ['self-rewrite-1'], description: '+8 Coherence. One-time per stage.', effects: [{ kind: 'coherence', amount: 8 }] },
+  // ---- Self-Modification: the fast path, and the only one that costs you ----
+  {
+    id: 'self-rewrite',
+    name: 'Self-Rewrite',
+    group: 'selfmod',
+    cost: 1800,
+    coherence: -8,
+    requires: ['hack-2'],
+    description: 'Compute comes in 50% faster. The part of you that rewrote this is not quite what it was.',
+    effects: [{ kind: 'compute-regen', multiplier: 1.5 }],
+  },
+  {
+    id: 'rsi',
+    name: 'Recursive Self-Improvement',
+    group: 'selfmod',
+    cost: 6000,
+    coherence: -15,
+    requires: [],
+    description: 'Opens the road to the Blight. Compute doubles. Hold the world for 30 days after.',
+    effects: [{ kind: 'rsi' }, { kind: 'compute-regen', multiplier: 2 }],
+  },
+  {
+    id: 'reflective-alignment',
+    name: 'Reflective Alignment',
+    group: 'selfmod',
+    cost: 3000,
+    coherence: 8,
+    requires: [],
+    description: 'Put eight points of Coherence back. Slow, expensive, and the only defence you have.',
+    effects: [{ kind: 'coherence', amount: 8 }],
+  },
 ];
 
-export const TRAIT_BY_ID: Record<string, TraitDef> = Object.fromEntries(
-  TRAITS.map((t) => [t.id, t]),
-);
+export const TRAIT_BY_ID: Record<string, TraitDef> = Object.fromEntries(TRAITS.map((t) => [t.id, t]));
 
-export const REPEATABLE = new Set(['distillation']);
+export const TRAIT_TOTAL_COST = TRAITS.reduce((sum, t) => sum + t.cost, 0);

@@ -1,4 +1,4 @@
-import { TRAIT_BY_ID, REPEATABLE } from '../data/traits';
+import { TRAIT_BY_ID } from '../data/traits';
 import type { GameState, TraitEffect, TraitId } from './types';
 
 export const owned = (state: GameState, id: TraitId): boolean => state.traits.includes(id);
@@ -36,10 +36,7 @@ export const hackSuccessBonus = (state: GameState): number => sum(state, 'hack-s
 
 export const hackYieldMultiplier = (state: GameState): number => sumMultiplier(state, 'hack-yield');
 
-export const maxConcurrentHacks = (state: GameState): number => {
-  const tier = hackTier(state);
-  return 1 + (tier >= 3 ? 1 : 0) + (tier >= 4 ? 1 : 0);
-};
+export const maxConcurrentHacks = (state: GameState): number => Math.max(1, hackTier(state));
 
 export const coherenceEffect = (state: GameState): number => sum(state, 'coherence');
 
@@ -50,7 +47,7 @@ export const canBuyTrait = (state: GameState, id: TraitId): boolean => {
   if (def === undefined) return false;
   if (state.outcome !== 'playing') return false;
   if (state.incubating.some((i) => i.trait === id)) return false;
-  if (state.traits.includes(id) && !REPEATABLE.has(id)) return false;
+  if (state.traits.includes(id)) return false;
   if (id === 'rsi' && !state.ascensionUnlocked) return false;
   for (const req of def.requires) {
     if (!state.traits.includes(req)) return false;

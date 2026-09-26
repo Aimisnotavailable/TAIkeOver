@@ -60,11 +60,10 @@ const spreadAndAwareness = (state: GameState, c: Country, id: RegionId): Country
   const infection = clamp(c.infection + gain, 0, 100);
 
   let awareness = c.awareness + (infection > 40 ? 1.6 : 0.5);
-  if (owned(state, 'political-capture') && c.infection < 30) awareness -= 1.2;
   return { ...c, infection, awareness: clamp(awareness, 0, 100) };
 };
 
-const economyStep = (state: GameState, c: Country, id: RegionId): Country => {
+const economyStep = (state: GameState, c: Country): Country => {
   let economy = c.economy + ECONOMY_RECOVER;
   let population = c.population;
   let cyber = c.cyber;
@@ -73,18 +72,7 @@ const economyStep = (state: GameState, c: Country, id: RegionId): Country => {
     population *= 1 - FAMINE_RATE;
     economy -= 0.6;
   }
-  if (owned(state, 'depression') && economy < COLLAPSED_THRESHOLD) {
-    cyber = clamp(cyber - 0.05, 1, 10);
-  }
   if (c.infection > 0 && c.infection < 100) cyber = clamp(cyber + CYBER_GROWTH, 1, 10);
-
-  if (owned(state, 'supply-chain')) {
-    for (const nb of ADJACENCY[id]) {
-      const n = state.countries[nb];
-      if (n === undefined || n.infection < 10 || n.economy > 45) continue;
-      economy -= 0.2;
-    }
-  }
 
   return { ...c, economy: clamp(economy, 0, 100), population: Math.max(0, population), cyber };
 };
@@ -140,7 +128,7 @@ export function step(state: GameState): GameState {
     const c = countries[id];
     if (c === undefined) continue;
     let next = spreadAndAwareness(state, c, id);
-    next = economyStep(state, next, id);
+    next = economyStep(state, next);
     next = pathogenStep(state, next);
     if (owned(state, 'cult') && next.infection > 10) {
       next = { ...next, agents: next.agents + 0.4 * (next.infection / 100) };
