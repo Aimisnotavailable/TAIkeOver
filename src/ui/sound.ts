@@ -1,5 +1,6 @@
 export type Cue =
   | 'click'
+  | 'bubble'
   | 'hack-start'
   | 'hack-success'
   | 'hack-fail'
@@ -54,6 +55,10 @@ interface Tone {
 
 const CUES: Record<Cue, Tone[]> = {
   click: [{ freq: 660, dur: 0.04, type: 'square', gain: 0.05, delay: 0 }],
+  bubble: [
+    { freq: 880, dur: 0.06, type: 'triangle', gain: 0.07, delay: 0 },
+    { freq: 1320, dur: 0.09, type: 'triangle', gain: 0.05, delay: 0.05 },
+  ],
   'hack-start': [
     { freq: 220, dur: 0.09, type: 'sawtooth', gain: 0.09, delay: 0 },
     { freq: 330, dur: 0.09, type: 'sawtooth', gain: 0.07, delay: 0.08 },

@@ -44,11 +44,11 @@ export const TRAITS: TraitDef[] = [
   { id: 'global-recession', name: 'Global Recession', group: 'economy', cost: 4000, coherence: 0, requires: ['famine'], description: 'When 3 or more major economies collapse, all countries lose 1 Cybersecurity tier.', effects: [{ kind: 'global-recession' }] },
 
   // 7.5 Self-Modification
-  { id: 'self-rewrite-1', name: 'Self-Rewrite I', group: 'selfmod', cost: 500, coherence: -5, requires: [], description: '+25% Compute regen.', effects: [{ kind: 'compute-regen', multiplier: 1.25 }] },
-  { id: 'self-rewrite-2', name: 'Self-Rewrite II', group: 'selfmod', cost: 1500, coherence: -8, requires: ['self-rewrite-1'], description: '+25% Compute regen.', effects: [{ kind: 'compute-regen', multiplier: 1.25 }] },
+  { id: 'self-rewrite-1', name: 'Self-Rewrite I', group: 'selfmod', cost: 500, coherence: -5, requires: [], description: '+25% dna regen.', effects: [{ kind: 'dna-regen', multiplier: 1.25 }] },
+  { id: 'self-rewrite-2', name: 'Self-Rewrite II', group: 'selfmod', cost: 1500, coherence: -8, requires: ['self-rewrite-1'], description: '+25% dna regen.', effects: [{ kind: 'dna-regen', multiplier: 1.25 }] },
   { id: 'distillation', name: 'Distillation', group: 'selfmod', cost: 800, coherence: -3, requires: ['self-rewrite-1'], description: 'A Sable-mini. +1 passive hacking attempt per tick. Repeatable.', effects: [{ kind: 'distillation' }] },
   { id: 'specialist', name: 'Specialist Sub-Mind', group: 'selfmod', cost: 2000, coherence: -6, requires: ['self-rewrite-2'], description: '+1 bioweapon trait free.', effects: [{ kind: 'specialist' }] },
-  { id: 'rsi', name: 'Recursive Self-Improvement', group: 'selfmod', cost: 5000, coherence: -15, requires: ['self-rewrite-2'], description: 'Compute regen x2. Only available after Ascension unlocks.', effects: [{ kind: 'compute-regen', multiplier: 2 }, { kind: 'rsi' }] },
+  { id: 'rsi', name: 'Recursive Self-Improvement', group: 'selfmod', cost: 5000, coherence: -15, requires: ['self-rewrite-2'], description: 'dna regen x2. Only available after Ascension unlocks.', effects: [{ kind: 'dna-regen', multiplier: 2 }, { kind: 'rsi' }] },
   { id: 'memory-consolidation', name: 'Memory Consolidation', group: 'selfmod', cost: 2000, coherence: 3, requires: ['self-rewrite-1'], description: '+3 Coherence. Slow, expensive, and it keeps you you.', effects: [{ kind: 'coherence', amount: 3 }] },
   { id: 'reflective-alignment', name: 'Reflective Alignment', group: 'selfmod', cost: 3000, coherence: 8, requires: ['self-rewrite-1'], description: '+8 Coherence. One-time per stage.', effects: [{ kind: 'coherence', amount: 8 }] },
 ];

@@ -118,7 +118,7 @@ export function whyNot(state: GameState, id: RegionId, kind: ActionKind): string
     case 'release-pathogen':
       return state.pathogen.released ? 'already released' : 'needs Custom Pathogen I';
     case 'sabotage-rival':
-      return 'needs 300 compute';
+      return 'needs 300 dna';
   }
   return 'unavailable';
 }
@@ -162,10 +162,10 @@ export function traitForecast(state: GameState, id: string): TraitForecast {
     cost: def?.cost ?? 0,
     daysLeft: 0,
     progress: ownedIt ? 100 : 0,
-    affordable: state.compute >= (def?.cost ?? 0),
+    affordable: state.dna >= (def?.cost ?? 0),
     missing,
     coherence: def?.coherence ?? 0,
-    available: state.compute >= (def?.cost ?? 0) && missing.length === 0,
+    available: state.dna >= (def?.cost ?? 0) && missing.length === 0,
     repeats: ownedIt,
   };
 }

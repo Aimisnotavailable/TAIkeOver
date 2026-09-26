@@ -3,14 +3,15 @@ import { doAction } from '../src/game/core/actions';
 import { hackForecast } from '../src/game/core/forecast';
 import { createInitialState } from '../src/game/core/state';
 import { step } from '../src/game/core/step';
-import { BUBBLE_UNIT, COUNTRY_BUBBLES, WORLD_BUBBLES } from '../src/game/core/bubbles';
-import { ASCENSION_COMPUTE, COMPUTE_CEILING, HARDEN_MAX } from '../src/game/core/tuning';
+import { DNA_BUBBLE_MAX } from '../src/game/core/tuning';
+import { dnaPassive } from '../src/game/core/dna';
+import { ASCENSION_DNA, DNA_CEILING, HARDEN_MAX } from '../src/game/core/tuning';
 import { EVENT_DEFS } from '../src/game/data/events';
 import { REGION_IDS, type RegionId } from '../src/game/data/regions';
 import type { GameState } from '../src/game/core/types';
 
 const start = (): GameState => ({ ...createInitialState(42, 'default'), stage: 'world' });
-const withTrait = (s: GameState, ...ids: string[]): GameState => ({ ...s, compute: 99_999, traits: [...s.traits, ...ids] });
+const withTrait = (s: GameState, ...ids: string[]): GameState => ({ ...s, dna: 99_999, traits: [...s.traits, ...ids] });
 const weak = (s: GameState): RegionId => REGION_IDS.find((id) => s.countries[id].tier <= 3) as RegionId;
 const play = (s: GameState, days: number): GameState => {
   let n = s;
@@ -18,31 +19,52 @@ const play = (s: GameState, days: number): GameState => {
   return n;
 };
 
-describe('compute is a flow, not a hoard', () => {
+describe('dna is a flow, not a hoard', () => {
   it('clamps a huge pile down to the ceiling', () => {
-    const after = step({ ...start(), compute: 400_000 });
-    expect(after.compute).toBeLessThanOrEqual(COMPUTE_CEILING);
+    const after = step({ ...start(), dna: 400_000 });
+    expect(after.dna).toBeLessThanOrEqual(DNA_CEILING);
   });
 
   it('spends down the surplus rather than keeping it', () => {
-    const after = step({ ...start(), compute: 200_000 });
-    expect(after.compute).toBeLessThanOrEqual(COMPUTE_CEILING);
+    const after = step({ ...start(), dna: 200_000 });
+    expect(after.dna).toBeLessThanOrEqual(DNA_CEILING);
   });
 
   it('leaves a small pile alone', () => {
-    const s = { ...start(), compute: 100 };
-    expect(step(s).compute).toBeGreaterThanOrEqual(100);
+    const s = { ...start(), dna: 100 };
+    expect(step(s).dna).toBeGreaterThanOrEqual(100);
   });
 
   it('logs the clamp so the player can see it happen', () => {
-    const s = { ...start(), compute: 300_000 };
+    const s = { ...start(), dna: 300_000 };
     expect(step(s).log.some((l) => l.text.includes('ceiling'))).toBe(true);
   });
 
-  it('keeps the ascension gate inside what a full clear can earn', () => {
-    const perCountry = COUNTRY_BUBBLES.reduce((a, b) => a + b.bubbles, 0);
-    const world = WORLD_BUBBLES.reduce((a, b) => a + b.bubbles, 0);
-    expect((perCountry * 30 + world) * BUBBLE_UNIT + COMPUTE_CEILING).toBeGreaterThan(ASCENSION_COMPUTE);
+  it('keeps the ascension gate inside what a well-played run can earn', () => {
+    // A generous upper bound on a long run: every bubble on screen collected the
+    // instant it appears, for a full year. The gate has to sit under that.
+    const perBubble = 16 * 2;
+    const yearly = DNA_BUBBLE_MAX * perBubble * 365;
+    expect(yearly).toBeGreaterThan(ASCENSION_DNA);
+  });
+
+  it('pays more passive DNA late than early, so the ceiling is not the only cap', () => {
+    const early = { ...start(), globalInfection: 1 };
+    const late = { ...start(), globalInfection: 80, cumulativeDeaths: 4000 };
+    expect(dnaPassive(late)).toBeGreaterThan(dnaPassive(early));
+  });
+
+  it('pays no passive DNA before there is an outbreak to ride', () => {
+    const base = start();
+    const clean: GameState = {
+      ...base,
+      globalInfection: 0,
+      cumulativeDeaths: 0,
+      countries: Object.fromEntries(
+        Object.entries(base.countries).map(([k, v]) => [k, { ...v, infection: 0 }]),
+      ) as GameState['countries'],
+    };
+    expect(dnaPassive(clean)).toBe(0);
   });
 });
 

@@ -1,6 +1,7 @@
 import { COUNTRIES, type CountryShape } from '../../game/data/countries';
 import { REGIONS, type RegionId } from '../../game/data/regions';
-import type { Country, HackProgress } from '../../game/core/types';
+import type { Country, DnaBubble, DnaBubbleKind, HackProgress } from '../../game/core/types';
+import { DNA_BUBBLE_RADIUS } from '../../game/core/tuning';
 
 const RAD = Math.PI / 180;
 const MILLER_MAX = 1.25 * Math.log(Math.tan(Math.PI / 4 + 0.4 * (84 * RAD)));
@@ -132,6 +133,94 @@ export interface MapFrame {
   plague: boolean;
   airGapped: RegionId | null;
   rivalHomes: readonly RegionId[];
+  dnaBubbles: readonly DnaBubble[];
+  tick: number;
+}
+
+const BUBBLE_FILL: Record<DnaBubbleKind, string> = {
+  red: '#e8402a',
+  orange: '#f0912a',
+  blue: '#3aa0d8',
+};
+
+const BUBBLE_RING: Record<DnaBubbleKind, string> = {
+  red: 'rgba(255,150,130,0.9)',
+  orange: 'rgba(255,205,150,0.9)',
+  blue: 'rgba(150,215,255,0.9)',
+};
+
+/**
+ * Where a bubble sits: the region's own anchor, nudged by its deterministic phase
+ * so a cluster of bubbles over the same country does not stack into one dot.
+ */
+export function bubblePosition(b: DnaBubble, p: Projection): { x: number; y: number } {
+  const a = labelFor(b.region, p);
+  const r = 18 + (b.id % 3) * 15;
+  return { x: a.x + Math.cos(b.phase) * r, y: a.y + Math.sin(b.phase) * r * 0.7 };
+}
+
+/**
+ * Bubbles win over countries. A tap on a bubble collects it and nothing else, so
+ * the map never yanks your selection out from under you mid-collect.
+ */
+export function hitTestDna(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  bubbles: readonly DnaBubble[],
+): number | null {
+  const p = makeProjection(width, height);
+  // Topmost first, so an overlapping later bubble takes the click.
+  for (let i = bubbles.length - 1; i >= 0; i--) {
+    const b = bubbles[i];
+    if (b === undefined) continue;
+    const pos = bubblePosition(b, p);
+    if (Math.hypot(pos.x - x, pos.y - y) <= DNA_BUBBLE_RADIUS + 4) return b.id;
+  }
+  return null;
+}
+
+function drawDnaBubbles(
+  ctx: CanvasRenderingContext2D,
+  p: Projection,
+  frame: MapFrame,
+  now: number,
+): void {
+  for (const b of frame.dnaBubbles) {
+    const pos = bubblePosition(b, p);
+    const age = frame.tick - b.bornTick;
+    const life = Math.max(1, b.expiresTick - b.bornTick);
+    // Fade out over the last third of its life so expiry never surprises you.
+    const remain = Math.min(1, Math.max(0, (b.expiresTick - frame.tick) / (life / 3)));
+    const bob = Math.sin(now / 320 + b.phase) * 2.5;
+    const r = DNA_BUBBLE_RADIUS * (0.72 + 0.28 * remain) * (1 + Math.min(age, 6) * 0.02);
+
+    ctx.globalAlpha = 0.35 * remain;
+    ctx.fillStyle = BUBBLE_FILL[b.kind];
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y + bob, r + 6, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.globalAlpha = 0.95 * remain;
+    ctx.strokeStyle = BUBBLE_RING[b.kind];
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y + bob, r, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = BUBBLE_FILL[b.kind];
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y + bob, r * 0.34, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.globalAlpha = 0.9 * remain;
+    ctx.fillStyle = '#dfe9ee';
+    ctx.font = '600 10px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`+${b.value}`, pos.x, pos.y + bob - r - 5);
+  }
+  ctx.globalAlpha = 1;
 }
 
 export function drawWorldMap(
@@ -207,6 +296,9 @@ export function drawWorldMap(
     ctx.fillStyle = `rgba(255,60,40,${frame.flash * 0.4})`;
     ctx.fillRect(0, 0, width, height);
   }
+
+  // Bubbles sit above the tint but below the labels, so names stay readable.
+  drawDnaBubbles(ctx, p, frame, now);
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';

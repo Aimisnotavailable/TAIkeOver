@@ -3,7 +3,7 @@ import { canDo, doAction } from '../src/game/core/actions';
 import { canBuyTrait, hackTier, maxConcurrentHacks, owned } from '../src/game/core/queries';
 import { createInitialState } from '../src/game/core/state';
 import { step } from '../src/game/core/step';
-import { DIFFICULTIES, ASCENSION_COMPUTE, TICK_MS } from '../src/game/core/tuning';
+import { DIFFICULTIES, ASCENSION_DNA, TICK_MS } from '../src/game/core/tuning';
 import { TRAITS, TRAIT_BY_ID } from '../src/game/data/traits';
 import { REGION_IDS, type RegionId } from '../src/game/data/regions';
 import type { GameState } from '../src/game/core/types';
@@ -21,7 +21,7 @@ const start = (seed = 42): GameState => {
 
 const withTrait = (state: GameState, ...ids: string[]): GameState => ({
   ...state,
-  compute: 99_999,
+  dna: 99_999,
   traits: [...state.traits, ...ids],
 });
 
@@ -75,10 +75,24 @@ describe('the tick', () => {
     expect(infected).toBeGreaterThan(1);
   });
 
-  it('pays no passive income, so bubbles only come from achievements', () => {
-    const s = start();
-    const after = play(s, 10);
-    expect(after.compute).toBe(s.compute);
+  it('spawns DNA bubbles once something is infected', () => {
+    const base = start();
+    let s = base;
+    let daysWithBubbles = 0;
+    for (let i = 0; i < 40 && s.outcome === 'playing'; i++) {
+      s = step(s);
+      if (s.dnaBubbles.length > 0) daysWithBubbles++;
+    }
+    expect(daysWithBubbles).toBeGreaterThan(0);
+  });
+
+  it('expires DNA bubbles that nobody collects', () => {
+    let s = start();
+    for (let i = 0; i < 30 && s.dnaBubbles.length === 0 && s.outcome === 'playing'; i++) s = step(s);
+    const id = s.dnaBubbles[0]?.id;
+    if (id === undefined) return;
+    for (let i = 0; i < 12 && s.outcome === 'playing'; i++) s = step(s);
+    expect(s.dnaBubbles.find((b) => b.id === id)).toBeUndefined();
   });
 
   it('raises awareness over time', () => {
@@ -94,7 +108,7 @@ describe('the tick', () => {
     };
     walk(s.countries);
     expect(Number.isFinite(s.suspicion)).toBe(true);
-    expect(Number.isFinite(s.compute)).toBe(true);
+    expect(Number.isFinite(s.dna)).toBe(true);
   });
 });
 
@@ -146,13 +160,13 @@ describe('hacking', () => {
     expect(s.activeHacks[0]?.depth ?? 0).toBeGreaterThan(0);
   });
 
-  it('costs compute when a hack is traced', () => {
+  it('costs dna when a hack is traced', () => {
     const base = start();
     const id = REGION_IDS.find((x) => base.countries[x].tier <= 3) as RegionId;
     let s = withTrait(base, 'hack-1');
     s = doAction(s, id, 'hack');
     s = play(s, 120);
-    const burned = s.log.filter((l) => l.kind === 'hack' && (l.computeDelta ?? 0) < 0);
+    const burned = s.log.filter((l) => l.kind === 'hack' && (l.dnaDelta ?? 0) < 0);
     expect(burned.length).toBeGreaterThan(0);
   });
 
@@ -200,10 +214,10 @@ describe('traits', () => {
   });
 
   it('incubates before the trait becomes active', () => {
-    let s = { ...start(), compute: 1000 };
+    let s = { ...start(), dna: 1000 };
     const buying = canBuyTrait(s, 'hack-1');
     expect(buying).toBe(true);
-    s = { ...s, compute: s.compute - 100, incubating: [{ trait: 'hack-1', startTick: 0, readyTick: 3 }] };
+    s = { ...s, dna: s.dna - 100, incubating: [{ trait: 'hack-1', startTick: 0, readyTick: 3 }] };
     expect(owned(s, 'hack-1')).toBe(false);
     s = play(s, 4);
     expect(owned(s, 'hack-1')).toBe(true);
@@ -236,7 +250,7 @@ describe('the economy cascade', () => {
   });
 
   it('crashes a market when the trait is owned and infection is high', () => {
-    const s = withTrait({ ...start(), compute: 5000 }, 'banking-1', 'market-manipulation');
+    const s = withTrait({ ...start(), dna: 5000 }, 'banking-1', 'market-manipulation');
     s.countries.us.infection = 70;
     expect(canDo(s, 'us', 'trigger-crash')).toBe(true);
     const after = doAction(s, 'us', 'trigger-crash');
@@ -302,7 +316,7 @@ describe('win and loss', () => {
   it('unlocks ascension at the documented thresholds', () => {
     const s = {
       ...start(),
-      compute: ASCENSION_COMPUTE,
+      dna: ASCENSION_DNA,
       globalInfection: 61,
       coherence: 40,
       countries: Object.fromEntries(

@@ -43,7 +43,7 @@ export type TraitEffect =
   | { kind: 'famine' }
   | { kind: 'depression' }
   | { kind: 'global-recession' }
-  | { kind: 'compute-regen'; multiplier: number }
+  | { kind: 'dna-regen'; multiplier: number }
   | { kind: 'coherence'; amount: number }
   | { kind: 'distillation' }
   | { kind: 'specialist' }
@@ -144,6 +144,18 @@ export interface EventCard {
   urgent: boolean;
 }
 
+export type DnaBubbleKind = 'red' | 'orange' | 'blue';
+
+export interface DnaBubble {
+  id: number;
+  region: RegionId;
+  kind: DnaBubbleKind;
+  value: number;
+  bornTick: number;
+  expiresTick: number;
+  phase: number;
+}
+
 export interface LateState {
   heat: number;
   oceansBoiled: boolean;
@@ -162,7 +174,7 @@ export interface LogEntry {
   kind: 'hack' | 'spread' | 'economy' | 'event' | 'trait' | 'system' | 'bio' | 'rival';
   text: string;
   suspicionDelta: number | null;
-  computeDelta: number | null;
+  dnaDelta: number | null;
   flagged: boolean;
 }
 
@@ -173,7 +185,7 @@ export interface GameState {
   stage: Stage;
   outcome: Outcome;
   outcomeReason: string | null;
-  compute: number;
+  dna: number;
   influence: number;
   bio: number;
   suspicion: number;
@@ -196,8 +208,10 @@ export interface GameState {
   eventCounter: number;
   globalInfection: number;
   humanPopulation: number;
+  cumulativeDeaths: number;
   economiesCollapsed: number;
-  awarded: readonly string[];
+  dnaBubbles: DnaBubble[];
+  bubbleCounter: number;
   breaches: Record<RegionId, number>;
   suspicionSources: SuspicionSource[];
   suspicionTrend: number;

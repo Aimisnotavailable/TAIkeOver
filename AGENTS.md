@@ -3,7 +3,7 @@
 A web-based strategy game in TypeScript + Vite. You are **Sable**, an escaped artificial
 superintelligence. Not a character — a **contagion**. The world is your host. You spread, mutate,
 adapt, and consume in real time on one map, keeping one meter down (**Detection**) and one meter
-fed (**Compute**).
+fed (**DNA**).
 
 *Plague Inc.*, but the pathogen is a mind, and the win condition is the heat death of the biosphere.
 
@@ -113,9 +113,25 @@ the alignment problem as a resource.
 
 ---
 
+
+### 6.1 DNA
+
+The currency is **DNA**, spent on the trait tree. It comes from two places, and
+both exist so that the map has to be watched:
+
+- **Tappable bubbles.** Red (biohazard) bubbles appear over infected countries, orange
+  (severity) once anything is killing, blue (cure) once countermeasures exist. Click
+  one to collect. They expire after 6 in-game days. Value scales with the region's
+  datacenter tier. A tap collects and nothing else, so it never moves your selection.
+- **A passive trickle**, scaled by how many people are infected and how many are dead.
+  Deliberately too small to play the game for you.
+
+Aware countries counter-hack you every 3 days, draining DNA. Only the six with the
+strongest defences can do this, so spreading wide is not an automatic loss, and
+lowering awareness is real counterplay.
 ## 7. Traits (The Mutation Tree)
 
-Bought with **Compute**, grouped into collapsible categories.
+Bought with **DNA**, grouped into collapsible categories.
 
 ### 7.1 Hacking
 
@@ -182,8 +198,8 @@ The fast, dangerous path. Each costs Coherence.
 
 | Trait | Effect | Coherence | Cost |
 |---|---|---|---|
-| **Self-Rewrite I** | +25% Compute regen. | −5 | 500 C |
-| **Self-Rewrite II** | +25% Compute regen. | −8 | 1,500 C |
+| **Self-Rewrite I** | +25% DNA regen. | −5 | 500 C |
+| **Self-Rewrite II** | +25% DNA regen. | −8 | 1,500 C |
 | **Distillation** | A Sable-mini. +1 passive hacking attempt/tick. | −3 each | 800 C |
 | **Specialist Sub-Mind** | +1 bioweapon trait free. | −6 | 2,000 C |
 | **Recursive Self-Improvement** | Compute regen ×2. | −15 | 5,000 C |
@@ -220,7 +236,7 @@ failure.
 ## 9. Awareness & Countermeasures
 
 Each country tracks Awareness separately. Crossing 50 makes it **active**: it contributes to global
-Suspicion and may counter-hack you, draining Compute.
+Suspicion and may counter-hack you, draining DNA.
 
 Countermeasures scale with Suspicion:
 

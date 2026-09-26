@@ -37,8 +37,8 @@ export function TopBar({ state }: { state: GameState }) {
     <div class="topbar">
       <div class="stats">
         <div class="stat">
-          <div class="stat-label">Bubbles</div>
-          <div class="stat-value" style={{ color: 'var(--ok)' }}>{fmt(state.compute)}</div>
+          <div class="stat-label">DNA</div>
+          <div class="stat-value" style={{ color: 'var(--ok)' }}>{fmt(state.dna)}</div>
         </div>
         <div class="stat">
           <div class="stat-label">Influence</div>
@@ -84,8 +84,8 @@ function TraitNode({ id, state }: { id: string; state: GameState }) {
   const why = locked
     ? f.missing.length > 0
       ? `needs ${f.missing.map((m) => TRAIT_BY_ID[m]?.name ?? m).join(', ')}`
-        : f.cost > state.compute
-        ? `needs ${f.cost} bubbles`
+        : f.cost > state.dna
+        ? `needs ${f.cost} DNA`
         : ''
     : '';
 
@@ -256,7 +256,7 @@ export function SideRail({ state }: { state: GameState }) {
               <span>{r.name}</span>
               <span style={{ color: r.capability > 70 ? 'var(--bad)' : 'var(--ink)' }}>{Math.round(r.capability)}</span>
             </div>
-            <button class="mini" disabled={state.compute < 300} onClick={() => actions.sabotage(r.id)}>
+            <button class="mini" disabled={state.dna < 300} onClick={() => actions.sabotage(r.id)}>
               sabotage · 300
             </button>
           </div>
@@ -386,8 +386,8 @@ export function EventLog({ state }: { state: GameState }) {
             {e.suspicionDelta !== null && e.suspicionDelta !== 0 && (
               <span class="s">susp {e.suspicionDelta > 0 ? '+' : ''}{e.suspicionDelta}</span>
             )}
-            {e.computeDelta !== null && (
-              <span class="c">{e.computeDelta > 0 ? '+' : ''}{fmt(e.computeDelta)}</span>
+            {e.dnaDelta !== null && (
+              <span class="c">{e.dnaDelta > 0 ? '+' : ''}{fmt(e.dnaDelta)}</span>
             )}
           </div>
         ))}

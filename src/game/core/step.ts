@@ -1,6 +1,6 @@
-import { ADJACENCY, REGION_BY_ID, REGION_IDS, type RegionId } from '../data/regions';
-import { BUBBLE_UNIT, COUNTRY_BUBBLES, WORLD_BUBBLES } from './bubbles';
-import { COMPUTE_CEILING } from './tuning';
+import { ADJACENCY, REGION_IDS, type RegionId } from '../data/regions';
+import { dnaPassive, spawnDnaBubble } from './dna';
+import { DNA_CEILING } from './tuning';
 import { TRAIT_BY_ID } from '../data/traits';
 import { resolveHacks } from './actions';
 import { effectsOf, finishIncubation, owned } from './queries';
@@ -12,14 +12,15 @@ import {
   HARDEN_MAX,
   HARDEN_RISE,
   AIR_GAP_TIER,
-  ASCENSION_COMPUTE,
+  ASCENSION_DNA,
   ASCENSION_COHERENCE,
   ASCENSION_INFECTION,
   BLIGHT_WALL,
   COLLAPSED_THRESHOLD,
-  COMPUTE_FACTOR,
+  DNA_FACTOR,
   COHERENCE_DRIFT_BELOW,
   COUNTER_HACK_DRAIN,
+  COUNTER_HACK_MAX_COUNTRIES,
   COUNTER_HACK_INTERVAL,
   COUNTERMEASURE_TIERS,
   CYBER_GROWTH,
@@ -30,6 +31,8 @@ import {
   RSI_SURVIVE_DAYS,
   STARS_PER_DAY,
   STRIKE_DRAIN,
+  DNA_BUBBLE_MAX,
+  DNA_BUBBLE_SPAWN_CHANCE,
   STRIKE_TIER,
   SUSPICION_DECAY,
   getDifficulty,
@@ -45,7 +48,7 @@ export const computeIncome = (state: GameState): number => {
     if (c === undefined) continue;
     total += (c.infection / 100) * (c.tier * 20) * (Math.log10(1 + c.population) / 3);
   }
-  return Math.round(total * COMPUTE_FACTOR);
+  return Math.round(total * DNA_FACTOR);
 };
 
 const spreadAndAwareness = (state: GameState, c: Country, id: RegionId): Country => {
@@ -93,6 +96,17 @@ const pathogenStep = (state: GameState, c: Country): Country => {
   const kills = p.cancer && state.stage !== 'late' ? 0.1 : p.killsPerDay;
   return { ...c, population: c.population * (1 - kills) };
 };
+
+/** Everyone the pathogen has taken since the run began, for the passive DNA scale. */
+export function dailyDeaths(state: GameState, before: Record<RegionId, Country>): number {
+  let dead = 0;
+  for (const id of REGION_IDS) {
+    const was = before[id]?.population ?? 0;
+    const now = state.countries[id]?.population ?? 0;
+    if (was > now) dead += was - now;
+  }
+  return dead;
+}
 
 const seedNewCountries = (state: GameState, countries: Record<RegionId, Country>): void => {
   REGION_IDS.forEach((id, index) => {
@@ -163,74 +177,25 @@ export function step(state: GameState): GameState {
   }
 
 
-  // Bubbles: one-time achievements, each earned in a specific place. There is no
-  // passive income at all, so the pool of upgrades is bounded by what you did.
-  // Breaches still pay, and a deep successful run pays a lot, so a ceiling keeps
-  // sitting on one datacenter from buying the whole tree.
-  let compute = state.compute;
-  const awarded = new Set(state.awarded);
-  const totalAgents = Object.values(countries).reduce((s, c) => s + (c?.agents ?? 0), 0);
-  const collapsedNow = REGION_IDS.filter((id) => (countries[id]?.economy ?? 100) <= 30).length;
-  const deaths = (8.0e3 - Object.values(countries).reduce((s, c) => s + (c?.population ?? 0), 0));
-
-  const worldView = {
-    infection: state.globalInfection,
-    globalInfection: state.globalInfection,
-    agents: totalAgents,
-    economy: 100,
-    awareness: 0,
-    breaches: 0,
-    population: 0,
-    biotech: 0,
-    deaths,
-    collapsed: collapsedNow,
-  };
-
-  for (const award of WORLD_BUBBLES) {
-    if (awarded.has(award.id)) continue;
-    if (!award.test(worldView)) continue;
-    awarded.add(award.id);
-    compute += award.bubbles * BUBBLE_UNIT;
-    lines.push({
-      day: state.tick,
-      kind: 'system',
-      text: `${award.label('the world')} +${award.bubbles}`,
-      suspicionDelta: null,
-      computeDelta: award.bubbles,
-      flagged: false,
-    });
+  // DNA has two sources, both from how Plague Inc. paces a run: a slow passive
+  // trickle that rides the size of the outbreak, and bubbles on the map you have
+  // to go and tap. The trickle is kept small on purpose so that watching the map
+  // stays the fast way to get rich.
+  let dna = state.dna;
+  const passive = dnaPassive({ ...state, countries });
+  dna += passive;
+  if (passive > 0 && state.tick % 7 === 0) {
+    lines.push({ day: state.tick, kind: 'system', text: 'passive +' + passive, suspicionDelta: null, dnaDelta: passive, flagged: false });
   }
 
-  for (const id of REGION_IDS) {
-    const c = countries[id];
-    if (c === undefined) continue;
-    const name = REGION_BY_ID[id].name;
-    const view = {
-      infection: c.infection,
-      agents: c.agents,
-      economy: c.economy,
-      awareness: c.awareness,
-      breaches: state.breaches[id] ?? 0,
-      population: c.population,
-      biotech: c.biolabs,
-      deaths: 0,
-      collapsed: 0,
-      globalInfection: 0,
-    };
-    for (const award of COUNTRY_BUBBLES) {
-      const key = `${id}:${award.id}`;
-      if (awarded.has(key)) continue;
-      if (!award.test(view)) continue;
-      awarded.add(key);
-      compute += award.bubbles * BUBBLE_UNIT;
-      lines.push({
-        day: state.tick,
-        kind: 'system',
-        text: `${award.label(name)} +${award.bubbles}`,
-        suspicionDelta: null,
-        computeDelta: award.bubbles * BUBBLE_UNIT,
-        flagged: false,
-      });
+  const expired = state.dnaBubbles.filter((b) => b.expiresTick > state.tick);
+  let dnaBubbles = expired;
+  let bubbleCounter = state.bubbleCounter;
+  if (dnaBubbles.length < DNA_BUBBLE_MAX && rand(state.seed, state.tick, 0x0d11a) < DNA_BUBBLE_SPAWN_CHANCE) {
+    const bubble = spawnDnaBubble({ ...state, countries, dnaBubbles, bubbleCounter });
+    if (bubble !== null) {
+      dnaBubbles = [...dnaBubbles, bubble];
+      bubbleCounter = bubble.id + 1;
     }
   }
   let influence = state.influence;
@@ -278,13 +243,17 @@ export function step(state: GameState): GameState {
   suspicion = clamp(suspicion, 0, 100);
   const suspicionTrend = suspicion - state.suspicion;
 
-  // Counter-hacking by aware countries.
+  // Counter-hacking by aware countries. Capped to the handful with the best
+  // defences: if all thirty regions could drain you at once there is no counterplay
+  // left and a spreading outbreak becomes an automatic loss.
   if (state.tick % COUNTER_HACK_INTERVAL === 0) {
-    const active = REGION_IDS.filter((id) => (countries[id]?.awareness ?? 0) > 75 && (countries[id]?.infection ?? 0) > 25);
+    const active = REGION_IDS.filter((id) => (countries[id]?.awareness ?? 0) > 75 && (countries[id]?.infection ?? 0) > 25)
+      .sort((a, b) => (countries[b]?.cyber ?? 0) - (countries[a]?.cyber ?? 0))
+      .slice(0, COUNTER_HACK_MAX_COUNTRIES);
     if (active.length > 0) {
       const drain = COUNTER_HACK_DRAIN * active.length;
-      compute = Math.max(0, compute - drain);
-      lines.push({ day: state.tick, kind: 'system', text: `${active.length} aware countries counter-hacked you`, suspicionDelta: null, computeDelta: -drain, flagged: true });
+      dna = Math.max(0, dna - drain);
+      lines.push({ day: state.tick, kind: 'system', text: `${active.length} aware countries counter-hacked you`, suspicionDelta: null, dnaDelta: -drain, flagged: true });
     }
   }
 
@@ -319,10 +288,10 @@ export function step(state: GameState): GameState {
   if (tier >= AIR_GAP_TIER && countermeasures.airGappedLab === null) {
     const id = REGION_IDS[Math.floor(rand(state.seed, state.tick, 555) * REGION_IDS.length)] ?? 'us';
     countermeasures.airGappedLab = id;
-    lines.push({ day: state.tick, kind: 'event', text: `a national AI lab in ${id} has gone air-gapped`, suspicionDelta: null, computeDelta: null, flagged: true });
+    lines.push({ day: state.tick, kind: 'event', text: `a national AI lab in ${id} has gone air-gapped`, suspicionDelta: null, dnaDelta: null, flagged: true });
   }
   if (tier >= STRIKE_TIER) {
-    compute = Math.max(0, compute - STRIKE_DRAIN);
+    dna = Math.max(0, dna - STRIKE_DRAIN);
     countermeasures.strikeDays = state.countermeasures.strikeDays + 1;
   }
 
@@ -336,18 +305,19 @@ export function step(state: GameState): GameState {
   // Trait incubation.
   const { state: incubated, ready } = finishIncubation({ ...state, countries });
   for (const id of ready) {
-    lines.push({ day: state.tick, kind: 'trait', text: `${TRAIT_BY_ID[id]?.name ?? id} is available`, suspicionDelta: null, computeDelta: null, flagged: false });
+    lines.push({ day: state.tick, kind: 'trait', text: `${TRAIT_BY_ID[id]?.name ?? id} is available`, suspicionDelta: null, dnaDelta: null, flagged: false });
   }
 
   const globalInfection =
     REGION_IDS.reduce((sum, id) => sum + (countries[id]?.infection ?? 0), 0) / REGION_IDS.length;
   const humanPopulation = REGION_IDS.reduce((sum, id) => sum + (countries[id]?.population ?? 0), 0);
+const newDeaths = dailyDeaths({ ...state, countries }, state.countries);
 
   let next: GameState = {
     ...incubated,
     tick: state.tick + 1,
     countries,
-    compute,
+    dna,
     influence,
     bio,
     suspicion,
@@ -357,17 +327,19 @@ export function step(state: GameState): GameState {
     globalInfection,
     humanPopulation,
     economiesCollapsed: collapsed,
-    awarded: [...awarded],
+    dnaBubbles,
+    bubbleCounter,
+    cumulativeDeaths: state.cumulativeDeaths + newDeaths,
     suspicionSources: sources.sort((a, b) => Math.abs(b.value) - Math.abs(a.value)).slice(0, 5),
     suspicionTrend,
     log: [...state.log, ...lines].slice(-300),
   };
 
   next = resolveHacks(next);
-  if (next.compute > COMPUTE_CEILING) {
-    const over = next.compute - COMPUTE_CEILING;
-    next = { ...next, compute: COMPUTE_CEILING };
-    next.log = [...next.log, { day: next.tick, kind: 'system' as const, text: 'bubble surplus spent down to the ceiling', suspicionDelta: null, computeDelta: -Math.round(over), flagged: true }].slice(-300);
+  if (next.dna > DNA_CEILING) {
+    const over = next.dna - DNA_CEILING;
+    next = { ...next, dna: DNA_CEILING };
+    next.log = [...next.log, { day: next.tick, kind: 'system' as const, text: 'bubble surplus spent down to the ceiling', suspicionDelta: null, dnaDelta: -Math.round(over), flagged: true }].slice(-300);
   }
   const breachCounts = { ...next.breaches };
   for (const h of next.activeHacks) breachCounts[h.country] = (breachCounts[h.country] ?? 0) + h.wins;
@@ -376,7 +348,7 @@ export function step(state: GameState): GameState {
   // Ascension gate.
   if (
     !next.ascensionUnlocked &&
-    next.compute >= ASCENSION_COMPUTE &&
+    next.dna >= ASCENSION_DNA &&
     next.globalInfection >= ASCENSION_INFECTION &&
     next.coherence >= ASCENSION_COHERENCE &&
     next.suspicion < 100
