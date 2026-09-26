@@ -1,6 +1,17 @@
 import { ADJACENCY, REGION_IDS, type RegionId } from '../data/regions';
 import { computePassive, quietFactor, spawnComputeBubble } from './compute';
-import { COMPUTE_CEILING, EXTINCTION_POPULATION, INFLUENCE_MAX } from './tuning';
+import {
+  COMPUTE_CEILING,
+  EXTINCTION_POPULATION,
+  INFLUENCE_MAX,
+  OUTBREAK_KILL_RATE,
+  OUTBREAK_KILL_THRESHOLD,
+  WAR_BASE_CHANCE_TO_END,
+  WAR_CONTROL_PENALTY,
+  WAR_ESCALATION,
+  WAR_KILL_RATE,
+  WAR_MAX_SEVERITY,
+} from './tuning';
 import { TRAIT_BY_ID } from '../data/traits';
 import { resolveHacks } from './actions';
 import { effectsOf, finishIncubation, owned } from './queries';
@@ -85,6 +96,26 @@ const pathogenStep = (state: GameState, c: Country): Country => {
   return { ...c, population: c.population * (1 - kills) };
 };
 
+/**
+ * Insurgency, day by day. A war escalates while you hold the country, kills people
+ * without you doing anything, and only calms down if you let go: your hold on the
+ * country is subtracted from its chance to end, so a country you fully control stays
+ * at war permanently. That is the trade. A stable war needs a stable grip, and a grip
+ * that never slips is one you can never afford.
+ */
+const warStep = (state: GameState, c: Country, id: RegionId): { country: Country; ended: boolean } => {
+  if (!c.atWar) return { country: c, ended: false };
+  const severity = Math.min(WAR_MAX_SEVERITY, c.warSeverity + WAR_ESCALATION * 0.1);
+  const kills = Math.min(0.02, WAR_KILL_RATE * severity);
+  const population = Math.max(0, c.population * (1 - kills));
+  const hold = (c.infection / 100) * WAR_CONTROL_PENALTY * WAR_MAX_SEVERITY;
+  const chanceToEnd = Math.max(0, WAR_BASE_CHANCE_TO_END - hold);
+  if (chanceToEnd > 0 && chance(state.seed, state.tick, 0x7a12 + id.length, chanceToEnd)) {
+    return { country: { ...c, atWar: false, warSeverity: 0, population }, ended: true };
+  }
+  return { country: { ...c, warSeverity: severity, population }, ended: false };
+};
+
 /** Everyone the pathogen has taken since the run began, for the passive compute scale. */
 export function dailyDeaths(state: GameState, before: Record<RegionId, Country>): number {
   let dead = 0;
@@ -130,6 +161,17 @@ export function step(state: GameState): GameState {
     let next = spreadAndAwareness(state, c, id);
     next = economyStep(state, next);
     next = pathogenStep(state, next);
+    const war = warStep(state, next, id);
+    next = war.country;
+    if (war.ended) {
+      lines.push({ day: state.tick, kind: 'event', text: `the war in ${id} has ended`, suspicionDelta: -1, computeDelta: null, flagged: false });
+    }
+    // An infection this hot with nothing engineered is still killing people. Nobody
+    // built this. It is what the thing you built does when nobody is steering it.
+    if (!state.pathogen.released && next.infection >= OUTBREAK_KILL_THRESHOLD) {
+      const excess = (next.infection - OUTBREAK_KILL_THRESHOLD) / (100 - OUTBREAK_KILL_THRESHOLD);
+      next = { ...next, population: Math.max(0, next.population * (1 - OUTBREAK_KILL_RATE * (1 + excess))) };
+    }
     if (owned(state, 'cult') && next.infection > 10) {
       next = { ...next, agents: next.agents + 0.4 * (next.infection / 100) };
     }

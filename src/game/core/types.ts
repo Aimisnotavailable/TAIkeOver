@@ -98,6 +98,8 @@ export interface Country {
   factories: number;
   converted: number;
   quiet: boolean;
+  atWar: boolean;
+  warSeverity: number;
   hardened: number;
 }
 

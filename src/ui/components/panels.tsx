@@ -233,6 +233,9 @@ function CountryFacts({ c, state }: { c: Country; state: GameState }) {
       <span>people <b>{c.population.toFixed(0)}M</b></span>
       {c.agents > 0 && <span>agents <b style={{ color: 'var(--cool)' }}>{c.agents.toFixed(1)}</b></span>}
       {c.awareness > 50 && <span class="tag active">active — contributes to suspicion</span>}
+      {c.atWar && <span class="tag war">at war · {c.warSeverity.toFixed(1)} — killing, and it will not stop while you hold it</span>}
+      {c.quiet && <span class="tag quiet">gone quiet — not spreading here</span>}
+      {!state.pathogen.released && c.infection >= 75 && <span class="tag bio">outbreak — this is killing people on its own</span>}
       {state.pathogen.released && c.population < 1000 && <span class="tag bio">pathogen active here</span>}
     </div>
   );
@@ -279,17 +282,20 @@ export function ContextBar({ state }: { state: GameState }) {
           </div>
         )}
         {ACTIONS.filter((a) => !a.needsRival).map((a) => {
-          const reason = whyNot(state, id, a.kind as ActionKind);
+          const kind = a.kind as ActionKind;
+          const reason = whyNot(state, id, kind);
           const ok = reason === null;
+          // Go Quiet reads as a permanent state otherwise. Say which way it goes.
+          const label = kind === 'go-quiet' ? (c.quiet ? 'Go Loud' : 'Go Quiet') : a.label;
           return (
             <button
               key={a.kind}
-              class="act"
+              class={`act${c.quiet && kind === 'go-quiet' ? ' on' : ''}`}
               disabled={!ok}
-              title={ok ? a.hint : reason}
-              onClick={() => actions.do(id, a.kind as ActionKind)}
+              title={ok ? (kind === 'go-quiet' && c.quiet ? 'resume spreading here' : a.hint) : reason}
+              onClick={() => actions.do(id, kind)}
             >
-              {a.label}
+              {label}
             </button>
           );
         })}

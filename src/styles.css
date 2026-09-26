@@ -334,3 +334,6 @@ button.ignore:hover { border-color: var(--ink-dim); color: var(--ink); backgroun
   opacity: 0.55;
 }
 .evolve-btn.blocked:hover { background: rgba(4, 10, 13, 0.9); }
+.tag.war { color: var(--bad); border-color: var(--bad); }
+.tag.quiet { color: var(--ink-dim); }
+.act.on { border-color: var(--cool); color: var(--cool); }

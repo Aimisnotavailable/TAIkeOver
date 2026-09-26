@@ -99,7 +99,7 @@ describe('action reasons', () => {
   it('names the missing trait when one is required', () => {
     expect(whyNot(start(), 'us', 'infect-bank')).toContain('Banking');
     expect(whyNot(start(), 'us', 'trigger-crash')).toContain('Market Manipulation');
-    expect(whyNot(start(), 'us', 'fund-insurgency')).toContain('Terrorism');
+    expect(whyNot(start(), 'us', 'fund-insurgency')).toContain('Insurgency');
     expect(whyNot(start(), 'us', 'release-pathogen')).toContain('Custom Pathogen');
   });
 

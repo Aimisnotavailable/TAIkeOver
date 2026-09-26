@@ -28,6 +28,8 @@ export function createCountries(seed: number): Record<RegionId, Country> {
       factories: 0,
       converted: 0,
       quiet: false,
+      atWar: false,
+      warSeverity: 0,
       hardened: 0,
     };
   });

@@ -5,6 +5,7 @@ import { hackSuccessBonus, hackTier, hackYieldMultiplier, maxConcurrentHacks, ow
 import {
   AIR_GAP_PENALTY,
   HARDEN_PENALTY,
+  COLLAPSED_THRESHOLD,
   HACK_DURATION,
   HACK_SUSPICION_FAIL,
   HACK_SUSPICION_SUCCESS,
@@ -107,16 +108,21 @@ export function whyNot(state: GameState, id: RegionId, kind: ActionKind): string
   if (c === undefined) return 'no such country';
   switch (kind) {
     case 'infect-bank':
-      return owned(state, 'banking-1') ? 'needs infection above 5%' : 'needs Banking Infiltration I';
+      if (!owned(state, 'banking-1')) return 'needs Banking Infiltration';
+      if (c.economy <= COLLAPSED_THRESHOLD) return 'the economy here has already collapsed';
+      return 'needs infection above 5%';
     case 'trigger-crash':
       if (!owned(state, 'market-manipulation')) return 'needs Market Manipulation';
+      if (c.economy <= COLLAPSED_THRESHOLD) return 'the economy here has already collapsed';
       return c.infection < 60 ? 'needs 60% infection here' : 'unavailable';
     case 'fund-insurgency':
-      return owned(state, 'terrorism') ? 'no infection here yet' : 'needs Terrorism';
+      if (!owned(state, 'terrorism')) return 'needs Insurgency';
+      if (c.atWar) return 'already at war';
+      return 'no infection here yet';
     case 'go-quiet':
-      return 'nothing to quiet here';
+      return c.infection <= 0 ? 'nothing to quiet here' : 'unavailable';
     case 'release-pathogen':
-      return state.pathogen.released ? 'already released' : 'needs Custom Pathogen I';
+      return state.pathogen.released ? 'already released' : 'needs Custom Pathogen';
     case 'sabotage-rival':
       return 'needs 300 compute';
   }

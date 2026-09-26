@@ -103,3 +103,17 @@ export const EXTINCTION_POPULATION = 0.01;
 // The world population the map is modelled on. Used as the denominator for the
 // objective readout, so the target is a number the player already has.
 export const WORLD_POPULATION = 8.0e3;
+// Insurgency. Once a country is at war it stays at war: the war escalates while you
+// hold the country, kills people on its own, and only calms down if you let go.
+export const WAR_ESCALATION = 0.9;
+export const WAR_KILL_RATE = 0.0016;
+export const WAR_BASE_CHANCE_TO_END = 0.05;
+// Your hold on the country is subtracted from this, so a country you fully control
+// never calms down on its own. That is the trade: a stable war needs a stable grip.
+export const WAR_CONTROL_PENALTY = 1 / 60;
+export const WAR_MAX_SEVERITY = 10;
+
+// An infection this high with no pathogen released starts killing on its own. Nobody
+// has engineered anything; the system you built is simply running hot.
+export const OUTBREAK_KILL_THRESHOLD = 75;
+export const OUTBREAK_KILL_RATE = 0.0004;

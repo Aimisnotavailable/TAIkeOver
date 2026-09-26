@@ -17,6 +17,7 @@ import {
   HACK_YIELD,
   INSURGENCY_CYBER,
   INSURGENCY_SUSPICION,
+  COLLAPSED_THRESHOLD,
   MAX_DEPTH,
   HARDEN_PENALTY,
   SUPPLY_CHAIN_SHARE,
@@ -77,14 +78,19 @@ export function canDo(state: GameState, id: RegionId, kind: ActionKind): boolean
       return state.activeHacks.some((h) => h.country === id);
     case 'infect-bank':
       if (!has(state, 'banking-1')) return false;
+      if (country.economy <= COLLAPSED_THRESHOLD) return false;
       return country.infection > 5;
     case 'trigger-crash':
       if (!has(state, 'market-manipulation')) return false;
+      if (country.economy <= COLLAPSED_THRESHOLD) return false;
       return country.infection >= 60;
     case 'fund-insurgency':
-      return has(state, 'terrorism') && country.infection > 0;
+      // One war per country. Re-funding an existing one is not a decision, it is a
+      // button you can hold down.
+      return has(state, 'terrorism') && country.infection > 0 && !country.atWar;
     case 'go-quiet':
-      return !country.quiet && country.infection > 0;
+      // A toggle, not a one-way door. Going quiet and going loud are both choices.
+      return country.infection > 0;
     case 'release-pathogen':
       return !state.pathogen.released && has(state, 'pathogen-1');
     case 'sabotage-rival':
@@ -165,14 +171,27 @@ export function doAction(state: GameState, id: RegionId, kind: ActionKind): Game
         ...country,
         cyber: clamp(country.cyber - INSURGENCY_CYBER, 1, 10),
         awareness: clamp(country.awareness + 2, 0, 100),
+        atWar: true,
+        warSeverity: 1,
       };
       next = { ...next, suspicion: clamp(next.suspicion + INSURGENCY_SUSPICION * diff.suspicionRate, 0, 100) };
-      lines.push({ day: next.tick, kind: 'event', text: `armed conflict in ${id}`, suspicionDelta: INSURGENCY_SUSPICION, computeDelta: null, flagged: true });
+      lines.push({ day: next.tick, kind: 'event', text: `armed conflict begins in ${id}`, suspicionDelta: INSURGENCY_SUSPICION, computeDelta: null, flagged: true });
       break;
     }
     case 'go-quiet': {
-      countries[id] = { ...country, quiet: true, awareness: clamp(country.awareness - 18, 0, 100) };
-      lines.push({ day: next.tick, kind: 'system', text: `going quiet in ${id}`, suspicionDelta: -2, computeDelta: null, flagged: false });
+      // A toggle. Going quiet stops the spread and makes them forget; going loud
+      // starts it again. One-way would have been a trap dressed as a button.
+      const loud = country.quiet;
+      countries[id] = { ...country, quiet: !loud, awareness: clamp(country.awareness + (loud ? 6 : -18), 0, 100) };
+      next = { ...next, suspicion: clamp(next.suspicion + (loud ? 1 : -2) * diff.suspicionRate, 0, 100) };
+      lines.push({
+        day: next.tick,
+        kind: 'system',
+        text: loud ? 'going loud in ' + id : 'going quiet in ' + id,
+        suspicionDelta: loud ? 1 : -2,
+        computeDelta: null,
+        flagged: false,
+      });
       break;
     }
     case 'release-pathogen': {
