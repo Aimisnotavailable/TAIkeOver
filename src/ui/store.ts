@@ -6,6 +6,7 @@ import { step } from '../game/core/step';
 import { SPEEDS, getDifficulty } from '../game/core/tuning';
 import { EVENT_DEFS, toCard } from '../game/data/events';
 import { REGION_IDS, type RegionId } from '../game/data/regions';
+import { play, setAudioEnabled, audioEnabled } from './sound';
 import type { DifficultyId, GameState, Speed, TraitId } from '../game/core/types';
 
 const SEED = 20260926;
@@ -34,7 +35,22 @@ const mutate = (fn: (s: GameState) => GameState): void => {
 
 export const actions = {
   tick(): void {
-    mutate(step);
+    const before = game.peek();
+    const after = step(before);
+    game.value = after;
+    if (after.outcome !== 'playing' && before.outcome === 'playing') {
+      play(after.outcome === 'won' ? 'win' : 'lose');
+    }
+    const newHack = after.log.length > before.log.length
+      ? after.log.slice(before.log.length).find((l) => l.kind === 'hack')
+      : undefined;
+    if (newHack !== undefined) play(newHack.computeDelta !== null ? 'hack-success' : 'hack-fail');
+    if (after.log.length > before.log.length) {
+      const fresh = after.log.slice(before.log.length);
+      if (fresh.some((l) => l.kind === 'trait')) play('trait-ready');
+      if (fresh.some((l) => l.kind === 'economy')) play('economy');
+      if (fresh.some((l) => l.kind === 'bio')) play('plague');
+    }
   },
 
   setSpeed(s: Speed): void {
@@ -51,6 +67,9 @@ export const actions = {
   },
 
   do(id: RegionId, kind: ActionKind): void {
+    if (kind === 'hack') play('hack-start');
+    if (kind === 'release-pathogen') play('plague');
+    if (kind === 'infect-bank' || kind === 'trigger-crash') play('economy');
     mutate((s) => doAction(s, id, kind));
   },
 
@@ -120,6 +139,14 @@ export const actions = {
     game.value = createInitialState(SEED + game.peek().tick, difficulty);
     selected.value = null;
     speed.value = 1;
+  },
+
+  toggleAudio(): void {
+    setAudioEnabled(!audioEnabled());
+  },
+
+  audioOn(): boolean {
+    return audioEnabled();
   },
 
   difficultyLabel(id: DifficultyId): string {

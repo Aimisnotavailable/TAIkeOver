@@ -1,8 +1,9 @@
 import { useState } from 'preact/hooks';
 import { REGION_BY_ID } from '../../game/data/regions';
 import { TRAIT_BY_ID, TRAITS, TRAIT_GROUPS } from '../../game/data/traits';
+import { play } from '../sound';
 import { ACTIONS, type ActionKind } from '../../game/core/actions';
-import { canDo } from '../../game/core/actions';
+import { hackForecast, traitForecast, whyNot } from '../../game/core/forecast';
 import { SPEEDS } from '../../game/core/tuning';
 import type { Country, GameState, Speed } from '../../game/core/types';
 import { actions, selected, speed, toolbarCollapsed } from '../store';
@@ -54,11 +55,18 @@ export function TopBar({ state }: { state: GameState }) {
             <button
               key={s}
               class={`sp${speed.value === s ? ' on' : ''}`}
-              onClick={() => actions.setSpeed(s as Speed)}
+              onClick={() => { play('click'); actions.setSpeed(s as Speed); }}
             >
               {s === 0 ? '||' : `${s}x`}
             </button>
           ))}
+          <button
+            class="sp"
+            title={actions.audioOn() ? 'mute' : 'unmute'}
+            onClick={() => actions.toggleAudio()}
+          >
+            {actions.audioOn() ? '♪' : '✕'}
+          </button>
         </div>
       </div>
     </div>
@@ -66,28 +74,39 @@ export function TopBar({ state }: { state: GameState }) {
 }
 
 function TraitNode({ id, state }: { id: string; state: GameState }) {
-  const def = TRAIT_BY_ID[id];
-  if (def === undefined) return null;
-  const incubating = state.incubating.find((i) => i.trait === id);
-  const ownedTrait = state.traits.includes(id);
-  const affordable = actions.canBuy(id);
-  const locked = !ownedTrait && !incubating && !affordable;
+  const f = traitForecast(state, id);
+  const ownedTrait = state.traits.includes(id) && !state.incubating.some((i) => i.trait === id);
+  const locked = !ownedTrait && f.daysLeft === 0 && !f.available;
+  const className = ownedTrait ? 'trait owned' : f.daysLeft > 0 ? 'trait incubating' : locked ? 'trait locked' : 'trait';
+  const why = locked
+    ? f.missing.length > 0
+      ? `needs ${f.missing.map((m) => TRAIT_BY_ID[m]?.name ?? m).join(', ')}`
+      : f.cost > state.compute
+        ? `needs ${f.cost} compute`
+        : ''
+    : '';
+
   return (
     <button
-      class={`trait${ownedTrait ? ' owned' : incubating ? ' incubating' : locked ? ' locked' : ''}`}
-      disabled={ownedTrait || Boolean(incubating) || !affordable}
-      onClick={() => actions.buy(id)}
+      class={className}
+      disabled={ownedTrait || f.daysLeft > 0 || !f.available}
+      title={why}
+      onClick={() => { play('click'); actions.buy(id); }}
     >
       <div class="trait-head">
-        <span>{def.name}</span>
-        <span class="trait-cost">{ownedTrait ? '✓' : incubating ? '…' : def.cost}</span>
+        <span>{f.name}</span>
+        <span class="trait-cost">{ownedTrait ? '✓' : f.daysLeft > 0 ? `${f.daysLeft}d` : f.cost}</span>
       </div>
-      <div class="trait-desc">{def.description}</div>
-      {def.coherence !== 0 && (
-        <div class={`trait-coh${def.coherence < 0 ? ' bad' : ' good'}`}>
-          coherence {def.coherence > 0 ? `+${def.coherence}` : def.coherence}
+      <div class="trait-desc">{TRAIT_BY_ID[id]?.description}</div>
+      {f.daysLeft > 0 && (
+        <div class="trait-bar"><i style={{ width: `${f.progress}%` }} /></div>
+      )}
+      {f.coherence !== 0 && (
+        <div class={`trait-coh${f.coherence < 0 ? ' bad' : ' good'}`}>
+          coherence {f.coherence > 0 ? `+${f.coherence}` : f.coherence}
         </div>
       )}
+      {why !== '' && <div class="trait-why">{why}</div>}
     </button>
   );
 }
@@ -171,20 +190,43 @@ export function ContextBar({ state }: { state: GameState }) {
   const c = state.countries[id];
   if (c === undefined) return null;
   const hack = state.activeHacks.find((h) => h.country === id);
+  const fc = hackForecast(state, id);
+
   return (
     <div class="context">
       <div class="context-name">{REGION_BY_ID[id].name}</div>
       <CountryFacts c={c} state={state} />
       <div class="actions-row">
-        {hack !== undefined && (
+        {hack !== undefined ? (
           <span class="hacking">
-            hack in progress · {Math.max(0, hack.resolveTick - state.tick)}d
+            hacking · resolves in {Math.max(0, hack.resolveTick - state.tick)}d
           </span>
+        ) : (
+          <div class="forecast">
+            <span class="fc-chance" style={{ color: fc.chance >= 70 ? 'var(--ok)' : fc.chance >= 45 ? 'var(--warn)' : 'var(--bad)' }}>
+              {fc.chance}%
+            </span>
+            <span class="fc-line">
+              {fc.yieldLow.toLocaleString()}–{fc.yieldHigh.toLocaleString()} GPU
+            </span>
+            <span class="fc-line">
+              <span class="good">+{fc.suspSuccess}</span> / <span class="bad">+{fc.suspFail}</span> suspicion
+            </span>
+            <span class="fc-line">{fc.days}d</span>
+            {fc.reason !== '' && <span class="fc-reason">{fc.reason}</span>}
+          </div>
         )}
         {ACTIONS.filter((a) => !a.needsRival).map((a) => {
-          const ok = canDo(state, id, a.kind as ActionKind);
+          const reason = whyNot(state, id, a.kind as ActionKind);
+          const ok = reason === null;
           return (
-            <button key={a.kind} class="act" disabled={!ok} title={a.hint} onClick={() => actions.do(id, a.kind as ActionKind)}>
+            <button
+              key={a.kind}
+              class="act"
+              disabled={!ok}
+              title={ok ? a.hint : reason}
+              onClick={() => actions.do(id, a.kind as ActionKind)}
+            >
               {a.label}
             </button>
           );
