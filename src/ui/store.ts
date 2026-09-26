@@ -301,3 +301,24 @@ export function rollEvent(s: GameState): GameState {
 if (import.meta.env.DEV) {
   Object.assign(globalThis as Record<string, unknown>, { __iabed: { game, actions, speed, selected } });
 }
+
+/**
+ * Whether the world should be advancing. Everything that stops the clock lives
+ * here so it can be tested, rather than being inlined in an effect where a missing
+ * dependency silently lets the world keep running.
+ */
+export function worldRunning(
+  state: GameState,
+  currentSpeed: Speed,
+  upgrading: boolean,
+): boolean {
+  if (state.stage === 'coldopen') return false;
+  if (state.outcome !== 'playing') return false;
+  if (currentSpeed === 0) return false;
+  if (upgrading) return false;
+  if (state.cards.length > 0) return false;
+  return true;
+}
+
+/** A card is up, so the upgrade screen must not open on top of it. */
+export const evolveBlocked = (state: GameState): boolean => state.cards.length > 0;

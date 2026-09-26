@@ -326,3 +326,11 @@ button.ignore:hover { border-color: var(--ink-dim); color: var(--ink); backgroun
   border-radius: 3px;
 }
 .evolve-group .group-body { padding: 8px 10px 10px; }
+.evolve-btn.blocked,
+.evolve-btn:disabled {
+  color: var(--ink-dim);
+  border-color: var(--line);
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.evolve-btn.blocked:hover { background: rgba(4, 10, 13, 0.9); }

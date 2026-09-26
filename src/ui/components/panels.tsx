@@ -145,9 +145,14 @@ function TraitNode({ id, state }: { id: string; state: GameState }) {
   );
 }
 
-export function EvolveButton({ onOpen }: { onOpen: () => void }) {
+export function EvolveButton({ onOpen, blocked }: { onOpen: () => void; blocked: boolean }) {
   return (
-    <button class="evolve-btn" onClick={onOpen} title="Open the trait tree. The world pauses while it is open.">
+    <button
+      class={`evolve-btn${blocked ? ' blocked' : ''}`}
+      onClick={onOpen}
+      disabled={blocked}
+      title={blocked ? 'Acknowledge the event first.' : 'Open the trait tree. The world pauses while it is open.'}
+    >
       EVOLVE <span>tab</span>
     </button>
   );

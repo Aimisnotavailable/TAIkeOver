@@ -7,7 +7,7 @@ import { drawWorldMap, hitTest, hitTestCompute } from './map/worldMap';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { TICK_MS } from '../game/core/tuning';
 import { rollEvent } from './store';
-import { evolving, flash, hovered, notify, speed, toasts, type ToastTone } from './store';
+import { evolving, evolveBlocked, flash, hovered, notify, speed, toasts, worldRunning, type ToastTone } from './store';
 import { startMusic, unlockAudio } from './sound';
 
 const TOAST_TONE: Record<ToastTone, string> = {
@@ -250,18 +250,23 @@ function Map({ state }: { state: GameState }) {
 
 export function Game() {
   const state = game.value;
-  const paused =
-    state.stage === 'coldopen' || speed.value === 0 || state.cards.length > 0 || evolving.value;
+  const cardPending = evolveBlocked(state);
+  const running = worldRunning(state, speed.value, evolving.value);
+  const paused = !running;
 
   useEffect(() => {
-    // A pending decision pauses the world, so the card can never block the map.
-    if (paused) return;
+    // Keyed on the decision itself, not on the individual inputs. Listing the inputs
+    // instead means opening the upgrade screen never re-runs this, so the interval
+    // keeps firing and the world carries on while you shop.
+    if (!running) return;
     const h = setInterval(() => {
       actions.tick();
-      game.value = rollEvent(game.peek());
+      // Never queue a card while the upgrade screen is open. One appearing behind
+      // it leaves two overlays stacked and the run frozen until both are cleared.
+      if (!evolving.value) game.value = rollEvent(game.peek());
     }, TICK_MS / speed.value);
     return () => clearInterval(h);
-  }, [state.stage, speed.value, state.cards.length]);
+  }, [running, state.stage, speed.value]);
 
   // Music runs with the world and stops with it. Paused for a card, paused on
   // purpose, and paused before the game has even been opened.
@@ -288,7 +293,11 @@ export function Game() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === ' ') { e.preventDefault(); actions.cycleSpeed(); }
       // Tab opens and closes the upgrade screen, which is where the decisions are.
-      if (e.key === 'Tab' && !evolving.value) { e.preventDefault(); evolving.value = true; }
+      // Not while a card is up: the card is the thing that needs you first.
+      if (e.key === 'Tab' && !evolving.value && game.peek().cards.length === 0) {
+        e.preventDefault();
+        evolving.value = true;
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -306,7 +315,7 @@ export function Game() {
       )}
       <Toasts />
       <Operations state={state} />
-      <EvolveButton onOpen={() => (evolving.value = true)} />
+      <EvolveButton onOpen={() => (evolving.value = true)} blocked={cardPending} />
       <SideRail state={state} />
       {evolving.value && <Evolve state={state} onClose={() => (evolving.value = false)} />}
       <div class="bottom">
