@@ -35,6 +35,9 @@ export function createInitialState(seed: number, difficulty: GameState['difficul
       emergentLanguage: 0,
       pendingChoice: null,
     },
+    expansion: null,
+    ascension: null,
+    coda: null,
     log: [],
   };
 }

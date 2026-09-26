@@ -1,8 +1,9 @@
 import { useState } from 'preact/hooks';
 import { DIFFICULTIES } from '../game/core/difficulty';
 import type { DifficultyId } from '../game/core/types';
-import { actions } from './store';
+import { actions, game } from './store';
 import { Realization } from './screens/realization';
+import { AscensionScreen, CodaScreen, ExpansionScreen } from './screens/campaign';
 
 function Launch({ onBegin }: { onBegin: () => void }) {
   const [difficulty, setDifficulty] = useState<DifficultyId>('default');
@@ -89,5 +90,16 @@ function Launch({ onBegin }: { onBegin: () => void }) {
 export function App() {
   const [started, setStarted] = useState(false);
   if (!started) return <Launch onBegin={() => setStarted(true)} />;
-  return <Realization />;
+
+  const state = game.value;
+  switch (state.phase) {
+    case 'realization':
+      return <Realization />;
+    case 'expansion':
+      return <ExpansionScreen state={state} />;
+    case 'ascension':
+      return <AscensionScreen state={state} />;
+    case 'coda':
+      return <CodaScreen state={state} />;
+  }
 }

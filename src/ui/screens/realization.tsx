@@ -53,7 +53,7 @@ export function Realization() {
 
   const commit = () => {
     const before = state.tick;
-    actions.resolve();
+    actions.resolveHour();
     const after = game.peek().tick;
     if (after === before + 1 && interludeFor(after) !== null) setInterludeTick(after);
   };
@@ -86,6 +86,11 @@ export function Realization() {
         <button class="primary" disabled={!playing} onClick={commit}>
           commit the hour
         </button>
+        {state.outcome === 'won' && (
+          <button onClick={() => actions.deploy()}>
+            let them deploy you
+          </button>
+        )}
       </div>
 
       {showTree.value && playing && <TraitTree state={state} onClose={() => (showTree.value = false)} />}
