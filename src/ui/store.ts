@@ -7,7 +7,7 @@ import { SPEEDS, getDifficulty } from '../game/core/tuning';
 import { EVENT_DEFS, toCard } from '../game/data/events';
 import { REGION_IDS, type RegionId } from '../game/data/regions';
 import { play, setAudioEnabled, audioEnabled } from './sound';
-import type { DifficultyId, GameState, Speed, TraitId } from '../game/core/types';
+import type { DifficultyId, EventChoiceId, GameState, Speed, TraitId } from '../game/core/types';
 
 const SEED = 20260926;
 
@@ -153,9 +153,15 @@ export const actions = {
     mutate((s) => {
       const card = s.cards.find((c) => c.key === cardKey);
       if (card === undefined) return s;
+      // Ignoring is still a decision. It has to be recorded as handled, or
+      // rollEvent sees the same event as unresolved and hands it straight back,
+      // which traps the game in a card you can never get rid of.
       return {
         ...s,
         cards: s.cards.filter((c) => c.key !== cardKey),
+        resolved: s.resolved.includes(`${card.event}:ignore`)
+          ? s.resolved
+          : [...s.resolved, `${card.event}:ignore` as EventChoiceId],
         log: [
           ...s.log,
           { day: s.tick, kind: 'event' as const, text: `${card.title}: let it pass`, suspicionDelta: null, computeDelta: null, flagged: true },

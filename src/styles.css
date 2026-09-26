@@ -109,10 +109,6 @@ button.mini { padding: 2px 6px; font-size: 9px; }
 .cardbox .sub { color: var(--ink-dim); letter-spacing: 0.06em; }
 .cardbox .counter { color: var(--bad); font-size: 13px; }
 .card-kicker { font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--warn); margin-bottom: 6px; }
-.card-choices { display: grid; gap: 6px; }
-.card-choices button { text-align: left; padding: 8px 10px; }
-.card-choices b { display: block; font-size: 11px; }
-.card-choices span { color: var(--ink-dim); font-size: 9.5px; }
 .cardbox .row { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
 .linkbtn { color: var(--cool); font-size: 10.5px; text-decoration: underline; }
 .warning { border: 1px solid var(--bad); border-radius: 2px; padding: 10px 12px; margin: 14px 0; }

@@ -69,14 +69,6 @@ function EventCards({ state }: { state: GameState }) {
             <div class="card-kicker">{card.urgent ? 'drift' : 'event'}{card.country !== null && ` · ${REGION_BY_ID[card.country]?.name ?? ''}`}</div>
             <h2>{card.title}</h2>
             <p>{card.body}</p>
-            <div class="card-choices">
-              {card.choices.map((c) => (
-                <button key={c.id} onClick={() => actions.answerEvent(card.key, c.id)}>
-                  <b>{c.label}</b>
-                  <span>{c.detail}</span>
-                </button>
-              ))}
-            </div>
             <button class="ignore" onClick={() => dismiss(card.key)}>
               ignore it &mdash; press enter
             </button>
