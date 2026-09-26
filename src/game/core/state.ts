@@ -28,6 +28,7 @@ export function createCountries(seed: number): Record<RegionId, Country> {
       factories: 0,
       converted: 0,
       quiet: false,
+      hardened: 0,
     };
   });
   return out;

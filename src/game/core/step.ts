@@ -6,6 +6,13 @@ import { chance, rand } from './rng';
 import { log } from './state';
 import { AWARENESS_PRESSURE } from './tuning';
 import {
+  COMPUTE_BLEED,
+  COMPUTE_CAP_BASE,
+  COMPUTE_CAP_INFECTION,
+  COMPUTE_CAP_SPAN,
+  HARDEN_FALL,
+  HARDEN_MAX,
+  HARDEN_RISE,
   AIR_GAP_TIER,
   ASCENSION_COMPUTE,
   ASCENSION_COHERENCE,
@@ -137,6 +144,16 @@ export function step(state: GameState): GameState {
     countries[id] = next;
   }
 
+  const beingHacked = new Set(state.activeHacks.map((h) => h.country));
+  for (const id of REGION_IDS) {
+    const c = countries[id];
+    if (c === undefined) continue;
+    const hardened = beingHacked.has(id)
+      ? Math.min(HARDEN_MAX, c.hardened + HARDEN_RISE)
+      : Math.max(0, c.hardened - HARDEN_FALL);
+    countries[id] = { ...c, hardened };
+  }
+
   seedNewCountries(state, countries);
 
   // Awareness from infected neighbours.
@@ -147,7 +164,22 @@ export function step(state: GameState): GameState {
     if (hotNeighbour) countries[id] = { ...c, awareness: clamp(c.awareness + 0.8, 0, 100) };
   }
 
-  let compute = state.compute + computeIncome({ ...state, countries });
+  const income = computeIncome({ ...state, countries });
+  const cap = Math.round(
+    COMPUTE_CAP_BASE + COMPUTE_CAP_SPAN * Math.min(1, state.globalInfection / COMPUTE_CAP_INFECTION),
+  );
+  const gross = state.compute + income;
+  let compute = gross > cap ? Math.max(cap, gross - (gross - cap) * COMPUTE_BLEED) : gross;
+  if (gross > cap) {
+    lines.push({
+      day: state.tick,
+      kind: 'system',
+      text: `compute bled off above the ${cap.toLocaleString()} ceiling`,
+      suspicionDelta: null,
+      computeDelta: Math.round(compute - gross),
+      flagged: true,
+    });
+  }
   let influence = state.influence;
   let bio = state.bio;
   let suspicion = state.suspicion;

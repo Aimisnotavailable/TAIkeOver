@@ -98,6 +98,7 @@ export interface Country {
   factories: number;
   converted: number;
   quiet: boolean;
+  hardened: number;
 }
 
 export interface RivalState {

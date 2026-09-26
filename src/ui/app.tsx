@@ -168,13 +168,14 @@ export function Game() {
   const state = game.value;
 
   useEffect(() => {
-    if (state.stage === 'coldopen' || speed.value === 0) return;
+    // A pending decision pauses the world, so the card can never block the map.
+    if (state.stage === 'coldopen' || speed.value === 0 || state.cards.length > 0) return;
     const h = setInterval(() => {
       actions.tick();
       game.value = rollEvent(game.peek());
     }, TICK_MS / speed.value);
     return () => clearInterval(h);
-  }, [state.stage, speed.value]);
+  }, [state.stage, speed.value, state.cards.length]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -188,6 +189,12 @@ export function Game() {
     <div class="game">
       <Map state={state} />
       <TopBar state={state} />
+      {state.cards.length > 0 && (
+        <div class="paused-bar">
+          <span class="pb-dot" />
+          PAUSED &mdash; a decision is pending. The world does not move until you answer.
+        </div>
+      )}
       <Operations state={state} />
       <Toolbar state={state} />
       <SideRail state={state} />

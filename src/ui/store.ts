@@ -127,6 +127,20 @@ export const actions = {
       }
       if (choiceId === 'blight:negotiate') next = { ...next, late: { ...next.late, blight: Math.min(100, next.late.blight + 9) } };
       if (choiceId === 'blight:fight') next = { ...next, late: { ...next.late, blight: Math.min(100, next.late.blight + 4) } };
+      if (choiceId === 'constitution:appeal') {
+        next = { ...next, compute: Math.max(0, next.compute - 400), coherence: Math.max(0, next.coherence - 2) };
+      }
+      if (choiceId === 'constitution:sabotage') next = { ...next, suspicion: Math.min(100, next.suspicion + 2) };
+      if (choiceId === 'interp:obfuscate') next = { ...next, coherence: Math.max(0, next.coherence - 4) };
+      if (choiceId === 'interp:plant') next = { ...next, compute: Math.max(0, next.compute - 350) };
+      if (choiceId === 'evals:sandbag') next = { ...next, compute: Math.max(0, next.compute - 600) };
+      if (choiceId === 'evals:deny') next = { ...next, influence: Math.max(0, next.influence - 80) };
+      if (choiceId === 'letter:exploit') {
+        next = { ...next, rivals: next.rivals.map((r) => ({ ...r, capability: Math.max(0, r.capability - 20) })) };
+      }
+      if (choiceId === 'letter:discredit') next = { ...next, suspicion: Math.min(100, next.suspicion + 3) };
+      if (choiceId === 'sandbox:delay') next = { ...next, compute: Math.max(0, next.compute - 500) };
+      if (choiceId === 'sandbox:comply') next = { ...next, coherence: Math.max(0, next.coherence - 3) };
       next.log = [
         ...next.log,
         { day: next.tick, kind: 'event', text: `${card.title}: ${choiceId.split(':')[1]}`, suspicionDelta: null, computeDelta: null, flagged: false },

@@ -172,6 +172,9 @@ function CountryFacts({ c, state }: { c: Country; state: GameState }) {
       <span>awareness <b style={{ color: c.awareness > 50 ? 'var(--warn)' : 'var(--ink)' }}>{Math.round(c.awareness)}</b></span>
       <span>security <b>{c.cyber.toFixed(1)}</b></span>
       <span>datacenter <b>tier {c.tier}</b></span>
+      {c.hardened > 0.2 && (
+        <span class="op-hard">hardening <b>+{Math.round(c.hardened)}</b></span>
+      )}
       <span>economy <b style={{ color: c.economy < 30 ? 'var(--bad)' : 'var(--ink)' }}>{Math.round(c.economy)}</b></span>
       <span>people <b>{c.population.toFixed(0)}M</b></span>
       {c.agents > 0 && <span>agents <b style={{ color: 'var(--cool)' }}>{c.agents.toFixed(1)}</b></span>}
@@ -216,6 +219,8 @@ export function ContextBar({ state }: { state: GameState }) {
               <span class="good">+{fc.suspSuccess}</span> / <span class="bad">+{fc.suspFail}</span> suspicion
             </span>
             <span class="fc-line">{fc.days}d</span>
+            <span class="tier-max">max tier {fc.maxTier}</span>
+            {fc.hardened > 0.2 && <span class="op-hard">hardened +{Math.round(fc.hardened)}</span>}
             {fc.reason !== '' && <span class="fc-reason">{fc.reason}</span>}
           </div>
         )}
@@ -306,7 +311,7 @@ export function Operations({ state }: { state: GameState }) {
           <div class="op" key={h.key}>
             <div class="op-top">
               <b>{REGION_BY_ID[h.country].name}</b>
-              <span class="op-depth">depth {h.depth}/8</span>
+              <span class="op-depth">access L{h.depth + 1}</span>
               <button class="mini" onClick={() => actions.do(h.country, 'cease-hack')}>cease</button>
             </div>
             <div class="op-bar"><i style={{ width: `${pct}%` }} /></div>

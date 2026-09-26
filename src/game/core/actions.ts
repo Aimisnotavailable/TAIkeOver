@@ -18,6 +18,7 @@ import {
   INSURGENCY_CYBER,
   INSURGENCY_SUSPICION,
   MAX_DEPTH,
+  HARDEN_PENALTY,
   SUPPLY_CHAIN_SHARE,
   getDifficulty,
 } from './tuning';
@@ -225,7 +226,7 @@ export function resolveHacks(state: GameState): GameState {
     const airGapped = state.countermeasures.tier >= 2 && state.countermeasures.airGappedLab === hack.country;
     const successChance = clamp(
       60 + hackSuccessBonus(state) + diff.hackBonus + (country.agents > 0 ? 40 : 0) -
-        (airGapped ? AIR_GAP_PENALTY : 0) - (country.cyber - 5) * 1.5,
+        (airGapped ? AIR_GAP_PENALTY : 0) - (country.cyber - 5) * 1.5 - country.hardened * HARDEN_PENALTY,
       5, 97,
     );
     const success = hack.auto || chance(state.seed, hack.resolveTick, hack.key * 31 + hack.depth, successChance / 100);

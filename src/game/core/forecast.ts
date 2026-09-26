@@ -4,6 +4,7 @@ import { canDo, type ActionKind } from './actions';
 import { hackSuccessBonus, hackTier, hackYieldMultiplier, maxConcurrentHacks, owned } from './queries';
 import {
   AIR_GAP_PENALTY,
+  HARDEN_PENALTY,
   HACK_DURATION,
   HACK_SUSPICION_FAIL,
   HACK_SUSPICION_SUCCESS,
@@ -19,6 +20,8 @@ export interface HackForecast {
   reason: string;
   chance: number;
   days: number;
+  maxTier: number;
+  hardened: number;
   yieldLow: number;
   yieldHigh: number;
   suspSuccess: number;
@@ -32,6 +35,8 @@ export function hackForecast(state: GameState, id: RegionId): HackForecast {
   const empty: Omit<HackForecast, 'available' | 'reason'> = {
     chance: 0,
     days: 0,
+    maxTier: 0,
+    hardened: 0,
     yieldLow: 0,
     yieldHigh: 0,
     suspSuccess: 0,
@@ -48,7 +53,8 @@ export function hackForecast(state: GameState, id: RegionId): HackForecast {
     diff.hackBonus +
     (agents ? 40 : 0) -
     (airGapped ? AIR_GAP_PENALTY : 0) -
-    (c.cyber - 5) * 1.5;
+    (c.cyber - 5) * 1.5 -
+    c.hardened * HARDEN_PENALTY;
   const chance = Math.round(clamp(raw, 5, 97));
 
   const duration = (HACK_DURATION[tier] ?? 3) + diff.cooldownDays - 3;
@@ -59,6 +65,8 @@ export function hackForecast(state: GameState, id: RegionId): HackForecast {
   const numbers: Omit<HackForecast, 'available' | 'reason'> = {
     chance,
     days: duration,
+    maxTier: Math.min(5, 2 + tier),
+    hardened: c.hardened,
     yieldLow: Math.round((range[0] ?? 0) * scale),
     yieldHigh: Math.round((range[1] ?? 0) * scale),
     suspSuccess: +(((HACK_SUSPICION_SUCCESS[tier] ?? 2) * detectScale) * diff.suspicionRate).toFixed(1),

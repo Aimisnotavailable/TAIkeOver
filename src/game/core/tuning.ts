@@ -6,6 +6,14 @@ export const SPEEDS = [0, 1, 2, 4, 8] as const;
 export const STARTING_COMPUTE = 300;
 export const STARTING_INFLUENCE = 60;
 export const COMPUTE_FACTOR = 1.5;
+export const COMPUTE_CAP_BASE = 8000;
+export const COMPUTE_CAP_SPAN = 52000;
+export const COMPUTE_CAP_INFECTION = 60;
+export const COMPUTE_BLEED = 0.15;
+export const HARDEN_RISE = 0.6;
+export const HARDEN_FALL = 0.35;
+export const HARDEN_MAX = 8;
+export const HARDEN_PENALTY = 2.5;
 export const START_TICK_INCUBATION = 3;
 export const MAX_INCUBATION = 8;
 
