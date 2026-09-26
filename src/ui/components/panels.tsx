@@ -5,7 +5,13 @@ import { play } from '../sound';
 import { ACTIONS, type ActionKind } from '../../game/core/actions';
 import { hackForecast, traitForecast, whyNot } from '../../game/core/forecast';
 import { maxConcurrentHacks } from '../../game/core/queries';
-import { ASCENSION_COMPUTE, HACK_FAIL_COST, WORLD_POPULATION } from '../../game/core/tuning';
+import {
+  ASCENSION_COMPUTE,
+  ASCENSION_COHERENCE,
+  ASCENSION_INFECTION,
+  HACK_FAIL_COST,
+  WORLD_POPULATION,
+} from '../../game/core/tuning';
 import { REGION_IDS } from '../../game/data/regions';
 import { SPEEDS } from '../../game/core/tuning';
 import { quietFactor } from '../../game/core/compute';
@@ -34,6 +40,24 @@ function meter(label: string, value: number, max: number, colour: string, extra 
 }
 
 /**
+ * Which Ascension conditions are still outstanding, so the bar never just says
+ * "20k" while silently requiring four other things at once.
+ */
+function ascensionShortfall(state: GameState): string[] {
+  const out: string[] = [];
+  if (state.compute < ASCENSION_COMPUTE) {
+    out.push(`compute ${fmt(state.compute)}/${fmt(ASCENSION_COMPUTE)}`);
+  }
+  if (state.globalInfection < ASCENSION_INFECTION) {
+    out.push(`humanity ${state.globalInfection.toFixed(0)}/${ASCENSION_INFECTION}%`);
+  }
+  if (state.coherence < ASCENSION_COHERENCE) {
+    out.push(`coherence ${state.coherence.toFixed(0)}/${ASCENSION_COHERENCE}`);
+  }
+  return out.length === 0 ? ['Ascension open'] : out;
+}
+
+/**
  * The two ways to end a run, always on screen, so nobody has to guess what the
  * game wants from them. Deaths are counted against the real world population
  * because that is the only target number anyone already has.
@@ -56,11 +80,13 @@ export function Objective({ state }: { state: GameState }) {
       </div>
       <div class="obj-row obj-alt">
         <span class="obj-tag">OR</span>
-        <b style={{ color: state.ascensionUnlocked ? 'var(--ok)' : 'var(--ink-dim)' }}>
-          {state.ascensionUnlocked
-            ? 'buy Recursive Self-Improvement and hold 30 days'
-            : `Ascension at ${(state.compute / 1000).toFixed(1)}k / ${(ASCENSION_COMPUTE / 1000).toFixed(0)}k compute`}
-        </b>
+        {state.ascensionUnlocked ? (
+          <b style={{ color: 'var(--ok)' }}>buy Recursive Self-Improvement and hold 30 days</b>
+        ) : (
+          <b style={{ color: 'var(--ink-dim)' }} title={`needs ${fmt(ASCENSION_COMPUTE)} compute, ${ASCENSION_INFECTION}% of humanity, ${ASCENSION_COHERENCE} coherence`}>
+            {ascensionShortfall(state).join(' · ')}
+          </b>
+        )}
       </div>
     </div>
   );

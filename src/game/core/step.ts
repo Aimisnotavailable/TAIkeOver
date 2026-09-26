@@ -349,9 +349,20 @@ export function step(state: GameState): GameState {
     lines.push({ day: state.tick, kind: 'trait', text: `${TRAIT_BY_ID[id]?.name ?? id} is available`, suspicionDelta: null, computeDelta: null, flagged: false });
   }
 
-  const globalInfection =
-    REGION_IDS.reduce((sum, id) => sum + (countries[id]?.infection ?? 0), 0) / REGION_IDS.length;
-  const humanPopulation = REGION_IDS.reduce((sum, id) => sum + (countries[id]?.population ?? 0), 0);
+  // Population-weighted, because this number is shown to the player as a percentage
+  // and gates Ascension. A plain mean over thirty arbitrary regions read 60% at a
+  // point where only 47% of humans were actually infected, which both lied about
+  // progress and quietly demanded near-total continental coverage.
+  let popTotal = 0;
+  let popInfected = 0;
+  for (const id of REGION_IDS) {
+    const c = countries[id];
+    const pop = c?.population ?? 0;
+    popTotal += pop;
+    popInfected += (pop * (c?.infection ?? 0)) / 100;
+  }
+  const globalInfection = popTotal > 0 ? (popInfected / popTotal) * 100 : 0;
+  const humanPopulation = popTotal;
 const newDeaths = dailyDeaths({ ...state, countries }, state.countries);
 
   let next: GameState = {
