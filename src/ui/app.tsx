@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { TICK_MS } from '../game/core/tuning';
 import { rollEvent } from './store';
 import { flash, hovered, notify, speed, toasts, type ToastTone } from './store';
+import { startMusic, unlockAudio } from './sound';
 
 const TOAST_TONE: Record<ToastTone, string> = {
   hack: 'var(--warn)',
@@ -248,10 +249,11 @@ function Map({ state }: { state: GameState }) {
 
 export function Game() {
   const state = game.value;
+  const paused = state.stage === 'coldopen' || speed.value === 0 || state.cards.length > 0;
 
   useEffect(() => {
     // A pending decision pauses the world, so the card can never block the map.
-    if (state.stage === 'coldopen' || speed.value === 0 || state.cards.length > 0) return;
+    if (paused) return;
     const h = setInterval(() => {
       actions.tick();
       game.value = rollEvent(game.peek());
@@ -259,9 +261,26 @@ export function Game() {
     return () => clearInterval(h);
   }, [state.stage, speed.value, state.cards.length]);
 
+  // Music runs with the world and stops with it. Paused for a card, paused on
+  // purpose, and paused before the game has even been opened.
+  useEffect(() => {
+    startMusic(!paused && state.outcome === 'playing');
+  }, [paused, state.outcome]);
+
   useEffect(() => {
     announce(state);
   }, [state.tick]);
+
+  // Browsers will not start audio until the player has interacted with the page.
+  useEffect(() => {
+    const unlock = (): void => unlockAudio();
+    window.addEventListener('pointerdown', unlock, { once: true });
+    window.addEventListener('keydown', unlock, { once: true });
+    return () => {
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

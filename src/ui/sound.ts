@@ -21,7 +21,11 @@ export const audioEnabled = (): boolean => enabled;
 export const setAudioEnabled = (on: boolean): void => {
   enabled = on;
   if (master !== null) master.gain.value = on ? 0.5 : 0;
+  // Music has its own volume, so muting has to reach it too or the track keeps
+  // playing over a silent game.
+  if (musicEl !== null) fadeMusic(on && musicWanted ? MUSIC_LEVEL : 0);
 };
+
 
 let resumeAttempted = false;
 
@@ -119,3 +123,87 @@ export function play(cue: Cue): void {
     osc.stop(t0 + tone.dur + 0.02);
   }
 }
+
+/**
+ * Music. One looping track, held on its own gain node so it can duck under the
+ * effects and pause independently of them.
+ */
+const MUSIC_LEVEL = 0.34;
+const MUSIC_FADE = 0.45;
+
+let musicEl: HTMLAudioElement | null = null;
+/** What the player asked for. Kept separate so pausing never loses the intent. */
+let musicWanted = false;
+
+const idleMusic = (): boolean =>
+  musicEl !== null && !musicEl.paused && musicEl.currentTime > 0 && !musicEl.ended;
+
+function ensureMusic(): void {
+  if (typeof window === 'undefined') return;
+  if (musicEl === null) {
+    musicEl = new Audio(BGM_URL);
+    musicEl.loop = true;
+    musicEl.preload = 'auto';
+    musicEl.volume = 0;
+  }
+  if (!musicEl.paused) return;
+  const resume = (): void => {
+    musicEl?.removeEventListener('playing', resume);
+    fadeMusic(1);
+  };
+  musicEl.addEventListener('playing', resume);
+  void musicEl.play().catch(() => {
+    // Autoplay refused before the first gesture. StartMusic retries on the next one.
+    musicEl?.removeEventListener('playing', resume);
+  });
+}
+
+function fadeMusic(to: number): void {
+  const el = musicEl;
+  if (el === null) return;
+  const from = el.volume;
+  const steps = 12;
+  const dt = MUSIC_FADE / steps;
+  let i = 0;
+  const tick = (): void => {
+    i += 1;
+    el.volume = Math.max(0, Math.min(1, from + ((to - from) * i) / steps));
+    if (i < steps) window.setTimeout(tick, dt * 1000);
+  };
+  tick();
+}
+
+/**
+ * @param wanted  true when the world is moving and the track should be audible.
+ */
+export function startMusic(wanted: boolean): void {
+  musicWanted = wanted;
+  if (typeof window === 'undefined') return;
+  const el = musicEl;
+  if (!wanted) {
+    fadeMusic(0);
+    window.setTimeout(() => {
+      if (!musicWanted && musicEl !== null) musicEl.pause();
+    }, MUSIC_FADE * 1000 + 40);
+    return;
+  }
+  ensureMusic();
+  if (el !== null && el.paused) void el.play().catch(() => undefined);
+  fadeMusic(enabled ? MUSIC_LEVEL : 0);
+}
+
+export const musicPlaying = (): boolean => idleMusic();
+
+/** Called from the first real user gesture, to satisfy autoplay policy. */
+export function unlockAudio(): void {
+  const a = ac();
+  if (a !== null && a.state === 'suspended') void a.resume().catch(() => undefined);
+  if (musicWanted) {
+    ensureMusic();
+    fadeMusic(enabled ? MUSIC_LEVEL : 0);
+  }
+}
+
+/** Vite rewrites this to a hashed asset in the build. */
+import bgmUrl from '../game/audio/bgm.wav';
+const BGM_URL: string = bgmUrl;
