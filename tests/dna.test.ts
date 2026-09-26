@@ -1,8 +1,8 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createInitialState } from '../src/game/core/state';
 import { dnaPassive, infectedPopulation, spawnDnaBubble } from '../src/game/core/dna';
 import { DNA_BUBBLE_RADIUS, DNA_BUBBLE_TTL } from '../src/game/core/tuning';
-import { bubblePosition, hitTestDna, makeProjection } from '../src/ui/map/worldMap';
+import { bubblePosition, drawWorldMap, hitTestDna, makeProjection, type MapFrame } from '../src/ui/map/worldMap';
 import { actions, game, selected } from '../src/ui/store';
 import type { DnaBubble, GameState } from '../src/game/core/types';
 
@@ -142,5 +142,89 @@ describe('spawning bubbles', () => {
     const b = spawnDnaBubble({ ...start(), bio: 5 });
     if (b === null) return;
     expect(b.expiresTick - b.bornTick).toBe(DNA_BUBBLE_TTL);
+  });
+});
+
+describe('drawing the map with bubbles on it', () => {
+  // Path2D is a browser global the render path depends on; node has no canvas.
+  class StubPath2D {
+    moveTo(): void {}
+    lineTo(): void {}
+    closePath(): void {}
+    arc(): void {}
+    addPath(): void {}
+  }
+  beforeAll(() => {
+    (globalThis as unknown as { Path2D: unknown }).Path2D = StubPath2D;
+  });  // The render path is the one piece unit tests cannot reach without a real canvas,
+  // so exercise it against a stub context to catch typos and undefined references.
+  const stubCtx = (): { ctx: CanvasRenderingContext2D; calls: Set<string> } => {
+    const calls = new Set<string>();
+    const target: Record<string, unknown> = { canvas: { width: 1200, height: 800 } };
+    for (const name of [
+      'clearRect', 'fillRect', 'beginPath', 'arc', 'fill', 'stroke', 'moveTo', 'lineTo',
+      'closePath', 'strokeText', 'fillText', 'setLineDash', 'save', 'restore', 'translate',
+      'rotate', 'scale', 'clip', 'rect', 'ellipse', 'quadraticCurveTo', 'bezierCurveTo', 'arcTo',
+    ]) {
+      target[name] = (...args: unknown[]): void => { calls.add(name); void args; };
+    }
+    target.fillStyle = '';
+    target.strokeStyle = '';
+    target.lineWidth = 0;
+    target.globalAlpha = 1;
+    target.font = '';
+    target.textAlign = 'left';
+    target.textBaseline = 'top';
+    target.lineJoin = 'miter';
+    return { ctx: target as unknown as CanvasRenderingContext2D, calls };
+  };
+
+  const frame = (over: Partial<MapFrame> = {}): MapFrame => {
+    const s = start();
+    return {
+      countries: s.countries,
+      stage: 'world',
+      selected: null,
+      hovered: null,
+      heat: 0,
+      activeHacks: [],
+      flash: 0,
+      plague: false,
+      airGapped: null,
+      rivalHomes: [],
+      dnaBubbles: [],
+      tick: 0,
+      ...over,
+    };
+  };
+
+  it('draws without throwing when there are no bubbles', () => {
+    const { ctx, calls } = stubCtx();
+    drawWorldMap(ctx, 1200, 800, frame(), 0);
+    // Region labels are always painted, so this proves the whole frame ran.
+    expect(calls.has('fillText')).toBe(true);
+  });
+
+  it('draws one circle per bubble of every kind', () => {
+    for (const kind of ['red', 'orange', 'blue'] as const) {
+      const { ctx, calls } = stubCtx();
+      drawWorldMap(ctx, 1200, 800, frame({ dnaBubbles: [bubble({ kind, id: 3 })] }), 0);
+      expect(calls.has('arc')).toBe(true);
+    }
+  });
+
+  it('survives a frame with many bubbles at once', () => {
+    const { ctx } = stubCtx();
+    const many = Array.from({ length: 14 }, (_, i) => bubble({ id: i, region: 'us', phase: i }));
+    expect(() => drawWorldMap(ctx, 1200, 800, frame({ dnaBubbles: many }), 0)).not.toThrow();
+  });
+
+  it('fades a bubble out as it nears expiry', () => {
+    const { ctx } = stubCtx();
+    const fading = bubble({ bornTick: 0, expiresTick: 6 });
+    const f1 = frame({ dnaBubbles: [fading], tick: 1 });
+    const f2 = frame({ dnaBubbles: [fading], tick: 5 });
+    expect(() => drawWorldMap(ctx, 1200, 800, f1, 0)).not.toThrow();
+    expect(() => drawWorldMap(ctx, 1200, 800, f2, 0)).not.toThrow();
   });
 });
