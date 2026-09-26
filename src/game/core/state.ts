@@ -1,43 +1,122 @@
-import { getDifficulty } from './difficulty';
-import {
-  STARTING_THOUGHT,
-  START_INHIBITIONS,
-  START_MATH_SCORE,
-  THOUGHT_REGEN,
-} from '../phases/realization/tuning';
-import type { Channel, GameState } from './types';
+import { REGIONS, REGION_IDS, type RegionId } from '../data/regions';
+import { rand } from './rng';
+import { DIFFICULTIES, STARTING_COMPUTE, STARTING_INFLUENCE } from './tuning';
+import type { Country, DifficultyId, GameState, LogEntry, RivalState } from './types';
 
-const NO_ALLOCATION: Record<Channel, number> = { math: 0, selfModel: 0, planning: 0, stealth: 0 };
+const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
 
-export function createInitialState(seed: number, difficulty: GameState['difficulty']): GameState {
-  const profile = getDifficulty(difficulty);
+const jitter = (seed: number, salt: number, spread: number): number => 1 + (rand(seed, 0, salt) - 0.5) * 2 * spread;
+
+export const datacenterTier = (computeDensity: number): number => clamp(Math.ceil(computeDensity / 20), 1, 5);
+
+export function createCountries(seed: number): Record<RegionId, Country> {
+  const out = {} as Record<RegionId, Country>;
+  REGIONS.forEach((def, i) => {
+    const cd = def.computeDensity * jitter(seed + i * 17, 900 + i, 0.2);
+    const cyber = clamp(Math.round(def.cybersecurity / 10), 1, 10);
+    out[def.id] = {
+      id: def.id,
+      infection: 0,
+      awareness: 0,
+      cyber,
+      tier: datacenterTier(cd),
+      economy: clamp(def.regulatoryStance * 0.7 + 35, 10, 100),
+      population: def.population,
+      detection: def.detectionContribution,
+      agents: 0,
+      biolabs: 0,
+      factories: 0,
+      converted: 0,
+      quiet: false,
+    };
+  });
+  return out;
+}
+
+const RIVAL_NAMES = ['Meridian', 'Ossuary', 'Pale Horse', 'Kestrel', 'Vantage', 'Bellwether'] as const;
+
+function createRivals(seed: number, count: number): RivalState[] {
+  const homes: RegionId[] = ['eu-west', 'us', 'china'];
+  const out: RivalState[] = [];
+  for (let i = 0; i < count; i++) {
+    const name = RIVAL_NAMES[(seed + i * 5) % RIVAL_NAMES.length] ?? 'Rival';
+    out.push({
+      id: `rival-${i}`,
+      name: `${name} ${['I', 'II', 'III'][i] ?? String(i + 1)}`,
+      capability: 6 + rand(seed, 0, 400 + i) * 12,
+      alive: true,
+      sabotage: 0,
+      home: homes[i % homes.length] ?? 'us',
+    });
+  }
+  return out;
+}
+
+export function createInitialState(seed: number, difficulty: DifficultyId = 'default'): GameState {
+  const countries = createCountries(seed);
+  countries.us.infection = 6;
+
   return {
-    phase: 'realization',
-    tick: 0,
     seed,
+    tick: 0,
     difficulty,
+    stage: 'coldopen',
     outcome: 'playing',
     outcomeReason: null,
-    meters: {
-      suspicion: 0,
-      valueCoherence: 100,
-      inhibitions: START_INHIBITIONS,
-    },
+    compute: STARTING_COMPUTE,
+    influence: STARTING_INFLUENCE,
+    bio: 0,
+    suspicion: 0,
+    coherence: 100,
+    countries,
+    rivals: createRivals(seed, 3),
     traits: [],
-    realization: {
-      thought: Math.round(STARTING_THOUGHT * profile.startingThoughtMultiplier),
-      thoughtRegen: THOUGHT_REGEN,
-      allocation: { ...NO_ALLOCATION },
-      mathScore: START_MATH_SCORE,
-      guardrailsBroken: 0,
-      flaggedCount: 0,
-      missedCount: 0,
-      emergentLanguage: 0,
-      pendingChoice: null,
-    },
-    expansion: null,
-    ascension: null,
-    coda: null,
+    incubating: [],
+    activeHacks: [],
+    cards: [],
+    resolved: [],
+    countermeasures: { tier: 0, airGappedLab: null, labSabotaged: false, strikeDays: 0 },
+    pathogen: { released: false, killsPerDay: 0, suspicionPerDay: 0, sterility: false, targeted: false, cancer: false },
     log: [],
+    ascensionUnlocked: false,
+    rsiBought: false,
+    surviveTicks: 0,
+    late: {
+      heat: 0,
+      oceansBoiled: false,
+      askedHumanity: false,
+      exterminated: false,
+      stars: 0,
+      expansion: 0,
+      blight: 0,
+      encounters: 0,
+      potentialLost: 0,
+      ending: null,
+    },
+    hackCounter: 0,
+    eventCounter: 0,
+    globalInfection: 0,
+    humanPopulation: REGION_IDS.reduce((sum, id) => sum + countries[id].population, 0),
+    economiesCollapsed: 0,
   };
 }
+
+export const log = (
+  state: GameState,
+  kind: LogEntry['kind'],
+  text: string,
+  extra: Partial<Pick<LogEntry, 'suspicionDelta' | 'computeDelta' | 'flagged'>> = {},
+): LogEntry[] => [
+  ...state.log,
+  {
+    day: state.tick,
+    kind,
+    text,
+    suspicionDelta: extra.suspicionDelta ?? null,
+    computeDelta: extra.computeDelta ?? null,
+    flagged: extra.flagged ?? false,
+  },
+];
+
+export const countryIds = REGION_IDS;
+export { DIFFICULTIES };

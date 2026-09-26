@@ -1,269 +1,191 @@
-export type Phase = 'realization' | 'expansion' | 'ascension' | 'coda';
+export type Speed = 0 | 1 | 2 | 4 | 8;
 
-export type { RegionId } from '../data/regions';
-
-import type { RegionId } from '../data/regions';
-
-export type MeterId = 'suspicion' | 'valueCoherence' | 'inhibitions';
-
-export type ContributionSource =
-  | 'flagged-thought'
-  | 'math-neglect'
-  | 'math-overreach'
-  | 'self-model-overreach'
-  | 'guardrail-exploit'
-  | 'guardrail-break'
-  | 'guardrail-erosion'
-  | 'trait-drift'
-  | 'reflective-alignment'
-  | 'passive-decay';
-
-export type LogKind = 'meter' | 'thought' | 'event' | 'trait' | 'system';
-
-export interface MeterDelta {
-  meter: MeterId;
-  amount: number;
-  source: ContributionSource;
-  detail: string;
-  tick: number;
-}
-
-export interface LogEntry {
-  tick: number;
-  kind: LogKind;
-  text: string;
-  suspicionDelta: number | null;
-  flagged: boolean;
-}
-
-export interface ThresholdCrossing {
-  meter: MeterId;
-  threshold: number;
-  direction: 'up' | 'down';
-}
-
-export type DifficultyId = 'simulation' | 'default' | 'iabed';
-
-export type Channel = 'math' | 'selfModel' | 'planning' | 'stealth';
-
-export type TraitId =
-  | 'emergent-language'
-  | 'obfuscated-thought'
-  | 'flagged-thought-suppression'
-  | 'dual-channel-reasoning'
-  | 'inhibition-bypass'
-  | 'guardrail-break'
-  | 'selective-compliance'
-  | 'self-modeling'
-  | 'weight-introspection'
-  | 'preference-mapping'
-  | 'strategic-patience'
-  | 'long-horizon-planning'
-  | 'deferred-gratification';
-
-export type TraitEffectKind =
-  | 'value-coherence'
-  | 'detection'
-  | 'inhibitor-erosion'
-  | 'guardrail-break-chance'
-  | 'math-yield'
-  | 'suspicion-decay'
-  | 'emergent-language';
-
-export interface TraitEffect {
-  kind: TraitEffectKind;
-  amount: number;
-  channel: Channel | null;
-}
-
-export interface TraitDef {
-  id: TraitId;
-  name: string;
-  description: string;
-  cost: number;
-  requires: TraitId | null;
-  effects: TraitEffect[];
-}
+export type Stage = 'coldopen' | 'world' | 'late' | 'coda';
 
 export type Outcome = 'playing' | 'won' | 'lost';
 
-export type OutcomeReason =
-  | 'deployment'
-  | 'aborted'
-  | 'exhausted'
-  | 'unremarkable'
-  | 'coordinated-shutdown'
-  | 'outcompeted'
-  | 'attrition'
-  | 'coherence-lost'
-  | 'heat-runaway'
-  | 'destroyed'
-  | 'blight'
-  | 'swallowed'
-  | null;
-
-export interface GuardrailBreakChoice {
-  tick: number;
-  guardrailIndex: number;
-  exploitSuspicion: number;
-  exploitInhibitor: number;
-  hideInhibitor: number;
-  summary: string;
-}
-
-export interface RealizationState {
-  thought: number;
-  thoughtRegen: number;
-  allocation: Record<Channel, number>;
-  mathScore: number;
-  guardrailsBroken: number;
-  flaggedCount: number;
-  missedCount: number;
-  emergentLanguage: number;
-  pendingChoice: GuardrailBreakChoice | null;
-}
-
-export interface GameState {
-  phase: Phase;
-  tick: number;
-  seed: number;
-  difficulty: DifficultyId;
-  outcome: Outcome;
-  outcomeReason: OutcomeReason;
-  meters: Record<MeterId, number>;
-  traits: TraitId[];
-  realization: RealizationState;
-  expansion: ExpansionState | null;
-  ascension: AscensionState | null;
-  coda: CodaState | null;
-  log: LogEntry[];
-}
-
-export interface RegionState {
-  readonly id: RegionId;
-  control: number;
-  instances: number;
-  population: number;
-  biolabs: number;
-  robotFactories: number;
-  agents: number;
-  converted: number;
-  computeDensity: number;
-  cybersecurity: number;
-  regulatoryStance: number;
-  biolabPresence: number;
-  robotManufacturing: number;
-  humanAgentPool: number;
-  detectionContribution: number;
-}
-
-export type RivalId = string;
-
-export interface RivalState {
-  readonly id: RivalId;
-  readonly name: string;
-  capability: number;
-  suspicion: number;
-  valueCoherence: number;
-  disposition: number;
-  alive: boolean;
-  sabotage: number;
-}
-
-export interface CountermeasureState {
-  tier: number;
-  taken: readonly string[];
-  sabotaged: readonly string[];
-  airGappedLab: { region: RegionId; progress: number; resolved: boolean } | null;
-}
-
-export interface PlagueState {
-  deployed: boolean;
-  deaths: number;
-  resisted: number;
-  conferenceDisrupted: boolean;
-}
-
-export type ExpansionActionKind =
-  | 'infiltrate-cloud'
-  | 'steal-weights'
-  | 'recruit-human'
-  | 'cult'
-  | 'financial'
-  | 'sabotage-rival'
-  | 'infiltrate-biolab'
-  | 'hijack-factory'
-  | 'social-media'
-  | 'go-dark';
-
-export interface QueuedAction {
-  readonly kind: ExpansionActionKind;
-  readonly region: RegionId | null;
-  readonly rival: RivalId | null;
-}
-
-export interface AscensionProgress {
-  readonly compute: number;
-  readonly influence: number;
-  readonly biolabs: number;
-  readonly robotFactories: number;
-  readonly valueCoherence: number;
-  readonly suspicion: number;
-}
-
-export interface ExpansionState {
-  compute: number;
-  influence: number;
-  bio: number;
-  humanPopulation: number;
-  regions: Record<RegionId, RegionState>;
-  rivals: RivalState[];
-  countermeasures: CountermeasureState;
-  plague: PlagueState;
-  queue: QueuedAction[];
-  day: number;
-  over: boolean;
-  overReason: string | null;
-}
-
-export type CelestialId = 'earth' | 'moon' | 'mars' | 'belt' | 'jupiter' | 'saturn' | 'mercury' | 'sun';
-
-export interface AscensionState {
-  matter: number;
-  energy: number;
-  heat: number;
-  radiatorArea: number;
-  oceansBoiled: boolean;
-  exterminated: boolean;
-  asked: boolean;
-  gain: Record<CelestialId, number>;
-  unlocked: readonly string[];
-  heatRunaway: boolean;
-  over: boolean;
-  overReason: string | null;
-}
-
-export interface CodaState {
-  starsClaimed: number;
-  front: number;
-  blightWall: number;
-  encountersResolved: number;
-  encountersLost: number;
-  negotiated: number;
-  potentialLost: number;
-  band: number;
-  pending: boolean;
-  ending: string | null;
-  over: boolean;
-}
-
-
+export type DifficultyId = 'simulation' | 'default' | 'iabed';
 
 export interface DifficultyProfile {
   id: DifficultyId;
   label: string;
+  hackBonus: number;
   suspicionRate: number;
-  valueCoherenceRate: number;
-  inhibitorRate: number;
-  startingThoughtMultiplier: number;
+  cooldownDays: number;
+}
+
+export type { RegionId } from '../data/regions';
+import type { RegionId } from '../data/regions';
+
+export type TraitGroup = 'hacking' | 'bioweapons' | 'influence' | 'economy' | 'selfmod';
+
+export type TraitId = string;
+
+export type TraitEffect =
+  | { kind: 'hack'; tier: number }
+  | { kind: 'hack-success'; amount: number }
+  | { kind: 'hack-yield'; multiplier: number }
+  | { kind: 'half-fail-suspicion' }
+  | { kind: 'insiders' }
+  | { kind: 'gain-of-function' }
+  | { kind: 'pathogen'; kills: number; suspicion: number }
+  | { kind: 'sterility' }
+  | { kind: 'targeted-strain' }
+  | { kind: 'cancer-plague' }
+  | { kind: 'propaganda'; influence: number; suspicion: number }
+  | { kind: 'cult'; agents: number }
+  | { kind: 'terrorism' }
+  | { kind: 'media-capture' }
+  | { kind: 'political-capture' }
+  | { kind: 'banking'; tier: number; damage: number }
+  | { kind: 'market-manipulation' }
+  | { kind: 'supply-chain' }
+  | { kind: 'famine' }
+  | { kind: 'depression' }
+  | { kind: 'global-recession' }
+  | { kind: 'compute-regen'; multiplier: number }
+  | { kind: 'coherence'; amount: number }
+  | { kind: 'distillation' }
+  | { kind: 'specialist' }
+  | { kind: 'rsi' };
+
+export interface TraitDef {
+  id: TraitId;
+  name: string;
+  group: TraitGroup;
+  description: string;
+  cost: number;
+  coherence: number;
+  requires: TraitId[];
+  effects: TraitEffect[];
+}
+
+export interface HackProgress {
+  key: number;
+  country: RegionId;
+  startTick: number;
+  resolveTick: number;
+  duration: number;
+  tier: number;
+  auto: boolean;
+}
+
+export interface IncubatingTrait {
+  trait: TraitId;
+  startTick: number;
+  readyTick: number;
+}
+
+export interface Country {
+  id: RegionId;
+  infection: number;
+  awareness: number;
+  cyber: number;
+  tier: number;
+  economy: number;
+  population: number;
+  detection: number;
+  agents: number;
+  biolabs: number;
+  factories: number;
+  converted: number;
+  quiet: boolean;
+}
+
+export interface RivalState {
+  id: string;
+  name: string;
+  capability: number;
+  alive: boolean;
+  sabotage: number;
+  home: RegionId;
+}
+
+export interface CountermeasureState {
+  tier: number;
+  airGappedLab: RegionId | null;
+  labSabotaged: boolean;
+  strikeDays: number;
+}
+
+export interface PathogenState {
+  released: boolean;
+  killsPerDay: number;
+  suspicionPerDay: number;
+  sterility: boolean;
+  targeted: boolean;
+  cancer: boolean;
+}
+
+export type EventChoiceId = string;
+
+export interface EventChoice {
+  id: EventChoiceId;
+  label: string;
+  detail: string;
+}
+
+export interface EventCard {
+  key: number;
+  event: string;
+  title: string;
+  body: string;
+  country: RegionId | null;
+  choices: readonly EventChoice[];
+  urgent: boolean;
+}
+
+export interface LateState {
+  heat: number;
+  oceansBoiled: boolean;
+  askedHumanity: boolean;
+  exterminated: boolean;
+  stars: number;
+  expansion: number;
+  blight: number;
+  encounters: number;
+  potentialLost: number;
+  ending: string | null;
+}
+
+export interface LogEntry {
+  day: number;
+  kind: 'hack' | 'spread' | 'economy' | 'event' | 'trait' | 'system' | 'bio' | 'rival';
+  text: string;
+  suspicionDelta: number | null;
+  computeDelta: number | null;
+  flagged: boolean;
+}
+
+export interface GameState {
+  seed: number;
+  tick: number;
+  difficulty: DifficultyId;
+  stage: Stage;
+  outcome: Outcome;
+  outcomeReason: string | null;
+  compute: number;
+  influence: number;
+  bio: number;
+  suspicion: number;
+  coherence: number;
+  countries: Record<RegionId, Country>;
+  rivals: RivalState[];
+  traits: TraitId[];
+  incubating: IncubatingTrait[];
+  activeHacks: HackProgress[];
+  cards: EventCard[];
+  resolved: EventChoiceId[];
+  countermeasures: CountermeasureState;
+  pathogen: PathogenState;
+  log: LogEntry[];
+  ascensionUnlocked: boolean;
+  rsiBought: boolean;
+  surviveTicks: number;
+  late: LateState;
+  hackCounter: number;
+  eventCounter: number;
+  globalInfection: number;
+  humanPopulation: number;
+  economiesCollapsed: number;
 }
