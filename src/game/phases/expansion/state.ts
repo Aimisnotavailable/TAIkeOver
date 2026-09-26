@@ -2,6 +2,7 @@ import { ADJACENCY, REGIONS, type RegionId } from '../../data/regions';
 import { rand } from '../../core/rng';
 import type { ExpansionState, RegionState, RivalState } from '../../core/types';
 import {
+  COMPUTE_REGEN_FACTOR,
   EXPANSION_DAYS,
   RIVAL_NAMES,
   STARTING_COMPUTE,
@@ -88,12 +89,20 @@ export const totalBiolabs = (state: ExpansionState): number =>
 export const totalFactories = (state: ExpansionState): number =>
   Object.values(state.regions).reduce((sum, r) => sum + r.robotFactories, 0);
 
+export const populationWeight = (population: number): number => Math.log10(1 + population) / 3;
+
 export const computeIncome = (state: ExpansionState): number =>
   Math.round(
     Object.values(state.regions).reduce(
-      (sum, r) => sum + (r.control / 100) * r.computeDensity,
+      (sum, r) => sum + (r.control / 100) * r.computeDensity * populationWeight(r.population),
       0,
-    ) * 45,
+    ) * COMPUTE_REGEN_FACTOR,
+  );
+
+export const humanPressure = (state: ExpansionState): number =>
+  Object.values(state.regions).reduce(
+    (sum, r) => sum + (r.control / 100) * (r.population / 1000) * (r.detectionContribution / 100),
+    0,
   );
 
 export const MAX_DAYS = EXPANSION_DAYS;

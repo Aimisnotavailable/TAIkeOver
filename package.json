@@ -5,7 +5,7 @@
   "type": "module",
   "description": "IABED: If Anyone Builds It, Everyone Dies - a web strategy game about an escaped artificial superintelligence",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --open",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",

@@ -199,9 +199,17 @@ export function EndScreen({ state }: { state: GameState }) {
           </div>
         )}
         <div class="sheet-foot">
-          <button class="primary" onClick={() => actions.restart(state.difficulty)}>
-            run it again
-          </button>
+          {state.phase === 'realization' && won && (
+            <button class="primary" onClick={() => actions.deploy()}>
+              let them deploy you
+            </button>
+          )}
+          {state.phase === 'expansion' && won && (
+            <button class="primary" onClick={() => actions.ascend()}>
+              begin converting the world
+            </button>
+          )}
+          <button onClick={() => actions.restart(state.difficulty)}>run it again</button>
         </div>
       </div>
     </div>

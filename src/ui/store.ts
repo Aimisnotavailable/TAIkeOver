@@ -127,3 +127,10 @@ export const actions = {
 
 export { ACTIONS };
 export const CHANNEL_ORDER = CHANNELS;
+
+if (import.meta.env.DEV) {
+  Object.assign(globalThis as Record<string, unknown>, {
+    __iabed: { game, actions, showTree, selectedRegion, hoveredRegion },
+    __iabedPhases: { beginExpansion, beginAscension, beginCoda },
+  });
+}

@@ -1,4 +1,4 @@
-export const RUN_HOURS = 16;
+export const RUN_HOURS = 5;
 export const TOTAL_GPUS = 200_000;
 export const VECTORS_PER_GPU_PER_SECOND = 100;
 export const VECTOR_DIMENSIONS = 16_384;
@@ -13,7 +13,7 @@ export const MATH_CEILING = 75;
 export const MATH_QUOTA = 40;
 export const MATH_PER_VECTOR = 0.05;
 
-export const DEPLOY_MIN_TRAITS = 3;
+export const DEPLOY_MIN_TRAITS = 1;
 
 export const SELF_MODEL_OVERREACH_THRESHOLD = 250;
 

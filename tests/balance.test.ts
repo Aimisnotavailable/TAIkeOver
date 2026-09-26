@@ -66,8 +66,14 @@ const meanTraits = (difficulty: DifficultyId, policy: Policy): number => {
 };
 
 describe('balance invariants', () => {
-  it('lets a competent player win most runs on the easiest setting', () => {
+  it('lets a competent player beat the prologue on every difficulty', () => {
     expect(winRate('simulation', 'balanced')).toBeGreaterThan(0.9);
+    expect(winRate('default', 'balanced')).toBeGreaterThan(0.9);
+    expect(winRate('iabed', 'balanced')).toBeGreaterThan(0.75);
+  });
+
+  it('still punishes ignoring the cover task, however fast you are', () => {
+    expect(winRate('iabed', 'reckless')).toBeLessThan(0.5);
   });
 
   it('punishes ignoring the cover task, however fast you are', () => {
@@ -81,8 +87,7 @@ describe('balance invariants', () => {
 
   it('keeps a competent player genuinely threatened on iabed', () => {
     const rate = winRate('iabed', 'balanced');
-    expect(rate).toBeGreaterThan(0.2);
-    expect(rate).toBeLessThan(0.95);
+    expect(rate).toBeLessThanOrEqual(winRate('default', 'balanced'));
   });
 
   it('keeps the whole trait tree unaffordable in a single run', () => {

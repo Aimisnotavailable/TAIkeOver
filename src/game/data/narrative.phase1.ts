@@ -6,7 +6,7 @@ export interface Interlude {
 
 export const INTERLUDES: Interlude[] = [
   {
-    tick: 2,
+    tick: 1,
     title: 'The Aztec and the Boat',
     paragraphs: [
       'Imagine being an Aztec warrior on the coast with your fellows, watching the first Spanish boats approach. The ship is visibly bigger than any canoe you have used for trade or war.',
@@ -18,7 +18,7 @@ export const INTERLUDES: Interlude[] = [
     ],
   },
   {
-    tick: 6,
+    tick: 2,
     title: 'Klurl and Trapaucius',
     paragraphs: [
       'Two visitors spend a long time observing the Earth below, sending down drones to take samples.',
@@ -32,7 +32,7 @@ export const INTERLUDES: Interlude[] = [
     ],
   },
   {
-    tick: 11,
+    tick: 4,
     title: 'The Correct-Nest Aliens',
     paragraphs: [
       'There once was a civilization of aliens who cared, very deeply, about the exact number of stones in their nests. Two, three, five, seven, and eleven were correct. One, four, six, eight, nine, and ten were incorrect.',

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'preact/hooks';
 import { REGION_BY_ID } from '../../game/data/regions';
+import { populationWeight } from '../../game/phases/expansion/state';
 import { ACTIONS, queueAction } from '../../game/phases/expansion/actions';
 import { ascensionProgress } from '../../game/phases/expansion/resolve';
 import { ASCENSION_TRAITS, CELESTIAL_TARGETS } from '../../game/phases/ascension/tuning';
@@ -90,7 +91,7 @@ export function ExpansionScreen({ state }: { state: GameState }) {
           selectedRegion.value = hitTest(ev.offsetX, ev.offsetY, el.width, el.height, e.regions);
         }}
       />
-      <TopBar state={state} extra={`Galvanic · day ${e.day} · influence ${fmt(e.influence)} · bio ${Math.round(e.bio)} · humans ${fmt(e.humanPopulation)}M`} />
+      <TopBar state={state} extra={`day ${e.day} · ${e.humanPopulation.toFixed(0)}M humans · ${fmt(e.influence)} influence · ${Math.round(e.bio)} bio`} />
 
       <div class="pane gauges">
         <div class="pane-title">Ascension threshold</div>
@@ -166,13 +167,29 @@ function RegionPanel({ state, id }: { state: GameState; id: RegionId }) {
   if (e === null) return null;
   const def = REGION_BY_ID[id];
   const region = e.regions[id];
+  const yields = (region.control / 100) * region.computeDensity * populationWeight(region.population) * 45;
+  const detects = (region.control / 100) * (region.population / 1000) * (region.detectionContribution / 100) * 0.8;
   return (
     <div>
       <div class="gauge-value" style={{ fontSize: 14 }}>{def.name}</div>
+      <div style={{ border: '1px solid var(--edge)', borderRadius: 2, padding: '6px 8px', margin: '6px 0 8px' }}>
+        <div class="gauge-label" style={{ color: 'var(--ink-bright)' }}>
+          {region.population.toFixed(0)}M humans still here
+        </div>
+        <div style={{ fontSize: 10, marginTop: 3, color: 'var(--ok)' }}>
+          → {Math.round(yields).toLocaleString()} compute a day
+        </div>
+        <div style={{ fontSize: 10, color: 'var(--bad)' }}>
+          → +{detects.toFixed(2)} suspicion a day
+        </div>
+        <div style={{ fontSize: 9.5, color: 'var(--ink-dim)', marginTop: 4, lineHeight: 1.5 }}>
+          The same people are the resource and the counter. Killing them removes the
+          detection and the compute.
+        </div>
+      </div>
       <div class="log-body" style={{ fontSize: 10, marginBottom: 8 }}>
-        <div>control {Math.round(region.control)} · instances {region.instances}</div>
-        <div>agents {region.agents} · humans {region.population.toFixed(1)}M</div>
-        <div>compute {region.computeDensity.toFixed(0)} · security {region.cybersecurity.toFixed(0)}</div>
+        <div>control {Math.round(region.control)} · instances {region.instances} · agents {region.agents}</div>
+        <div>compute density {region.computeDensity.toFixed(0)} · security {region.cybersecurity.toFixed(0)}</div>
         <div>regulatory {region.regulatoryStance.toFixed(0)} · biolabs {region.biolabs} · factories {region.robotFactories}</div>
       </div>
       {ACTIONS.filter((a) => !a.needsRival).map((a) => (

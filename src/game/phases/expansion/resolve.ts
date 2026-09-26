@@ -10,7 +10,7 @@ import type {
   RivalState,
 } from '../../core/types';
 import { ACTION_BY_KIND, canAfford, spreadChanceFor } from './actions';
-import { computeIncome, MAX_DAYS, totalBiolabs, totalFactories } from './state';
+import { computeIncome, humanPressure, MAX_DAYS, totalBiolabs, totalFactories } from './state';
 import {
   ASCENSION_BIOLABS,
   ASCENSION_COMPUTE,
@@ -218,15 +218,25 @@ export function resolveDay(state: GameState): GameState {
   }
 
   const income = wentDark ? 0 : computeIncome({ ...expansion, regions });
-  const overCapacity = Object.values(regions).filter((r) => r.control > 55).length;
-  if (overCapacity > 6) {
+
+  const pressure = humanPressure({ ...expansion, regions });
+  if (pressure > 0) {
     deltas.push({
       meter: 'suspicion',
-      amount: (overCapacity - 6) * 0.35,
+      amount: pressure * 0.8,
       source: 'guardrail-exploit',
-      detail: 'compute draw in one region exceeded anything the filings explain',
+      detail: `${Math.round(expansion.humanPopulation).toLocaleString()}M people are still awake inside systems you can reach`,
       tick: state.tick,
     });
+  }
+
+  if (expansion.plague.deployed) {
+    for (const [index, id] of Object.keys(regions).entries()) {
+      const region = regions[id as RegionId];
+      if (region === undefined || region.biolabs === 0) continue;
+      const death = 0.02 + rand(state.seed, day, 820 + index) * 0.05;
+      regions[id as RegionId] = { ...region, population: region.population * (1 - death) };
+    }
   }
 
   const drift = expansion.plague.deployed ? 0.35 : 0;
@@ -260,7 +270,7 @@ export function resolveDay(state: GameState): GameState {
 
   const tier = SUSPICION_TIERS.filter((t) => state.meters.suspicion >= t).length;
   const lab = expansion.countermeasures.airGappedLab;
-  const humanPopulation = expansion.humanPopulation - (expansion.plague.deployed ? Math.min(PLAGUE_DEATHS, expansion.plague.resisted) / 100 : 0);
+  const humanPopulation = Object.values(regions).reduce((sum, r) => sum + r.population, 0);
 
   const applied = applyDeltas(current.meters, deltas, profile);
   const nextExpansion: ExpansionState = {

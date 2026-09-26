@@ -31,20 +31,56 @@ function pathFor(country: CountryShape, p: Projection, key: string): Path2D {
   if (cached !== undefined) return cached;
   const path = new Path2D();
   for (const ring of country.rings) {
-    ring.forEach(([lon, lat], i) => {
+    let started = false;
+    let prevLon: number | null = null;
+    for (const [lon, lat] of ring) {
       const px = p.x(lon);
       const py = p.y(lat);
-      if (i === 0) path.moveTo(px, py);
-      else path.lineTo(px, py);
-    });
+      const wrapped = prevLon !== null && Math.abs(lon - prevLon) > 180;
+      if (!started || wrapped) {
+        path.moveTo(px, py);
+        started = true;
+      } else {
+        path.lineTo(px, py);
+      }
+      prevLon = lon;
+    }
     path.closePath();
   }
   paths.set(key, path);
   return path;
 }
 
+const labelPoints = new Map<string, { x: number; y: number }>();
+
+function labelFor(id: RegionId, p: Projection): { x: number; y: number } {
+  const cached = labelPoints.get(id);
+  if (cached !== undefined) return cached;
+  const region = REGIONS.find((r) => r.id === id);
+  let biggest: readonly (readonly [number, number])[] | null = null;
+  for (const country of region?.countries ?? []) {
+    const shape = COUNTRIES.find((c) => c.name === country);
+    for (const ring of shape?.rings ?? []) {
+      if (biggest === null || ring.length > biggest.length) biggest = ring;
+    }
+  }
+  let point = { x: 0, y: 0 };
+  if (biggest !== null) {
+    let sx = 0;
+    let sy = 0;
+    for (const [lon, lat] of biggest) {
+      sx += p.x(lon);
+      sy += p.y(lat);
+    }
+    point = { x: sx / biggest.length, y: sy / biggest.length };
+  }
+  labelPoints.set(id, point);
+  return point;
+}
+
 export const clearProjectionCache = (): void => {
   paths.clear();
+  labelPoints.clear();
 };
 
 export type MapPhase = 'expansion' | 'ascension';
@@ -154,6 +190,26 @@ export function drawWorldMap(ctx: CanvasRenderingContext2D, width: number, heigh
   if (frame.plague) {
     ctx.fillStyle = 'rgba(255,90,60,0.07)';
     ctx.fillRect(0, 0, width, height);
+  }
+
+  ctx.font = '600 10px ui-monospace, Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  for (const region of REGIONS) {
+    const state = frame.regions[region.id];
+    const at = labelFor(region.id, p);
+    if (at.x <= 0 || at.y <= 0) continue;
+    ctx.font = '600 9px ui-monospace, Consolas, monospace';
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = 'rgba(2,6,9,0.92)';
+    ctx.strokeText(region.name.toUpperCase(), at.x, at.y);
+    ctx.fillStyle = '#eaf6fb';
+    ctx.fillText(region.name.toUpperCase(), at.x, at.y);
+    ctx.font = '8px ui-monospace, Consolas, monospace';
+    ctx.strokeText(`${state.population.toFixed(0)}M`, at.x, at.y + 10);
+    ctx.fillStyle = frame.plague ? '#ffb4a2' : '#9fd0dd';
+    ctx.fillText(`${state.population.toFixed(0)}M`, at.x, at.y + 10);
   }
 }
 
