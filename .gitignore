@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+.vite/
+
+# Copyrighted source material — never committed.
+reference/
+
+# Brainstorming companion session state.
+.superpowers/
+
+*.local
+.DS_Store
+Thumbs.db
