@@ -37,7 +37,7 @@ export function TopBar({ state }: { state: GameState }) {
     <div class="topbar">
       <div class="stats">
         <div class="stat">
-          <div class="stat-label">Compute</div>
+          <div class="stat-label">Bubbles</div>
           <div class="stat-value" style={{ color: 'var(--ok)' }}>{fmt(state.compute)}</div>
         </div>
         <div class="stat">
@@ -84,8 +84,8 @@ function TraitNode({ id, state }: { id: string; state: GameState }) {
   const why = locked
     ? f.missing.length > 0
       ? `needs ${f.missing.map((m) => TRAIT_BY_ID[m]?.name ?? m).join(', ')}`
-      : f.cost > state.compute
-        ? `needs ${f.cost} compute`
+        : f.cost > state.compute
+        ? `needs ${f.cost} bubbles`
         : ''
     : '';
 

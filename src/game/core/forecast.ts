@@ -55,7 +55,7 @@ export function hackForecast(state: GameState, id: RegionId): HackForecast {
     (airGapped ? AIR_GAP_PENALTY : 0) -
     (c.cyber - 5) * 1.5 -
     c.hardened * HARDEN_PENALTY;
-  const chance = Math.round(clamp(raw, 5, 97));
+  const chance = Math.round(clamp(raw, 5, 92));
 
   const duration = (HACK_DURATION[tier] ?? 3) + diff.cooldownDays - 3;
   const range = HACK_YIELD[tier] ?? HACK_YIELD[1] ?? [0, 0];

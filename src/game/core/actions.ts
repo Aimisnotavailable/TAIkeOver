@@ -227,7 +227,7 @@ export function resolveHacks(state: GameState): GameState {
     const successChance = clamp(
       60 + hackSuccessBonus(state) + diff.hackBonus + (country.agents > 0 ? 40 : 0) -
         (airGapped ? AIR_GAP_PENALTY : 0) - (country.cyber - 5) * 1.5 - country.hardened * HARDEN_PENALTY,
-      5, 97,
+      5, 92,
     );
     const success = hack.auto || chance(state.seed, hack.resolveTick, hack.key * 31 + hack.depth, successChance / 100);
     const depthBonus = 1 + Math.min(hack.depth, MAX_DEPTH) * DEPTH_YIELD_STEP;

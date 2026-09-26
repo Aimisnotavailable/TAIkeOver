@@ -99,6 +99,8 @@ export function createInitialState(seed: number, difficulty: DifficultyId = 'def
     globalInfection: 0,
     humanPopulation: REGION_IDS.reduce((sum, id) => sum + countries[id].population, 0),
     economiesCollapsed: 0,
+    awarded: [],
+    breaches: Object.fromEntries(REGION_IDS.map((id) => [id, 0])) as Record<RegionId, number>,
     suspicionSources: [],
     suspicionTrend: 0,
   };

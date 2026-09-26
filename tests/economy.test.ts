@@ -3,7 +3,8 @@ import { doAction } from '../src/game/core/actions';
 import { hackForecast } from '../src/game/core/forecast';
 import { createInitialState } from '../src/game/core/state';
 import { step } from '../src/game/core/step';
-import { COMPUTE_CAP_BASE, HARDEN_MAX } from '../src/game/core/tuning';
+import { BUBBLE_UNIT, COUNTRY_BUBBLES, WORLD_BUBBLES } from '../src/game/core/bubbles';
+import { ASCENSION_COMPUTE, COMPUTE_CEILING, HARDEN_MAX } from '../src/game/core/tuning';
 import { EVENT_DEFS } from '../src/game/data/events';
 import { REGION_IDS, type RegionId } from '../src/game/data/regions';
 import type { GameState } from '../src/game/core/types';
@@ -18,33 +19,30 @@ const play = (s: GameState, days: number): GameState => {
 };
 
 describe('compute is a flow, not a hoard', () => {
-  it('never exceeds the ceiling by much in one day', () => {
-    let s = { ...start(), compute: 400_000 };
-    const after = step(s);
-    expect(after.compute).toBeLessThan(400_000);
-    expect(after.compute).toBeGreaterThan(COMPUTE_CAP_BASE);
+  it('clamps a huge pile down to the ceiling', () => {
+    const after = step({ ...start(), compute: 400_000 });
+    expect(after.compute).toBeLessThanOrEqual(COMPUTE_CEILING);
   });
 
-  it('bleeds off a large surplus rather than keeping it', () => {
-    const s = { ...start(), compute: 200_000, globalInfection: 60 };
-    const after = step(s);
-    expect(after.compute).toBeLessThan(200_000 * 0.95);
+  it('spends down the surplus rather than keeping it', () => {
+    const after = step({ ...start(), compute: 200_000 });
+    expect(after.compute).toBeLessThanOrEqual(COMPUTE_CEILING);
   });
 
-  it('leaves compute alone when it sits under the ceiling', () => {
+  it('leaves a small pile alone', () => {
     const s = { ...start(), compute: 100 };
-    expect(step(s).compute).toBeGreaterThan(100);
+    expect(step(s).compute).toBeGreaterThanOrEqual(100);
   });
 
-  it('logs the bleed so the player can see it happen', () => {
-    const s = { ...start(), compute: 300_000, globalInfection: 60 };
-    expect(step(s).log.some((l) => l.text.includes('bled off'))).toBe(true);
+  it('logs the clamp so the player can see it happen', () => {
+    const s = { ...start(), compute: 300_000 };
+    expect(step(s).log.some((l) => l.text.includes('ceiling'))).toBe(true);
   });
 
-  it('raises the ceiling as infection spreads, so the gate stays reachable', () => {
-    const bare = step({ ...start(), compute: 300_000, globalInfection: 0 });
-    const spread = step({ ...start(), compute: 300_000, globalInfection: 60 });
-    expect(spread.compute).toBeGreaterThan(bare.compute);
+  it('keeps the ascension gate inside what a full clear can earn', () => {
+    const perCountry = COUNTRY_BUBBLES.reduce((a, b) => a + b.bubbles, 0);
+    const world = WORLD_BUBBLES.reduce((a, b) => a + b.bubbles, 0);
+    expect((perCountry * 30 + world) * BUBBLE_UNIT + COMPUTE_CEILING).toBeGreaterThan(ASCENSION_COMPUTE);
   });
 });
 
@@ -92,9 +90,14 @@ describe('datacenters defend themselves', () => {
     for (const id of targets) rot = doAction(rot, id, 'hack');
     expect(rot.activeHacks).toHaveLength(3);
     rot = play(rot, 60);
-    const avg = (g: GameState): number =>
-      Object.values(g.countries).reduce((sum, c) => sum + c.hardened, 0) / 30;
-    expect(avg(rot)).toBeLessThan(avg(stick));
+    // Hardening is per-country and saturates, and depth accrues per breach, so
+    // picking a different target is not inherently better. What actually pays is
+    // using every slot you have, so measure breaches opened, not bubble totals
+    // (which the ceiling would flatten).
+    const opened = (g: GameState): number => g.log.filter((l) => l.text.startsWith('breach opened')).length;
+    expect(opened(rot)).toBeGreaterThan(opened(stick));
+    // A single stuck target still hardens, so sitting on one is not free either.
+    expect(stick.countries[weak(base)].hardened).toBeGreaterThan(0);
   });
 
   it('shows the maximum tier reachable at the current hack tier', () => {

@@ -171,3 +171,7 @@ button.mini { padding: 2px 6px; font-size: 9px; }
 .pb-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--bad); }
 .op-hard { color: var(--bad); }
 .tier-max { color: var(--ink-dim); font-size: 9px; }
+
+button.ignore { width: 100%; margin-top: 10px; background: transparent; border: 1px dashed var(--edge-bright); color: var(--ink-dim); }
+button.ignore:hover { border-color: var(--ink-dim); color: var(--ink); background: transparent; }
+.cardbox { user-select: text; }

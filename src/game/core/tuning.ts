@@ -6,6 +6,7 @@ export const SPEEDS = [0, 1, 2, 4, 8] as const;
 export const STARTING_COMPUTE = 300;
 export const STARTING_INFLUENCE = 60;
 export const COMPUTE_FACTOR = 1.5;
+export const COMPUTE_CEILING = 30_000;
 export const COMPUTE_CAP_BASE = 8000;
 export const COMPUTE_CAP_SPAN = 52000;
 export const COMPUTE_CAP_INFECTION = 60;
@@ -13,7 +14,7 @@ export const COMPUTE_BLEED = 0.15;
 export const HARDEN_RISE = 0.6;
 export const HARDEN_FALL = 0.35;
 export const HARDEN_MAX = 8;
-export const HARDEN_PENALTY = 2.5;
+export const HARDEN_PENALTY = 3.5;
 export const START_TICK_INCUBATION = 3;
 export const MAX_INCUBATION = 8;
 
@@ -61,7 +62,7 @@ export const AIR_GAP_PENALTY = 15;
 export const STRIKE_TIER = 4;
 export const STRIKE_DRAIN = 180;
 
-export const ASCENSION_COMPUTE = 50_000;
+export const ASCENSION_COMPUTE = 20_000;
 export const ASCENSION_INFECTION = 60;
 export const ASCENSION_COHERENCE = 30;
 export const RSI_SURVIVE_DAYS = 30;

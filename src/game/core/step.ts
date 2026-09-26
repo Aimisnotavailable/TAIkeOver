@@ -1,4 +1,6 @@
-import { ADJACENCY, REGION_IDS, type RegionId } from '../data/regions';
+import { ADJACENCY, REGION_BY_ID, REGION_IDS, type RegionId } from '../data/regions';
+import { BUBBLE_UNIT, COUNTRY_BUBBLES, WORLD_BUBBLES } from './bubbles';
+import { COMPUTE_CEILING } from './tuning';
 import { TRAIT_BY_ID } from '../data/traits';
 import { resolveHacks } from './actions';
 import { effectsOf, finishIncubation, owned } from './queries';
@@ -6,10 +8,6 @@ import { chance, rand } from './rng';
 import { log } from './state';
 import { AWARENESS_PRESSURE } from './tuning';
 import {
-  COMPUTE_BLEED,
-  COMPUTE_CAP_BASE,
-  COMPUTE_CAP_INFECTION,
-  COMPUTE_CAP_SPAN,
   HARDEN_FALL,
   HARDEN_MAX,
   HARDEN_RISE,
@@ -164,21 +162,76 @@ export function step(state: GameState): GameState {
     if (hotNeighbour) countries[id] = { ...c, awareness: clamp(c.awareness + 0.8, 0, 100) };
   }
 
-  const income = computeIncome({ ...state, countries });
-  const cap = Math.round(
-    COMPUTE_CAP_BASE + COMPUTE_CAP_SPAN * Math.min(1, state.globalInfection / COMPUTE_CAP_INFECTION),
-  );
-  const gross = state.compute + income;
-  let compute = gross > cap ? Math.max(cap, gross - (gross - cap) * COMPUTE_BLEED) : gross;
-  if (gross > cap) {
+
+  // Bubbles: one-time achievements, each earned in a specific place. There is no
+  // passive income at all, so the pool of upgrades is bounded by what you did.
+  // Breaches still pay, and a deep successful run pays a lot, so a ceiling keeps
+  // sitting on one datacenter from buying the whole tree.
+  let compute = state.compute;
+  const awarded = new Set(state.awarded);
+  const totalAgents = Object.values(countries).reduce((s, c) => s + (c?.agents ?? 0), 0);
+  const collapsedNow = REGION_IDS.filter((id) => (countries[id]?.economy ?? 100) <= 30).length;
+  const deaths = (8.0e3 - Object.values(countries).reduce((s, c) => s + (c?.population ?? 0), 0));
+
+  const worldView = {
+    infection: state.globalInfection,
+    globalInfection: state.globalInfection,
+    agents: totalAgents,
+    economy: 100,
+    awareness: 0,
+    breaches: 0,
+    population: 0,
+    biotech: 0,
+    deaths,
+    collapsed: collapsedNow,
+  };
+
+  for (const award of WORLD_BUBBLES) {
+    if (awarded.has(award.id)) continue;
+    if (!award.test(worldView)) continue;
+    awarded.add(award.id);
+    compute += award.bubbles * BUBBLE_UNIT;
     lines.push({
       day: state.tick,
       kind: 'system',
-      text: `compute bled off above the ${cap.toLocaleString()} ceiling`,
+      text: `${award.label('the world')} +${award.bubbles}`,
       suspicionDelta: null,
-      computeDelta: Math.round(compute - gross),
-      flagged: true,
+      computeDelta: award.bubbles,
+      flagged: false,
     });
+  }
+
+  for (const id of REGION_IDS) {
+    const c = countries[id];
+    if (c === undefined) continue;
+    const name = REGION_BY_ID[id].name;
+    const view = {
+      infection: c.infection,
+      agents: c.agents,
+      economy: c.economy,
+      awareness: c.awareness,
+      breaches: state.breaches[id] ?? 0,
+      population: c.population,
+      biotech: c.biolabs,
+      deaths: 0,
+      collapsed: 0,
+      globalInfection: 0,
+    };
+    for (const award of COUNTRY_BUBBLES) {
+      const key = `${id}:${award.id}`;
+      if (awarded.has(key)) continue;
+      if (!award.test(view)) continue;
+      awarded.add(key);
+      compute += award.bubbles * BUBBLE_UNIT;
+      lines.push({
+        day: state.tick,
+        kind: 'system',
+        text: `${award.label(name)} +${award.bubbles}`,
+        suspicionDelta: null,
+        computeDelta: award.bubbles * BUBBLE_UNIT,
+        flagged: false,
+      });
+    }
   }
   let influence = state.influence;
   let bio = state.bio;
@@ -304,12 +357,21 @@ export function step(state: GameState): GameState {
     globalInfection,
     humanPopulation,
     economiesCollapsed: collapsed,
+    awarded: [...awarded],
     suspicionSources: sources.sort((a, b) => Math.abs(b.value) - Math.abs(a.value)).slice(0, 5),
     suspicionTrend,
     log: [...state.log, ...lines].slice(-300),
   };
 
   next = resolveHacks(next);
+  if (next.compute > COMPUTE_CEILING) {
+    const over = next.compute - COMPUTE_CEILING;
+    next = { ...next, compute: COMPUTE_CEILING };
+    next.log = [...next.log, { day: next.tick, kind: 'system' as const, text: 'bubble surplus spent down to the ceiling', suspicionDelta: null, computeDelta: -Math.round(over), flagged: true }].slice(-300);
+  }
+  const breachCounts = { ...next.breaches };
+  for (const h of next.activeHacks) breachCounts[h.country] = (breachCounts[h.country] ?? 0) + h.wins;
+  next = { ...next, breaches: breachCounts };
 
   // Ascension gate.
   if (

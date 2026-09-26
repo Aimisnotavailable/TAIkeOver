@@ -149,6 +149,21 @@ export const actions = {
     });
   },
 
+  dismissCard(cardKey: number): void {
+    mutate((s) => {
+      const card = s.cards.find((c) => c.key === cardKey);
+      if (card === undefined) return s;
+      return {
+        ...s,
+        cards: s.cards.filter((c) => c.key !== cardKey),
+        log: [
+          ...s.log,
+          { day: s.tick, kind: 'event' as const, text: `${card.title}: let it pass`, suspicionDelta: null, computeDelta: null, flagged: true },
+        ].slice(-300),
+      };
+    });
+  },
+
   restart(difficulty: DifficultyId): void {
     game.value = createInitialState(SEED + game.peek().tick, difficulty);
     selected.value = null;

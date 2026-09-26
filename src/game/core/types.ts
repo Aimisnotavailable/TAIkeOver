@@ -197,6 +197,8 @@ export interface GameState {
   globalInfection: number;
   humanPopulation: number;
   economiesCollapsed: number;
+  awarded: readonly string[];
+  breaches: Record<RegionId, number>;
   suspicionSources: SuspicionSource[];
   suspicionTrend: number;
 }

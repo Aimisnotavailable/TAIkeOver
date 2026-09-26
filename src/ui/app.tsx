@@ -46,12 +46,26 @@ function ColdOpen({ onDone }: { onDone: () => void }) {
 }
 
 function EventCards({ state }: { state: GameState }) {
+  const dismiss = actions.dismissCard;
+
+  useEffect(() => {
+    if (state.cards.length === 0) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Enter' || e.key === 'Escape' || e.key === ' ') {
+        e.preventDefault();
+        dismiss(state.cards[0]?.key ?? 0);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [state.cards]);
+
   if (state.cards.length === 0) return null;
   return (
     <>
       {state.cards.map((card) => (
-        <div class="overlay" key={card.key}>
-          <div class="cardbox">
+        <div class="overlay" key={card.key} onClick={() => dismiss(card.key)}>
+          <div class="cardbox" onClick={(e) => e.stopPropagation()}>
             <div class="card-kicker">{card.urgent ? 'drift' : 'event'}{card.country !== null && ` · ${REGION_BY_ID[card.country]?.name ?? ''}`}</div>
             <h2>{card.title}</h2>
             <p>{card.body}</p>
@@ -63,6 +77,9 @@ function EventCards({ state }: { state: GameState }) {
                 </button>
               ))}
             </div>
+            <button class="ignore" onClick={() => dismiss(card.key)}>
+              ignore it &mdash; press enter
+            </button>
           </div>
         </div>
       ))}

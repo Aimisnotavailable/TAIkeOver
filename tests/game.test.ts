@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { canDo, doAction } from '../src/game/core/actions';
 import { canBuyTrait, hackTier, maxConcurrentHacks, owned } from '../src/game/core/queries';
 import { createInitialState } from '../src/game/core/state';
-import { computeIncome, step } from '../src/game/core/step';
+import { step } from '../src/game/core/step';
 import { DIFFICULTIES, ASCENSION_COMPUTE, TICK_MS } from '../src/game/core/tuning';
 import { TRAITS, TRAIT_BY_ID } from '../src/game/data/traits';
 import { REGION_IDS, type RegionId } from '../src/game/data/regions';
@@ -75,10 +75,10 @@ describe('the tick', () => {
     expect(infected).toBeGreaterThan(1);
   });
 
-  it('grows compute as infection spreads', () => {
+  it('pays no passive income, so bubbles only come from achievements', () => {
     const s = start();
-    expect(computeIncome(s)).toBeGreaterThan(0);
-    expect(play(s, 20).compute).toBeGreaterThan(s.compute);
+    const after = play(s, 10);
+    expect(after.compute).toBe(s.compute);
   });
 
   it('raises awareness over time', () => {
