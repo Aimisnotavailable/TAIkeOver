@@ -16,6 +16,7 @@ import {
   COMPUTE_BUBBLE_CHANCE_RED,
   COMPUTE_BUBBLE_CHANCE_ORANGE,
   COMPUTE_BUBBLE_CHANCE_BLUE,
+  INFLUENCE_QUIET_FLOOR,
 } from './tuning';
 import type { ComputeBubble, ComputeBubbleKind, GameState, RegionId } from './types';
 
@@ -123,3 +124,12 @@ export const BUBBLE_LABEL: Record<ComputeBubbleKind, string> = {
   orange: 'strip',
   blue: 'audit',
 };
+
+/**
+ * How much of a suspicion gain survives your influence. Reaches the floor at a
+ * few hundred influence, so the soft-power branch has a real ceiling on it.
+ */
+export function quietFactor(influence: number): number {
+  if (influence <= 0) return 1;
+  return Math.max(INFLUENCE_QUIET_FLOOR, 200 / (200 + influence));
+}

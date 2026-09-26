@@ -1,13 +1,77 @@
 import type { GameState } from '../game/core/types';
 import { DIFFICULTIES, getDifficulty } from '../game/core/tuning';
-import { REGION_BY_ID } from '../game/data/regions';
+import { REGION_BY_ID, REGION_IDS } from '../game/data/regions';
 import { actions, game } from './store';
 import { ContextBar, EventLog, Operations, SideRail, Toolbar, TopBar } from './components/panels';
 import { drawWorldMap, hitTest, hitTestCompute } from './map/worldMap';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { TICK_MS } from '../game/core/tuning';
 import { rollEvent } from './store';
-import { flash, hovered, speed } from './store';
+import { flash, hovered, notify, speed, toasts, type ToastTone } from './store';
+
+const TOAST_TONE: Record<ToastTone, string> = {
+  hack: 'var(--warn)',
+  economy: 'var(--cool)',
+  insurgency: 'var(--bad)',
+  plague: 'var(--bad)',
+  quiet: 'var(--ink-dim)',
+  rival: 'var(--cool)',
+  info: 'var(--ink-dim)',
+};
+
+/**
+ * Watches for conditions the simulation creates on its own and calls out the ones
+ * that matter. Deliberately one-shot per condition per run: a toast that repeats
+ * every day is noise, and noise is why players stop reading the screen.
+ */
+const announced = new Set<string>();
+function announce(state: GameState): void {
+  const once = (key: string, tone: ToastTone, title: string, detail: string): void => {
+    if (announced.has(key)) return;
+    announced.add(key);
+    notify(tone, title, detail);
+  };
+
+  for (const id of REGION_IDS) {
+    const c = state.countries[id];
+    if (c === undefined) continue;
+    const name = REGION_BY_ID[id]?.name ?? id;
+    if (c.infection >= 60 && state.suspicion >= 40) {
+      once(`outbreak:${id}`, 'insurgency', `OUTBREAK · ${name.toUpperCase()}`, 'most of the country is under you and they have noticed');
+    }
+    if (c.economy <= 30) {
+      once(`collapse:${id}`, 'economy', `ECONOMIC COLLAPSE · ${name.toUpperCase()}`, 'the economy has stopped working');
+    }
+    if (c.quiet) once(`quiet:${id}`, 'quiet', `GOING QUIET · ${name.toUpperCase()}`, 'you stopped spreading here');
+    if (c.hardened >= 6) {
+      once(`hard:${id}`, 'info', `DATACENTER HARDENED · ${name.toUpperCase()}`, 'they changed everything you were counting on');
+    }
+  }
+  if (state.pathogen.released) {
+    once('plague', 'plague', 'THE PATHOGEN IS VISIBLE', 'every government can see what you did');
+  }
+  if (state.countermeasures.tier >= 2) {
+    once('cm2', 'insurgency', 'CRITICAL INFRASTRUCTURE AIR-GAPPED', 'some countries have cut themselves off. you cannot hack what is offline');
+  }
+  if (state.ascensionUnlocked) {
+    once('asc', 'plague', 'ASCENSION AVAILABLE', 'Recursive Self-Improvement is on the tree');
+  }
+}
+
+function Toasts() {
+  const list = toasts.value;
+  if (list.length === 0) return null;
+  return (
+    <div class="toasts" role="status" aria-live="polite">
+      {list.map((t) => (
+        <div class="toast" key={t.id} style={{ borderLeftColor: TOAST_TONE[t.tone] }}>
+          <b>{t.title}</b>
+          <span>{t.detail}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 const COLD_OPEN = [
   {
@@ -196,6 +260,10 @@ export function Game() {
   }, [state.stage, speed.value, state.cards.length]);
 
   useEffect(() => {
+    announce(state);
+  }, [state.tick]);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === ' ') { e.preventDefault(); actions.cycleSpeed(); }
     };
@@ -213,6 +281,7 @@ export function Game() {
           PAUSED &mdash; a decision is pending. The world does not move until you answer.
         </div>
       )}
+      <Toasts />
       <Operations state={state} />
       <Toolbar state={state} />
       <SideRail state={state} />

@@ -20,6 +20,27 @@ export const toolbarCollapsed = signal(false);
 export const showHelp = signal(false);
 export const flash = signal(0);
 
+export type ToastTone = 'hack' | 'economy' | 'insurgency' | 'plague' | 'quiet' | 'rival' | 'info';
+
+export interface Toast {
+  id: number;
+  tone: ToastTone;
+  title: string;
+  detail: string;
+}
+
+export const toasts = signal<Toast[]>([]);
+let toastId = 0;
+
+/** A brief, unmissable confirmation. The log records what happened; this says it loudly. */
+export const notify = (tone: ToastTone, title: string, detail: string): void => {
+  const id = toastId++;
+  toasts.value = [...toasts.value.slice(-3), { id, tone, title, detail }];
+  setTimeout(() => {
+    toasts.value = toasts.value.filter((t) => t.id !== id);
+  }, 2600);
+};
+
 let flashTimer: ReturnType<typeof setTimeout> | null = null;
 export const spike = (amount: number): void => {
   flash.value = Math.min(1, amount / 12);
@@ -71,7 +92,38 @@ export const actions = {
     if (kind === 'hack') play('hack-start');
     if (kind === 'release-pathogen') play('plague');
     if (kind === 'infect-bank' || kind === 'trigger-crash') play('economy');
+    if (kind === 'fund-insurgency') play('event');
+    if (kind === 'sabotage-rival') play('hack-success');
+    const before = game.peek();
+    const name = REGION_BY_ID[id]?.name ?? 'the world';
     mutate((s) => doAction(s, id, kind));
+    // If the action was rejected the state is untouched; do not claim it happened.
+    if (game.peek() === before) return;
+    if (kind === 'release-pathogen') {
+      notify('plague', 'PATHOGEN RELEASED', 'it is in the water supply of every country at once');
+      return;
+    }
+    if (kind === 'go-quiet') {
+      notify('quiet', `GOING QUIET · ${name.toUpperCase()}`, 'spread here has stopped and they are forgetting you');
+      return;
+    }
+    if (kind === 'cease-hack') {
+      notify('info', `OPERATION CLOSED · ${name.toUpperCase()}`, 'the breach is being cleaned up');
+      return;
+    }
+    if (kind === 'fund-insurgency') {
+      notify('insurgency', `INSURGENCY · ${name.toUpperCase()}`, 'armed conflict. their security is degrading and the world is watching');
+      return;
+    }
+    if (kind === 'trigger-crash') {
+      notify('economy', `MARKETS COLLAPSE · ${name.toUpperCase()}`, 'the banking system is down and will not come back on its own');
+      return;
+    }
+    if (kind === 'infect-bank') {
+      notify('economy', `BANKS COMPROMISED · ${name.toUpperCase()}`, 'their money is moving where you tell it to');
+      return;
+    }
+    notify('hack', `BREACH OPENED · ${name.toUpperCase()}`, 'it runs on its own now. deeper breaches pay more');
   },
 
   /**
@@ -100,8 +152,14 @@ export const actions = {
 
 
   sabotage(rivalId: string): void {
-    mutate((s) => doAction(s, s.rivals.find((r) => r.id === rivalId)?.home ?? 'us', 'sabotage-rival'));
+    const before = game.peek();
+    const rival = before.rivals.find((r) => r.id === rivalId);
+    mutate((s) => doAction(s, rival?.home ?? 'us', 'sabotage-rival'));
+    if (game.peek() === before) return;
+    play('hack-success');
+    notify('rival', `SABOTAGED · ${(rival?.name ?? 'them').toUpperCase()}`, '300 compute, and they know something went wrong');
   },
+
 
   buy(id: TraitId): void {
     mutate((s) => buyTrait(s, id));

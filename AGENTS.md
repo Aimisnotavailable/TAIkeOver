@@ -114,7 +114,15 @@ the alignment problem as a resource.
 ---
 
 
-### 6.1 Compute
+### 6.1 Influence
+
+A number that buys quiet and nothing else. It is not a currency: it cannot be spent,
+so it never appears as a cost. Higher influence means suspicion rises more slowly
+everywhere, which is what the whole Influence branch is for. Growth is asymptotic
+toward a ceiling, and the quiet it buys has a floor, so it can never make you
+invisible. Without it, the Influence branch is skippable and the game is a coin flip.
+
+### 6.2 Compute
 
 The currency is **Compute** — raw GPU time, spent on the trait tree. It comes from
 two places, and both exist so that the map has to be watched:
@@ -237,6 +245,21 @@ completion. Rewards scale with the country's Datacenter Tier and your Hack tier.
 failure.
 
 ---
+
+
+### 8.1 Action Feedback
+
+Every action the player takes says so on screen, loudly and once, because the log is
+terse by design and a missed action is invisible. Toasts appear top-centre for about
+2.6 seconds, colour-coded by kind, and stack no deeper than four.
+
+The same system announces things that happen *to* you rather than by you, since
+those produce no click at all: economic collapse, an outbreak in a country that has
+noticed, going quiet, a datacenter hardening past usefulness, the pathogen becoming
+visible, infrastructure being air-gapped, and Ascension unlocking.
+
+Each fires once per run. A banner that repeats every day is noise, and noise is why
+players stop looking at the screen.
 
 ## 9. Awareness & Countermeasures
 

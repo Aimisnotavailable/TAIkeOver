@@ -5,12 +5,17 @@ export const SPEEDS = [0, 1, 2, 4, 8] as const;
 
 export const STARTING_COMPUTE = 300;
 export const STARTING_INFLUENCE = 60;
+
+// Influence buys quiet, not speed. This is the floor on how much of a suspicion
+// gain survives, so a propaganda empire can never make you invisible.
+export const INFLUENCE_QUIET_FLOOR = 0.35;
+export const INFLUENCE_MAX = 1000;
 export const COMPUTE_FACTOR = 1.5;
 export const COMPUTE_CEILING = 30_000;
 export const HARDEN_RISE = 0.6;
 export const HARDEN_FALL = 0.35;
 export const HARDEN_MAX = 8;
-export const HARDEN_PENALTY = 3.5;
+export const HARDEN_PENALTY = 2;
 export const START_TICK_INCUBATION = 3;
 export const MAX_INCUBATION = 8;
 

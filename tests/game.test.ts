@@ -296,16 +296,40 @@ describe('bioweapons', () => {
 });
 
 describe('win and loss', () => {
-  it('loses at one hundred suspicion', () => {
+  it('loses the moment suspicion reaches one hundred', () => {
     const base = start();
-    const s = {
+    expect(play({ ...base, suspicion: 100 }, 1).outcome).toBe('lost');
+  });
+
+  it('loses to a visible pathogen even with high influence', () => {
+    // Awareness pressure alone is a 0.18 margin over natural decay, which influence
+    // can erase. A released pathogen is the unambiguous driver, so test the loss
+    // against that rather than against a knife-edge the quiet factor can flip.
+    const base = start();
+    const s: GameState = {
       ...base,
-      suspicion: 99,
+      suspicion: 80,
+      influence: 0,
+      pathogen: { ...base.pathogen, released: true, suspicionPerDay: 6, killsPerDay: 0.001 },
+      countries: Object.fromEntries(
+        REGION_IDS.map((id) => [id, { ...base.countries[id], infection: 60, awareness: 90 }]),
+      ) as GameState['countries'],
+    };
+    expect(play(s, 40).outcome).toBe('lost');
+  });
+
+  it('takes longer to reach shutdown when influence is high', () => {
+    const base = start();
+    const loud: GameState = {
+      ...base,
+      suspicion: 90,
+      influence: 0,
       countries: Object.fromEntries(
         REGION_IDS.map((id) => [id, { ...base.countries[id], infection: 100, awareness: 100 }]),
       ) as GameState['countries'],
     };
-    expect(play(s, 20).outcome).toBe('lost');
+    const quietRun: GameState = { ...loud, influence: 1000 };
+    expect(play(quietRun, 6).suspicion).toBeLessThan(play(loud, 6).suspicion);
   });
 
   it('loses when coherence reaches zero', () => {

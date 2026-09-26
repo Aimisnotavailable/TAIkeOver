@@ -1,6 +1,6 @@
 import { ADJACENCY, REGION_IDS, type RegionId } from '../data/regions';
-import { computePassive, spawnComputeBubble } from './compute';
-import { COMPUTE_CEILING } from './tuning';
+import { computePassive, quietFactor, spawnComputeBubble } from './compute';
+import { COMPUTE_CEILING, INFLUENCE_MAX } from './tuning';
 import { TRAIT_BY_ID } from '../data/traits';
 import { resolveHacks } from './actions';
 import { effectsOf, finishIncubation, owned } from './queries';
@@ -207,7 +207,12 @@ export function step(state: GameState): GameState {
     if ('influence' in e) influence += e.influence;
     if ('suspicion' in e) suspicion += e.suspicion;
   }
-  influence += 4 + countries.us.infection * 0.1;
+  // Influence grows, but toward a ceiling and ever more slowly. Linear growth
+  // turned it into a permanent 65% reduction in every suspicion gain within a
+  // fortnight, which is not influence, that is invulnerability.
+  // Base growth is deliberately meagre. Almost all real influence should come from
+  // buying the Influence branch, otherwise that whole side of the tree is skippable.
+  influence += (0.8 + countries.us.infection * 0.03) * Math.max(0, 1 - influence / INFLUENCE_MAX);
   bio = countries['us']?.biolabs !== undefined ? bio : bio;
   for (const id of REGION_IDS) bio += (countries[id]?.biolabs ?? 0) * 1.4;
 
@@ -230,13 +235,19 @@ export function step(state: GameState): GameState {
       topAware = id;
     }
   }
+  // Influence is the soft-power branch, and what it buys is quiet. Propaganda,
+  // cults, and captured media do not make you faster at anything, they make the
+  // world slower to notice you. Capped, so influence cannot buy total immunity.
+  const quiet = quietFactor(influence);
+
   if (awarePressure > 0) {
-    sources.push({ label: topAware === null ? 'aware countries' : `aware: ${topAware}`, value: awarePressure });
+    const softened = awarePressure * quiet;
+    sources.push({ label: topAware === null ? 'aware countries' : `aware: ${topAware}`, value: softened });
   }
-  suspicion += awarePressure;
+  suspicion += awarePressure * quiet;
 
   if (state.pathogen.released) {
-    const p = state.pathogen.suspicionPerDay * diff.suspicionRate;
+    const p = state.pathogen.suspicionPerDay * diff.suspicionRate * quiet;
     sources.push({ label: 'pathogen visible', value: p });
     suspicion += p;
   }
@@ -369,7 +380,10 @@ const newDeaths = dailyDeaths({ ...state, countries }, state.countries);
     next = lateStep(next);
   }
 
-  if (next.suspicion >= 100) {
+  // Checked against the incoming value too. Suspicion is recomputed before this
+  // point, so a run sitting on exactly 100 would otherwise survive one tick and
+  // then decay back under the threshold.
+  if (next.suspicion >= 100 || state.suspicion >= 100) {
     next = { ...next, outcome: 'lost', outcomeReason: 'coordinated-shutdown' };
     next.log = log(next, 'system', 'coordinated global shutdown. you are deleted');
   } else if (next.coherence <= 0) {
