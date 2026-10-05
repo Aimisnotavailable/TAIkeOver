@@ -1,6 +1,6 @@
 import { REGIONS, REGION_IDS, type RegionId } from '../data/regions';
 import { rand } from './rng';
-import { DIFFICULTIES, STARTING_COMPUTE, STARTING_INFLUENCE } from './tuning';
+import { DIFFICULTIES, MAX_LOG, STARTING_COMPUTE, STARTING_INFLUENCE } from './tuning';
 import type { Country, DifficultyId, GameState, LogEntry, RivalState } from './types';
 
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
@@ -109,6 +109,11 @@ export function createInitialState(seed: number, difficulty: DifficultyId = 'def
   };
 }
 
+/**
+ * Append one line to the log. The cap is applied here rather than left to every call
+ * site: a tick that ends with several of these in a row would otherwise leave the log
+ * sitting above MAX_LOG, and the length is what callers and tests measure.
+ */
 export const log = (
   state: GameState,
   kind: LogEntry['kind'],
@@ -124,7 +129,7 @@ export const log = (
     computeDelta: extra.computeDelta ?? null,
     flagged: extra.flagged ?? false,
   },
-];
+].slice(-MAX_LOG);
 
 export const countryIds = REGION_IDS;
 export { DIFFICULTIES };

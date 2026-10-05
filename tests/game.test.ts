@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { canDo, doAction } from '../src/game/core/actions';
 import { canBuyTrait, hackTier, maxConcurrentHacks, owned } from '../src/game/core/queries';
-import { createInitialState } from '../src/game/core/state';
+import { createInitialState, log } from '../src/game/core/state';
 import { step } from '../src/game/core/step';
-import { DIFFICULTIES, ASCENSION_COMPUTE, TICK_MS } from '../src/game/core/tuning';
+import { DIFFICULTIES, ASCENSION_COMPUTE, MAX_LOG, TICK_MS } from '../src/game/core/tuning';
 import { TRAITS, TRAIT_BY_ID } from '../src/game/data/traits';
 import { REGION_IDS, type RegionId } from '../src/game/data/regions';
 import type { GameState } from '../src/game/core/types';
@@ -370,6 +370,36 @@ describe('determinism', () => {
   it('has a tick long enough to be playable', () => {
     expect(TICK_MS).toBeGreaterThan(1500);
     expect(TICK_MS).toBeLessThan(10_000);
+  });
+});
+
+describe('the event log', () => {
+  const filled = (n: number): GameState => {
+    const base = start();
+    const entries = Array.from({ length: n }, (_, i) => ({
+      day: i, kind: 'system' as const, text: `line ${i}`,
+      suspicionDelta: null, computeDelta: null, flagged: false,
+    }));
+    return { ...base, log: entries };
+  };
+
+  it('never grows past MAX_LOG however many entries are appended', () => {
+    expect(log(filled(MAX_LOG), 'system', 'one more')).toHaveLength(MAX_LOG);
+    expect(log(filled(MAX_LOG + 50), 'system', 'one more')).toHaveLength(MAX_LOG);
+  });
+
+  it('keeps the newest entries, not the oldest', () => {
+    const out = log(filled(MAX_LOG), 'system', 'the newest line');
+    expect(out).toHaveLength(MAX_LOG);
+    expect(out[out.length - 1]?.text).toBe('the newest line');
+    expect(out[0]?.text).toBe('line 1');
+  });
+
+  it('appends without touching anything below the cap', () => {
+    const base = filled(4);
+    const out = log(base, 'event', 'added');
+    expect(out).toHaveLength(5);
+    expect(base.log).toHaveLength(4);
   });
 });
 
