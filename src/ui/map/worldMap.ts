@@ -149,6 +149,15 @@ const BUBBLE_FILL: Record<ComputeBubbleKind, string> = {
   blue: '#3aa0d8',
 };
 
+// The three kinds were three identical circles told apart only by fill colour, with no
+// legend anywhere. The glyph is the part that survives a colourblind palette and a
+// greyscale print, and it is what the HUD legend keys off.
+export const BUBBLE_GLYPH: Record<ComputeBubbleKind, string> = {
+  red: '+',
+  orange: '/',
+  blue: '?',
+};
+
 const BUBBLE_RING: Record<ComputeBubbleKind, string> = {
   red: 'rgba(255,150,130,0.9)',
   orange: 'rgba(255,205,150,0.9)',
@@ -216,9 +225,10 @@ function drawComputeBubbles(
     ctx.stroke();
 
     ctx.fillStyle = BUBBLE_FILL[b.kind];
-    ctx.beginPath();
-    ctx.arc(pos.x, pos.y + bob, r * 0.34, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.font = `700 ${Math.round(r * 0.95)}px ui-monospace, monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(BUBBLE_GLYPH[b.kind], pos.x, pos.y + bob);
 
     ctx.globalAlpha = 0.9 * remain;
     ctx.fillStyle = '#dfe9ee';

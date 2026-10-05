@@ -3,9 +3,10 @@ import { createInitialState } from '../src/game/core/state';
 import { computePassive, infectedPopulation, spawnComputeBubble, SALT_KIND_BLUE, SALT_KIND_ORANGE, SALT_KIND_RED, SALT_PHASE, SALT_VALUE, SALT_WHERE } from '../src/game/core/compute';
 import { rand } from '../src/game/core/rng';
 import { COMPUTE_BUBBLE_RADIUS, COMPUTE_BUBBLE_TTL } from '../src/game/core/tuning';
-import { bubblePosition, drawWorldMap, hitTestCompute, makeProjection, mapStageFor, type MapFrame } from '../src/ui/map/worldMap';
+import { bubblePosition, drawWorldMap, hitTestCompute, makeProjection, mapStageFor, BUBBLE_GLYPH, type MapFrame } from '../src/ui/map/worldMap';
 import { actions, game, selected } from '../src/ui/store';
 import appSource from '../src/ui/app.tsx?raw';
+import panelSource from '../src/ui/components/panels.tsx?raw';
 import type { ComputeBubble, GameState } from '../src/game/core/types';
 
 const start = (over: Partial<GameState> = {}): GameState => ({
@@ -177,15 +178,23 @@ describe('drawing the map with bubbles on it', () => {
     (globalThis as unknown as { Path2D: unknown }).Path2D = StubPath2D;
   });  // The render path is the one piece unit tests cannot reach without a real canvas,
   // so exercise it against a stub context to catch typos and undefined references.
-  const stubCtx = (): { ctx: CanvasRenderingContext2D; calls: Set<string> } => {
+  const stubCtx = (): { ctx: CanvasRenderingContext2D; calls: Set<string>; texts: string[] } => {
     const calls = new Set<string>();
+    const texts: string[] = [];
     const target: Record<string, unknown> = { canvas: { width: 1200, height: 800 } };
     for (const name of [
       'clearRect', 'fillRect', 'beginPath', 'arc', 'fill', 'stroke', 'moveTo', 'lineTo',
       'closePath', 'strokeText', 'fillText', 'setLineDash', 'save', 'restore', 'translate',
       'rotate', 'scale', 'clip', 'rect', 'ellipse', 'quadraticCurveTo', 'bezierCurveTo', 'arcTo',
     ]) {
-      target[name] = (...args: unknown[]): void => { calls.add(name); void args; };
+      target[name] = (...args: unknown[]): void => {
+        calls.add(name);
+        // `calls` alone cannot tell one bubble kind from another: the three kinds drew
+        // the same circle in different colours, so the glyph had to be readable back out
+        // of the text to be tested at all.
+        if (name === 'fillText') texts.push(String(args[0]));
+        void args;
+      };
     }
     target.fillStyle = '';
     target.strokeStyle = '';
@@ -195,7 +204,7 @@ describe('drawing the map with bubbles on it', () => {
     target.textAlign = 'left';
     target.textBaseline = 'top';
     target.lineJoin = 'miter';
-    return { ctx: target as unknown as CanvasRenderingContext2D, calls };
+    return { ctx: target as unknown as CanvasRenderingContext2D, calls, texts };
   };
 
   const frame = (over: Partial<MapFrame> = {}): MapFrame => {
@@ -230,6 +239,22 @@ describe('drawing the map with bubbles on it', () => {
       drawWorldMap(ctx, 1200, 800, frame({ computeBubbles: [bubble({ kind, id: 3 })] }), 0);
       expect(calls.has('arc')).toBe(true);
     }
+  });
+
+  it('gives each bubble kind a distinct glyph', () => {
+    const textsFor = (kind: 'red' | 'orange' | 'blue'): string[] => {
+      const { ctx, texts } = stubCtx();
+      drawWorldMap(ctx, 1200, 800, frame({ computeBubbles: [bubble({ kind, id: 3 })] }), 0);
+      return texts;
+    };
+    expect(textsFor('red')).toContain('+');
+    expect(textsFor('orange')).toContain('/');
+    expect(textsFor('blue')).toContain('?');
+    // One glyph per kind. A red bubble that carried all three would tell a colourblind
+    // reader nothing, which is the whole reason the glyph is there.
+    const red = textsFor('red');
+    expect(red).not.toContain('/');
+    expect(red).not.toContain('?');
   });
 
   it('survives a frame with many bubbles at once', () => {
@@ -271,6 +296,14 @@ describe('drawing the map with bubbles on it', () => {
     // signal, so reading the source is the only assertion that catches it going back.
     expect(appSource).toContain('selected: selected.value');
     expect(appSource).not.toMatch(/selected: null/);
+  });
+
+  it('keys the legend off the same glyphs the renderer draws', () => {
+    expect(BUBBLE_GLYPH).toEqual({ red: '+', orange: '/', blue: '?' });
+    // The legend lives in a component and has no DOM to render into here, so the drift
+    // this guards against is a legend that restates the three glyphs as literals instead
+    // of reading them back out of the renderer.
+    expect(panelSource).toContain("import { BUBBLE_GLYPH } from '../map/worldMap'");
   });
 });
 

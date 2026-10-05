@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { REGION_BY_ID } from '../../game/data/regions';
+import { BUBBLE_GLYPH } from '../map/worldMap';
+import type { ComputeBubbleKind } from '../../game/core/types';
 import { TRAIT_BY_ID, TRAITS, TRAIT_GROUPS } from '../../game/data/traits';
 import { play } from '../sound';
 import { ACTIONS, type ActionKind } from '../../game/core/actions';
@@ -330,9 +332,41 @@ export function ContextBar({ state }: { state: GameState }) {
   );
 }
 
+/**
+ * What the three bubbles on the map are. Nothing in the interface named them: they were
+ * three circles told apart by fill colour alone, which is the encoding that fails for a
+ * colourblind reader and in a greyscale screenshot. The glyph is read out of the
+ * renderer, so the two cannot drift apart.
+ */
+const BUBBLE_KINDS: readonly { kind: ComputeBubbleKind; name: string; meaning: string }[] = [
+  { kind: 'red', name: 'turnover', meaning: 'their systems have quietly turned over to you' },
+  { kind: 'orange', name: 'strip', meaning: 'infrastructure burning down for parts' },
+  { kind: 'blue', name: 'audit', meaning: 'the other side is getting close' },
+];
+
+const BUBBLE_TINT: Record<ComputeBubbleKind, string> = {
+  red: 'var(--bad)',
+  orange: 'var(--warn)',
+  blue: 'var(--cool)',
+};
+
+export function BubbleLegend() {
+  return (
+    <div class="legend">
+      {BUBBLE_KINDS.map((k) => (
+        <div class="legend-row" key={k.kind}>
+          <b style={{ color: BUBBLE_TINT[k.kind] }}>{BUBBLE_GLYPH[k.kind]}</b>
+          {k.name} &mdash; {k.meaning}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function SideRail({ state }: { state: GameState }) {
   return (
     <div class="side">
+      <BubbleLegend />
       <Situation state={state} />
       <div class="side-block">
         <div class="side-title">Rivals</div>
