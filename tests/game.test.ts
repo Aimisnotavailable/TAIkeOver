@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { canDo, doAction } from '../src/game/core/actions';
+import { canDo, doAction, hackSuccessSalt, hackYieldSalt } from '../src/game/core/actions';
 import { canBuyTrait, hackTier, maxConcurrentHacks, owned } from '../src/game/core/queries';
+import { SALT_KIND_BLUE, SALT_KIND_ORANGE, SALT_KIND_RED, SALT_PHASE, SALT_VALUE, SALT_WHERE } from '../src/game/core/compute';
 import { createInitialState, log } from '../src/game/core/state';
-import { step } from '../src/game/core/step';
-import { DIFFICULTIES, ASCENSION_COMPUTE, MAX_LOG, TICK_MS } from '../src/game/core/tuning';
+import { biolabSalt, factorySalt, step, warEndSalt } from '../src/game/core/step';
+import { DIFFICULTIES, ASCENSION_COMPUTE, MAX_DEPTH, MAX_LOG, TICK_MS } from '../src/game/core/tuning';
 import { TRAITS, TRAIT_BY_ID } from '../src/game/data/traits';
 import { REGION_IDS, type RegionId } from '../src/game/data/regions';
 import type { GameState } from '../src/game/core/types';
@@ -370,6 +371,48 @@ describe('determinism', () => {
   it('has a tick long enough to be playable', () => {
     expect(TICK_MS).toBeGreaterThan(1500);
     expect(TICK_MS).toBeLessThan(10_000);
+  });
+});
+
+describe('hack outcome and yield are separate draws', () => {
+  const KEYS = 5000;
+  const family = (fn: (k: number, d: number) => number): number[] => {
+    const out: number[] = [];
+    for (let key = 0; key <= KEYS; key++) {
+      for (let depth = 0; depth <= MAX_DEPTH; depth++) out.push(fn(key, depth));
+    }
+    return out;
+  };
+
+  it('never gives an outcome roll and a yield roll the same salt', () => {
+    // They used to be `key * 31 + depth` and `key * 17 + depth`. At key 0 both collapse
+    // to `depth`, so the first hack of every run decided whether it got in and what it
+    // paid from a single number, at all nine depths.
+    const success = new Set(family(hackSuccessSalt));
+    for (const salt of family(hackYieldSalt)) {
+      expect(success.has(salt)).toBe(false);
+    }
+  });
+
+  it('gives every (key, depth) its own salt within each family', () => {
+    for (const fn of [hackSuccessSalt, hackYieldSalt]) {
+      const salts = family(fn);
+      expect(new Set(salts).size).toBe(salts.length);
+    }
+  });
+
+  it('keeps the two families clear of every other salt in the game', () => {
+    const elsewhere = new Set([
+      ...family(hackSuccessSalt),
+      warEndSalt(0), warEndSalt(REGION_IDS.length - 1),
+      biolabSalt(0), biolabSalt(REGION_IDS.length - 1),
+      factorySalt(0), factorySalt(REGION_IDS.length - 1),
+      1300, 0x0d11a, 555, 700,
+      SALT_KIND_BLUE, SALT_KIND_ORANGE, SALT_KIND_RED, SALT_WHERE, SALT_VALUE, SALT_PHASE,
+    ]);
+    for (const salt of family(hackYieldSalt)) {
+      expect(elsewhere.has(salt)).toBe(false);
+    }
   });
 });
 

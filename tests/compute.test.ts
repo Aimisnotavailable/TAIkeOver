@@ -1,6 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createInitialState } from '../src/game/core/state';
-import { computePassive, infectedPopulation, spawnComputeBubble } from '../src/game/core/compute';
+import { computePassive, infectedPopulation, spawnComputeBubble, SALT_KIND_BLUE, SALT_KIND_ORANGE, SALT_KIND_RED, SALT_PHASE, SALT_VALUE, SALT_WHERE } from '../src/game/core/compute';
+import { rand } from '../src/game/core/rng';
 import { COMPUTE_BUBBLE_RADIUS, COMPUTE_BUBBLE_TTL } from '../src/game/core/tuning';
 import { bubblePosition, drawWorldMap, hitTestCompute, makeProjection, mapStageFor, type MapFrame } from '../src/ui/map/worldMap';
 import { actions, game, selected } from '../src/ui/store';
@@ -138,10 +139,27 @@ describe('spawning bubbles', () => {
     }
   });
 
-  it('expires within a few days so the map keeps moving', () => {
+it('expires within a few days so the map keeps moving', () => {
     const b = spawnComputeBubble({ ...start(), bio: 5 });
     if (b === null) return;
     expect(b.expiresTick - b.bornTick).toBe(COMPUTE_BUBBLE_TTL);
+  });
+
+  it('gives every bubble roll its own salt', () => {
+    // The three kind rolls were `SALT_KIND`, `SALT_KIND + 1` and `SALT_KIND + 2`, and
+    // `SALT_KIND + 2` is exactly SALT_VALUE while `SALT_KIND + 1` is exactly SALT_WHERE.
+    // So the kind of a bubble was decided by the same number that decided where it landed
+    // and what it paid.
+    const salts = [SALT_KIND_BLUE, SALT_KIND_ORANGE, SALT_KIND_RED, SALT_WHERE, SALT_VALUE, SALT_PHASE];
+    expect(new Set(salts).size).toBe(salts.length);
+  });
+
+  it('does not resolve to the same number as any other bubble roll', () => {
+    const roll = (salt: number, tick: number): number => rand(1234, tick, salt);
+    for (let tick = 0; tick < 200; tick++) {
+      expect(roll(SALT_KIND_RED, tick)).not.toBe(roll(SALT_VALUE, tick));
+      expect(roll(SALT_KIND_ORANGE, tick)).not.toBe(roll(SALT_WHERE, tick));
+    }
   });
 });
 

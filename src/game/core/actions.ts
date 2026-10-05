@@ -224,6 +224,20 @@ export function doAction(state: GameState, id: RegionId, kind: ActionKind): Game
   return { ...next, log: [...next.log, ...lines].slice(-300) };
 }
 
+/**
+ * Salts for the two independent draws a hack resolves on: whether it got in, and how
+ * much it paid. These used to be `key * 31 + depth` and `key * 17 + depth`, which are
+ * the same number for every depth once `key` is 0 — so the first hack of every run
+ * decided both from one roll, at all nine depths. Purpose is a bit in the encoding now
+ * rather than a multiplier, which makes a collision between the two families
+ * unrepresentable for any key at all.
+ */
+const HACK_SALT_BASE = 0x7ac000;
+const hackSalt = (key: number, depth: number, purpose: number): number =>
+  HACK_SALT_BASE + (key * (MAX_DEPTH + 1) + depth) * 2 + purpose;
+export const hackSuccessSalt = (key: number, depth: number): number => hackSalt(key, depth, 0);
+export const hackYieldSalt = (key: number, depth: number): number => hackSalt(key, depth, 1);
+
 export function resolveHacks(state: GameState): GameState {
   if (!state.activeHacks.some((h) => state.tick >= h.resolveTick)) return state;
 
@@ -248,7 +262,7 @@ export function resolveHacks(state: GameState): GameState {
         (airGapped ? AIR_GAP_PENALTY : 0) - (country.cyber - 5) * 1.5 - country.hardened * HARDEN_PENALTY,
       5, 92,
     );
-    const success = hack.auto || chance(state.seed, hack.resolveTick, hack.key * 31 + hack.depth, successChance / 100);
+    const success = hack.auto || chance(state.seed, hack.resolveTick, hackSuccessSalt(hack.key, hack.depth), successChance / 100);
     const depthBonus = 1 + Math.min(hack.depth, MAX_DEPTH) * DEPTH_YIELD_STEP;
     const scale = (1 + (country.tier - 1) * 0.6) * depthBonus;
     const detectScale = 0.7 + country.detection / 200;
@@ -257,7 +271,7 @@ export function resolveHacks(state: GameState): GameState {
       const range = HACK_YIELD[hack.tier] ?? HACK_YIELD[1] ?? [0, 0];
       const lo = range[0] ?? 0;
       const hi = range[1] ?? 0;
-      const base = lo + rand(state.seed, hack.resolveTick, hack.key * 17 + hack.depth) * (hi - lo);
+      const base = lo + rand(state.seed, hack.resolveTick, hackYieldSalt(hack.key, hack.depth)) * (hi - lo);
       const gain = Math.round(base * scale * hackYieldMultiplier(state));
       const susp = (HACK_SUSPICION_SUCCESS[hack.tier] ?? 2) * detectScale * diff.suspicionRate;
       compute += gain;
