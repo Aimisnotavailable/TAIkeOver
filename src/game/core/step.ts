@@ -12,6 +12,7 @@ import {
   LATE_EXTERMINATED_EXPANSION,
   LATE_HEAT_PER_DAY,
   LATE_OCEANS_HEAT,
+  LATE_POTENTIAL_SHARE,
   OUTBREAK_KILL_RATE,
   OUTBREAK_KILL_THRESHOLD,
   WAR_BASE_CHANCE_TO_END,
@@ -470,7 +471,7 @@ function lateStep(state: GameState): GameState {
   late.heat = Math.min(100, late.heat + LATE_HEAT_PER_DAY);
   late.expansion = Math.min(100, late.expansion + LATE_EXPANSION_PER_DAY);
   late.stars += STARS_PER_DAY;
-  late.potentialLost += Math.round(STARS_PER_DAY * 0.31);
+  late.potentialLost += Math.round(STARS_PER_DAY * LATE_POTENTIAL_SHARE);
 
   if (late.heat > LATE_OCEANS_HEAT) late.oceansBoiled = true;
   if (late.expansion > LATE_ASKED_EXPANSION) late.askedHumanity = true;
@@ -485,9 +486,9 @@ function lateStep(state: GameState): GameState {
   // The late map is tinted from `converted`, which nothing wrote before this, so the
   // heat ramp had no data to draw and the whole late stage rendered flat.
   const converted = Math.min(100, late.expansion);
-  const countries = {} as Record<RegionId, Country>;
+  const countries: Record<RegionId, Country> = { ...state.countries };
   for (const id of REGION_IDS) {
-    const c = state.countries[id];
+    const c = countries[id];
     if (c !== undefined) countries[id] = { ...c, converted };
   }
 

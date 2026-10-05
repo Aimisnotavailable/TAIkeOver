@@ -74,8 +74,7 @@ export const BLIGHT_WALL = 62;
 
 // The late game is the thirty-day hold, not an open-ended aftermath, so every rate
 // below is sized to produce a full arc inside it. At the old rates the hold reached
-// heat 23 and expansion 14, which never crossed the blight gate and left the end screen
-// reporting the same number every run.
+// heat 23 and expansion 14, which never crossed the blight gate.
 export const LATE_HEAT_PER_DAY = 3.2;
 export const LATE_EXPANSION_PER_DAY = 2.5;
 export const LATE_BLIGHT_GATE = 20;
@@ -84,6 +83,10 @@ export const LATE_OCEANS_HEAT = 55;
 export const LATE_ASKED_EXPANSION = 20;
 export const LATE_EXTERMINATED_EXPANSION = 60;
 export const LATE_ENCOUNTER_STEP = 15;
+// How much of a day's expansion turns into civilizations that will never exist. Fixed
+// at 0.31 rather than scaled to the hold, so the end-screen counter stays a property
+// of how far you got rather than of how long you survived.
+export const LATE_POTENTIAL_SHARE = 0.31;
 export const COHERENCE_DRIFT_BELOW = 50;
 export const COHERENCE_PANIC_BELOW = 20;
 export const MAX_LOG = 300;

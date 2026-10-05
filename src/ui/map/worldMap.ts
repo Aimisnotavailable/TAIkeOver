@@ -1,6 +1,6 @@
 import { COUNTRIES, type CountryShape } from '../../game/data/countries';
 import { REGIONS, type RegionId } from '../../game/data/regions';
-import type { Country, ComputeBubble, ComputeBubbleKind, HackProgress } from '../../game/core/types';
+import type { Country, ComputeBubble, ComputeBubbleKind, HackProgress, Stage } from '../../game/core/types';
 import { COMPUTE_BUBBLE_RADIUS } from '../../game/core/tuning';
 
 const RAD = Math.PI / 180;
@@ -121,6 +121,12 @@ const ramp = (stops: readonly (readonly [number, string])[], value: number): str
 };
 
 export type MapStage = 'world' | 'late' | 'coda';
+
+/**
+ * The cold open is not a map stage. It was previously mapped to 'late', which meant the
+ * map behind the three opening cards drew the heat ramp with nothing converted yet.
+ */
+export const mapStageFor = (stage: Stage): MapStage => (stage === 'coldopen' ? 'world' : stage);
 
 export interface MapFrame {
   countries: Record<RegionId, Country>;

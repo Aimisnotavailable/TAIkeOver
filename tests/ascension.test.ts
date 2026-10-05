@@ -246,7 +246,7 @@ describe('the late game has an arc', () => {
     expect(end.late.ending).toBe('blight');
   });
 
-  it('counts civilizations in proportion to the hold, not as a constant', () => {
+  it('accumulates civilizations across the hold', () => {
     expect(hold(RSI_SURVIVE_DAYS).late.potentialLost).toBeGreaterThan(30_000);
   });
 
@@ -254,15 +254,11 @@ describe('the late game has an arc', () => {
     expect(hold(RSI_SURVIVE_DAYS).countries.us?.converted ?? 0).toBeGreaterThan(0);
   });
 
-  it('wins without any event card ever being answered', () => {
-    // The blight must be reachable from lateStep alone. Two other writers touch
-    // late.blight — the blight-wall card choices, +9 for negotiate and +4 for fight —
-    // so a test that only passed with a card in play would be testing the card.
-    // `resolved` is where every answered card lands, so an empty one proves the card
-    // path never ran. (There is no top-level `blight` on GameState; that field is on
-    // LateState, so asserting it proved nothing.)
+  it('reaches the blight from lateStep alone, with no event card in the arithmetic', () => {
     const end = hold(RSI_SURVIVE_DAYS);
-    expect(end.resolved).toHaveLength(0);  // no card was ever answered
-    expect(end.late.blight).toBeGreaterThan(0);
+    // 21 accrual days at LATE_BLIGHT_PER_DAY = 4. Exact, because lateStep has no
+    // randomness. This is the value a blight-wall card would perturb (+9 or +4), so it
+    // also proves no card was answered.
+    expect(end.late.blight).toBe(84);
   });
 });

@@ -2,7 +2,7 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createInitialState } from '../src/game/core/state';
 import { computePassive, infectedPopulation, spawnComputeBubble } from '../src/game/core/compute';
 import { COMPUTE_BUBBLE_RADIUS, COMPUTE_BUBBLE_TTL } from '../src/game/core/tuning';
-import { bubblePosition, drawWorldMap, hitTestCompute, makeProjection, type MapFrame } from '../src/ui/map/worldMap';
+import { bubblePosition, drawWorldMap, hitTestCompute, makeProjection, mapStageFor, type MapFrame } from '../src/ui/map/worldMap';
 import { actions, game, selected } from '../src/ui/store';
 import type { ComputeBubble, GameState } from '../src/game/core/types';
 
@@ -226,5 +226,17 @@ describe('drawing the map with bubbles on it', () => {
     const f2 = frame({ computeBubbles: [fading], tick: 5 });
     expect(() => drawWorldMap(ctx, 1200, 800, f1, 0)).not.toThrow();
     expect(() => drawWorldMap(ctx, 1200, 800, f2, 0)).not.toThrow();
+  });
+});
+
+describe('map stage mapping', () => {
+  it('treats the cold open as the world, not as a heated map', () => {
+    expect(mapStageFor('coldopen')).toBe('world');
+  });
+
+  it('passes every other stage through untouched', () => {
+    expect(mapStageFor('world')).toBe('world');
+    expect(mapStageFor('late')).toBe('late');
+    expect(mapStageFor('coda')).toBe('coda');
   });
 });

@@ -3,7 +3,7 @@ import { DIFFICULTIES, getDifficulty } from '../game/core/tuning';
 import { REGION_BY_ID, REGION_IDS } from '../game/data/regions';
 import { actions, game } from './store';
 import { ContextBar, Evolve, EvolveButton, EventLog, Operations, SideRail, TopBar } from './components/panels';
-import { drawWorldMap, hitTest, hitTestCompute } from './map/worldMap';
+import { drawWorldMap, hitTest, hitTestCompute, mapStageFor } from './map/worldMap';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { TICK_MS } from '../game/core/tuning';
 import { rollEvent } from './store';
@@ -205,9 +205,7 @@ function Map({ state }: { state: GameState }) {
         canvas.height,
         {
           countries: state.countries,
-          // The real stage, so 'coda' picks up the heat ramp too. 'coldopen' is not a
-          // map stage: it draws the world underneath its text overlay, so it stays 'world'.
-          stage: state.stage === 'coldopen' ? 'world' : state.stage,
+          stage: mapStageFor(state.stage),
           selected: null,
           hovered: hovered.value,
           heat: state.late.heat,
