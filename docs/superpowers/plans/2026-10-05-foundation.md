@@ -328,8 +328,8 @@ Append to `src/game/core/tuning.ts`, replacing the existing `STARS_PER_DAY` / `B
 ```ts
 // The late game is the thirty-day hold, not an open-ended aftermath, so every late
 // rate below is sized to produce a full arc inside thirty days and then stop. At the
-// old rates the hold reached heat 24 and expansion 15, which never crossed the blight
-// gate and left the end screen reporting the same number every run.
+// old rates the hold reached heat 23 and expansion 14, which never crossed the blight
+// gate and left `late.ending` permanently null.
 export const LATE_HEAT_PER_DAY = 3.2;
 export const LATE_EXPANSION_PER_DAY = 2.5;
 export const LATE_BLIGHT_GATE = 20;
