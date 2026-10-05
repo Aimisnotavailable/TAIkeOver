@@ -5,6 +5,7 @@ import { rand } from '../src/game/core/rng';
 import { COMPUTE_BUBBLE_RADIUS, COMPUTE_BUBBLE_TTL } from '../src/game/core/tuning';
 import { bubblePosition, drawWorldMap, hitTestCompute, makeProjection, mapStageFor, type MapFrame } from '../src/ui/map/worldMap';
 import { actions, game, selected } from '../src/ui/store';
+import appSource from '../src/ui/app.tsx?raw';
 import type { ComputeBubble, GameState } from '../src/game/core/types';
 
 const start = (over: Partial<GameState> = {}): GameState => ({
@@ -244,6 +245,32 @@ describe('drawing the map with bubbles on it', () => {
     const f2 = frame({ computeBubbles: [fading], tick: 5 });
     expect(() => drawWorldMap(ctx, 1200, 800, f1, 0)).not.toThrow();
     expect(() => drawWorldMap(ctx, 1200, 800, f2, 0)).not.toThrow();
+  });
+
+  it('draws a stroke for the selected region', () => {
+    const { ctx, calls } = stubCtx();
+    drawWorldMap(ctx, 1200, 800, frame({ selected: 'us' }), 0);
+    // The stub records method names, not the colour each call carried, so this asserts on
+    // the call rather than on `#eaf6fb`. Nothing else in this frame strokes a path: region
+    // outlines are the only `stroke` in worldMap outside bubbles, and the labels use
+    // `strokeText`. No bubbles, no hack running and no air-gapped lab either, so a stroke
+    // here can only be the selection branch.
+    expect(calls.has('stroke')).toBe(true);
+  });
+
+  it('draws no selection stroke when nothing is selected', () => {
+    const { ctx, calls } = stubCtx();
+    drawWorldMap(ctx, 1200, 800, frame(), 0);
+    expect(calls.has('stroke')).toBe(false);
+  });
+
+  it('is handed the country that is actually selected', () => {
+    // The frame is assembled inside a requestAnimationFrame closure in a component, so the
+    // two tests above cannot see it: they build their own frame and would have passed
+    // while the map showed no selection at all. It read `selected: null` instead of the
+    // signal, so reading the source is the only assertion that catches it going back.
+    expect(appSource).toContain('selected: selected.value');
+    expect(appSource).not.toMatch(/selected: null/);
   });
 });
 

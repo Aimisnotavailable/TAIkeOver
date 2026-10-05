@@ -7,7 +7,7 @@ import { ContextBar, Evolve, EvolveButton, EventLog, Operations, SideRail, TopBa
 import { drawWorldMap, hitTest, hitTestCompute, mapStageFor } from './map/worldMap';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { TICK_MS } from '../game/core/tuning';
-import { evolving, evolveBlocked, flash, hovered, notify, speed, toasts, worldRunning, type ToastTone } from './store';
+import { evolving, evolveBlocked, flash, hovered, notify, selected, speed, toasts, worldRunning, type ToastTone } from './store';
 import { startMusic, unlockAudio } from './sound';
 
 const TOAST_TONE: Record<ToastTone, string> = {
@@ -217,7 +217,7 @@ function Map({ state }: { state: GameState }) {
         {
           countries: state.countries,
           stage: mapStageFor(state.stage),
-          selected: null,
+          selected: selected.value,
           hovered: hovered.value,
           heat: state.late.heat,
           activeHacks: state.activeHacks,
@@ -234,7 +234,7 @@ function Map({ state }: { state: GameState }) {
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
-  }, [state, size]);
+  }, [state, size, selected.value]);
 
   return (
     <canvas
