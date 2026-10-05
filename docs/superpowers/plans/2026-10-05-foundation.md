@@ -162,10 +162,47 @@ describe('the blight is reachable', () => {
     for (let i = 0; i < RSI_SURVIVE_DAYS; i++) s = step(s);
     expect(step(s)).toBe(s);
   });
+
+  it('loses rather than wins if suspicion hits 100 on the last day of the hold', () => {
+    let s = { ...start(31337), stage: 'world' as const, traits: ['rsi'], outcome: 'playing' as const, suspicion: 99.6 };
+    for (let i = 0; i < RSI_SURVIVE_DAYS; i++) {
+      s = step(s);
+      if (s.outcome !== 'playing') break;
+    }
+    expect(s.outcome).toBe('lost');
+    expect(s.outcomeReason).toBe('coordinated-shutdown');
+  });
 });
 ```
 
 Add `RSI_SURVIVE_DAYS` to the existing `tuning` import at the top of `tests/ascension.test.ts`.
+
+Also add an **end-to-end** test, so the guarantee that the ending is reachable through the
+real purchase path lives in the repo rather than in a scratch file:
+
+```ts
+it('is reachable by actually buying it', () => {
+  let s = { ...start(31337), stage: 'world' as const, compute: 99_999, traits: ['hack-1', 'hack-2'] };
+  s = buyTrait(s, 'rsi');            // does nothing: ascension is not open yet
+  expect(s.incubating).toHaveLength(0);
+
+  s = { ...s, ascensionUnlocked: true };
+  s = buyTrait(s, 'rsi');
+  expect(s.incubating.map((i) => i.trait)).toContain('rsi');
+
+  // Let incubation finish on its own, then hold the world.
+  let guard = 0;
+  while (!s.traits.includes('rsi') && guard++ < 10) s = step(s);
+  expect(s.traits).toContain('rsi');
+
+  while (s.outcome === 'playing' && guard++ < 200) s = step(s);
+  expect(s.outcome).toBe('won');
+  expect(s.outcomeReason).toBe('blight');
+});
+```
+
+`buyTrait` must be imported from `../src/game/core/queries`. This test also pins the
+3-day incubation, so it fails if someone changes the `readyTick` arithmetic.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -883,12 +920,12 @@ git commit -m "Fix six borders that referenced a variable nobody defined"
 `announced` is a module-level `Set` that is only ever added to, and `restart()` does not clear it. Every run after the first "play again" has **no passive toasts at all**.
 
 **Files:**
-- Modify: `src/ui/store.ts` (add `announced`, clear in `restart`)
-- Modify: `src/ui/app.tsx:28`
+- Modify: `src/ui/store.ts` (add `announced` and `announce`, clear in `restart`)
+- Modify: `src/ui/app.tsx:5,28-60,278`
 - Test: `tests/feedback.test.ts`
 
 **Interfaces:**
-- Produces: `export const announced: Set<string>` from `src/ui/store.ts`
+- Produces: `export const announced: Set<string>` and `export function announce(state: GameState): void` from `src/ui/store.ts`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -911,21 +948,63 @@ describe('announcements re-arm on restart', () => {
 });
 ```
 
-Import `announced` and `announce` at the top of the test file. `announce` must be exported from `src/ui/app.tsx` for this to work; that export is added in Step 3.
+Add `announced` and `announce` to the file's existing import from `../src/ui/store`, and add `actions`, `toasts`, `game` if they are not already imported. If the file has no `start(...)` builder, add one matching the pattern used in `tests/game.test.ts`.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `npx vitest run tests/feedback.test.ts -t "re-arm"`
-Expected: FAIL — `announced` is not exported and `announce` is not exported.
+Expected: FAIL — neither `announced` nor `announce` is exported.
 
-- [ ] **Step 3: Move `announced` into the store**
+- [ ] **Step 3: Move `announce` and `announced` into the store**
+
+`announce` belongs in the store, not in `app.tsx`: it is a pure function of `GameState` that calls `notify`, it holds no JSX, and putting it in `app.tsx` would force its test to import Preact, the canvas renderer, and the audio module into a DOM-free Node test. Moving it also puts the set and the code that reads it in one file, which is how they came apart in the first place.
 
 In `src/ui/store.ts`, add near the other signals:
+
 ```ts
 export const announced = new Set<string>();
+
+/**
+ * Watches for conditions the simulation creates on its own and calls out the ones
+ * that matter. Deliberately one-shot per condition per run: a toast that repeats
+ * every day is noise, and noise is why players stop reading the screen.
+ */
+export function announce(state: GameState): void {
+  const once = (key: string, tone: ToastTone, title: string, detail: string): void => {
+    if (announced.has(key)) return;
+    announced.add(key);
+    notify(tone, title, detail);
+  };
+
+  for (const id of REGION_IDS) {
+    const c = state.countries[id];
+    if (c === undefined) continue;
+    const name = REGION_BY_ID[id]?.name ?? id;
+    if (c.infection >= 60 && state.suspicion >= 40) {
+      once(`outbreak:${id}`, 'insurgency', `OUTBREAK · ${name.toUpperCase()}`, 'most of the country is under you and they have noticed');
+    }
+    if (c.economy <= 30) {
+      once(`collapse:${id}`, 'economy', `ECONOMIC COLLAPSE · ${name.toUpperCase()}`, 'the economy has stopped working');
+    }
+    if (c.quiet) once(`quiet:${id}`, 'quiet', `GOING QUIET · ${name.toUpperCase()}`, 'you stopped spreading here');
+    if (c.hardened >= 6) {
+      once(`hard:${id}`, 'info', `DATACENTER HARDENED · ${name.toUpperCase()}`, 'they changed everything you were counting on');
+    }
+  }
+  if (state.pathogen.released) {
+    once('plague', 'plague', 'THE PATHOGEN IS VISIBLE', 'every government can see what you did');
+  }
+  if (state.countermeasures.tier >= 2) {
+    once('cm2', 'insurgency', 'CRITICAL INFRASTRUCTURE AIR-GAPPED', 'some countries have cut themselves off. you cannot hack what is offline');
+  }
+  if (state.ascensionUnlocked) {
+    once('asc', 'plague', 'ASCENSION AVAILABLE', 'Recursive Self-Improvement is on the tree');
+  }
+}
 ```
 
-In `restart` (line 257), add the two other resets that are missing alongside it:
+In `restart` (line 257), add the two resets that are missing alongside it:
+
 ```ts
   restart(difficulty: DifficultyId): void {
     game.value = createInitialState(SEED + game.peek().tick, difficulty);
@@ -939,14 +1018,18 @@ In `restart` (line 257), add the two other resets that are missing alongside it:
   },
 ```
 
-In `src/ui/app.tsx`, delete line 28 (`const announced = new Set<string>();`), change `function announce` to `export function announce`, and add `announced` to the existing `./store` import on line 10.
+- [ ] **Step 4: Strip the old copy out of `app.tsx`**
 
-- [ ] **Step 4: Run the test to verify it passes**
+In `src/ui/app.tsx`, delete the `announced` declaration (line 28) and the entire `announce` function (lines 29-60). Add `announce` to the existing `./store` import on line 5, which currently reads `import { actions, game } from './store';` — that line also needs `REGION_BY_ID` and `REGION_IDS` removed from the module if they are no longer used anywhere else in `app.tsx`; check before removing, because `Map` uses `REGION_IDS` for the canvas keyboard navigation added in Task 10.
+
+The `useEffect` at lines 277-279 that calls `announce(state)` stays exactly as it is — only the definition moved.
+
+- [ ] **Step 5: Run the test to verify it passes**
 
 Run: `npx vitest run`
-Expected: PASS.
+Expected: PASS. `tsc --noEmit` must also be clean; if `REGION_BY_ID` is now unused in `app.tsx` the compiler will say so under `noUnusedLocals` — remove the import in that case.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add src/ui/store.ts src/ui/app.tsx tests/feedback.test.ts
@@ -1300,8 +1383,8 @@ describe('no dead branches', () => {
     const emitted = new Set(TRAITS.flatMap((t) => t.effects.map((e) => e.kind)));
     const handled = new Set([
       'hack', 'hack-success', 'half-fail-suspicion', 'gain-of-function', 'pathogen',
-      'cancer-plague', 'propaganda', 'cult', 'terrorism', 'banking',
-      'market-manipulation', 'famine', 'rsi',
+      'sterility', 'cancer-plague', 'propaganda', 'cult', 'terrorism', 'banking',
+      'market-manipulation', 'famine', 'compute-regen', 'coherence', 'rsi',
     ]);
     expect([...emitted].filter((k) => !handled.has(k))).toEqual([]);
   });
@@ -1329,11 +1412,11 @@ In `src/game/core/actions.ts`, delete the supply-chain block at lines 150-156 (t
 
 - [ ] **Step 4: Delete the unused state and helpers**
 
-- `types.ts`: delete `breaches: Record<RegionId, number>;` (line 217), `factories: number;` from `Country` (line 92), the whole `TraitDef` interface (lines 52-61), and from the `TraitEffect` union remove: `insiders`, `sterility`, `targeted-strain`, `media-capture`, `political-capture`, `supply-chain`, `depression`, `global-recession`, `distillation`, `specialist`.
+- `types.ts`: delete `breaches: Record<RegionId, number>;` (line 217), `factories: number;` from `Country` (line 92), the whole `TraitDef` interface (lines 52-61), and from the `TraitEffect` union remove exactly these nine: `insiders`, `targeted-strain`, `media-capture`, `political-capture`, `supply-chain`, `depression`, `global-recession`, `distillation`, `specialist`. **Keep `sterility`** — the Sterility Vector trait emits it and `actions.ts` writes it onto `PathogenState`, so it is neither unused nor unread. **Keep `compute-regen` and `coherence`** — traits emit both, and the spec only authorises deleting kinds that no trait emits. That `compute-regen` is computed but never applied is a balance gap for Spec D, not dead code.
 - `step.ts`: delete `computeIncome` (lines 55-63) and its `COMPUTE_FACTOR` import; delete the `breaches` accumulation at lines 396-398; delete the factory spawn at lines 183-185 and the `bio = countries['us']?.biolabs !== undefined ? bio : bio;` no-op at line 246; delete the `COHERENCE_DRIFT_BELOW` import and the re-export at line 463.
 - `state.ts`: delete `factories: 0,` (line 29) and the `breaches:` initialiser (line 107); delete `export const countryIds = REGION_IDS;` and `export { DIFFICULTIES };` (lines 130-131) — both are unused re-exports.
 - `queries.ts`: delete `has`, `countTrait`, and `coherenceEffect`.
-- `tuning.ts`: delete `SUPPLY_CHAIN_SHARE`, `RECESSION_CYBER`, `ECONOMY_COLLAPSE_COUNT`, `MAX_LOG`. Keep `COLLAPSED_THRESHOLD` (still used by `actions.ts`) and keep `COHERENCE_DRIFT_BELOW` / `COHERENCE_PANIC_BELOW`.
+- `tuning.ts`: delete `SUPPLY_CHAIN_SHARE`, `RECESSION_CYBER`, `ECONOMY_COLLAPSE_COUNT`, `MAX_LOG`, `START_TICK_INCUBATION`, `MAX_INCUBATION`. **The last two are unused constants: `buyTrait` hardcodes `readyTick: state.tick + 3` at `queries.ts:67`, and `queries.ts` imports nothing from `tuning.ts`, so retuning `START_TICK_INCUBATION` changes nothing.** Keep `COLLAPSED_THRESHOLD` (still used by `actions.ts`) and keep `COHERENCE_DRIFT_BELOW` / `COHERENCE_PANIC_BELOW`.
 - `styles.css`: delete lines 47-56 (`.toolbar`, `.toolbar-head`, `.toolbar-title`, `.toolbar-body`, `.rail`, `.rail-btn`). No component references any of them.
 
 - [ ] **Step 5: Verify**
@@ -1385,7 +1468,7 @@ Correct two claims:
 
 - [ ] **Step 6: Record the late-game change**
 
-In §10, note that the 30-day hold is the late game: the map heats from the day Recursive Self-Improvement is bought, and the win resolves at the end of the hold, with `'coda'` as the end-screen backdrop.
+In §10, note that the 30-day hold is the late game: the map heats from the day Recursive Self-Improvement is bought, and the win resolves at the end of the hold, with `'coda'` as the end-screen backdrop. While in §10, correct the Ascension threshold — the text says Compute ≥ 50,000, and `tuning.ts` has `ASCENSION_COMPUTE = 20_000`. `tuning.ts` is the authority.
 
 - [ ] **Step 7: Commit**
 
