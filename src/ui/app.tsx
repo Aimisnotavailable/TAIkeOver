@@ -1,7 +1,7 @@
 import type { EventCard, GameState } from '../game/core/types';
 import { rollEvent } from '../game/core/events';
 import { DIFFICULTIES, getDifficulty } from '../game/core/tuning';
-import { REGION_BY_ID } from '../game/data/regions';
+import { REGION_BY_ID, REGION_IDS, type RegionId } from '../game/data/regions';
 import { actions, game } from './store';
 import { ContextBar, Evolve, EvolveButton, EventLog, Operations, SideRail, TopBar } from './components/panels';
 import { drawWorldMap, hitTest, hitTestCompute, mapStageFor } from './map/worldMap';
@@ -86,7 +86,7 @@ function EventCards({ state }: { state: GameState }) {
   useEffect(() => {
     if (state.cards.length === 0) return;
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Enter' || e.key === 'Escape' || e.key === ' ') {
+      if (e.key === 'Enter' || e.key === 'Escape') {
         const top = topmostCardKey(state.cards);
         if (top === null) return;
         e.preventDefault();
@@ -147,6 +147,19 @@ function EndScreen({ state }: { state: GameState }) {
   );
 }
 
+/**
+ * Which region the arrow keys land on. The list is a ring, not a line: stepping off
+ * either end comes back around, because there is nothing past the last country to stop at.
+ */
+export function stepRegion(current: RegionId | null, delta: number): RegionId | null {
+  if (REGION_IDS.length === 0) return null;
+  const at = current === null ? -1 : REGION_IDS.indexOf(current);
+  const next = at < 0
+    ? delta > 0 ? 0 : REGION_IDS.length - 1
+    : (at + delta + REGION_IDS.length) % REGION_IDS.length;
+  return REGION_IDS[next] ?? null;
+}
+
 function Map({ state }: { state: GameState }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -200,6 +213,15 @@ function Map({ state }: { state: GameState }) {
   return (
     <canvas
       ref={ref}
+      tabIndex={0}
+      role="application"
+      aria-label="World map. Left and right arrows change which country is selected; its actions are in the panel along the bottom."
+      onKeyDown={(e) => {
+        const delta = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+        if (delta === 0) return;
+        e.preventDefault();
+        actions.select(stepRegion(selected.value, delta));
+      }}
       onMouseMove={(e) => {
         const el = e.currentTarget;
         hovered.value = hitTest(e.offsetX, e.offsetY, el.width, el.height, state.countries);
@@ -264,9 +286,10 @@ export function Game() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === ' ') { e.preventDefault(); actions.cycleSpeed(); }
-      // Tab opens and closes the upgrade screen, which is where the decisions are.
-      // Not while a card is up: the card is the thing that needs you first.
-      if (e.key === 'Tab' && !evolving.value && game.peek().cards.length === 0) {
+      // E opens the upgrade screen, which is where the decisions are. Tab used to do
+      // this, which meant Tab could never reach a button in the HUD: every control in
+      // the game was mouse-only for the whole session.
+      if (e.key.toLowerCase() === 'e' && !evolving.value && game.peek().cards.length === 0) {
         e.preventDefault();
         evolving.value = true;
       }

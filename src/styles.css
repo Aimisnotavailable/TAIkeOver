@@ -337,3 +337,5 @@ button.ignore:hover { border-color: var(--ink-dim); color: var(--ink); backgroun
 .tag.war { color: var(--bad); border-color: var(--bad); }
 .tag.quiet { color: var(--ink-dim); }
 .act.on { border-color: var(--cool); color: var(--cool); }
+:focus-visible { outline: 2px solid var(--edge-bright); outline-offset: 2px; }
+canvas:focus-visible { outline: 2px solid var(--ink-bright); outline-offset: -3px; }

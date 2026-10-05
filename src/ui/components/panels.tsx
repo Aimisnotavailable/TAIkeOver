@@ -177,9 +177,9 @@ export function EvolveButton({ onOpen, blocked }: { onOpen: () => void; blocked:
       class={`evolve-btn${blocked ? ' blocked' : ''}`}
       onClick={onOpen}
       disabled={blocked}
-      title={blocked ? 'Acknowledge the event first.' : 'Open the trait tree. The world pauses while it is open.'}
+      title={blocked ? 'Acknowledge the event first.' : 'Open the trait tree — press E. The world pauses while it is open.'}
     >
-      EVOLVE <span>tab</span>
+      EVOLVE <span>E</span>
     </button>
   );
 }

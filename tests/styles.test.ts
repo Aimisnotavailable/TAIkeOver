@@ -24,4 +24,10 @@ describe('stylesheet', () => {
     const missing = [...used].filter((v) => !defined.has(v));
     expect(missing).toEqual([]);
   });
+
+  it('has a visible focus style', () => {
+    // The theme is near-black and nothing in the stylesheet had ever drawn a focus ring,
+    // so a keyboard user could tab to a control and not know it.
+    expect(css).toContain(':focus-visible');
+  });
 });
