@@ -333,12 +333,19 @@ Append to `src/game/core/tuning.ts`, replacing the existing `STARS_PER_DAY` / `B
 export const LATE_HEAT_PER_DAY = 3.2;
 export const LATE_EXPANSION_PER_DAY = 2.5;
 export const LATE_BLIGHT_GATE = 20;
-export const LATE_BLIGHT_PER_DAY = 3;
+export const LATE_BLIGHT_PER_DAY = 4;
 export const LATE_OCEANS_HEAT = 55;
 export const LATE_ASKED_EXPANSION = 20;
 export const LATE_EXTERMINATED_EXPANSION = 60;
 export const LATE_ENCOUNTER_STEP = 15;
 ```
+
+`LATE_BLIGHT_PER_DAY` is 4, not 3, and that is deliberate rather than incidental. `lateStep`
+runs on hold ticks 1-29 only — the winning tick sets `stage: 'coda'`, and `lateStep` guards
+on `stage === 'late'` — so the blight window is 21 ticks, not 30. At 3/day that lands
+`late.blight` at 63 against `BLIGHT_WALL = 62`, a one-point margin that would make the
+`ending === 'blight'` assertion pass by arithmetic accident. At 4/day it lands at 84,
+crossing the threshold on day 24 with a 22-point margin.
 
 - [ ] **Step 4: Rewrite `lateStep`**
 
