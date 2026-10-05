@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { chance, mix32, rand } from '../../src/game/core/rng';
+import { biolabSalt, factorySalt, warEndSalt } from '../../src/game/core/step';
+import { REGION_IDS } from '../../src/game/data/regions';
 
 describe('mix32', () => {
   it('returns the same value for the same three inputs', () => {
@@ -81,5 +83,26 @@ describe('chance', () => {
     }
     expect(hits / trials).toBeGreaterThan(0.22);
     expect(hits / trials).toBeLessThan(0.28);
+  });
+});
+
+describe('region salts', () => {
+  it('are unique across all thirty regions for every purpose', () => {
+    for (const saltFn of [warEndSalt, biolabSalt, factorySalt]) {
+      const values = REGION_IDS.map((_, i) => saltFn(i));
+      expect(new Set(values).size).toBe(REGION_IDS.length);
+    }
+  });
+
+  it('does not share a salt with country seeding, which already used indices', () => {
+    const seeding = REGION_IDS.map((_, i) => 1300 + i * 3);
+    for (const salt of REGION_IDS.map((_, i) => biolabSalt(i))) {
+      expect(seeding).not.toContain(salt);
+    }
+  });
+
+  it('would have collided when derived from id length', () => {
+    const byLength = REGION_IDS.map((id) => id.length);
+    expect(byLength.length).toBeGreaterThan(new Set(byLength).size);
   });
 });

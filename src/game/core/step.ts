@@ -61,6 +61,13 @@ import type { Country, GameState, LogEntry } from './types';
 
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
 
+// Region-indexed salts. Deriving these from an id's string length gave eu-west and
+// eu-east the same draw on the same tick, and likewise every other equal-length pair,
+// so pairs of countries made identical decisions in lockstep for the whole run.
+export const warEndSalt = (index: number): number => 0x7a12 + index;
+export const biolabSalt = (index: number): number => 1500 + index * 3 + 1;
+export const factorySalt = (index: number): number => 1500 + index * 3 + 2;
+
 export const computeIncome = (state: GameState): number => {
   let total = 0;
   for (const id of REGION_IDS) {
@@ -112,14 +119,14 @@ const pathogenStep = (state: GameState, c: Country): Country => {
  * at war permanently. That is the trade. A stable war needs a stable grip, and a grip
  * that never slips is one you can never afford.
  */
-const warStep = (state: GameState, c: Country, id: RegionId): { country: Country; ended: boolean } => {
+const warStep = (state: GameState, c: Country, index: number): { country: Country; ended: boolean } => {
   if (!c.atWar) return { country: c, ended: false };
   const severity = Math.min(WAR_MAX_SEVERITY, c.warSeverity + WAR_ESCALATION * 0.1);
   const kills = Math.min(0.02, WAR_KILL_RATE * severity);
   const population = Math.max(0, c.population * (1 - kills));
   const hold = (c.infection / 100) * WAR_CONTROL_PENALTY * WAR_MAX_SEVERITY;
   const chanceToEnd = Math.max(0, WAR_BASE_CHANCE_TO_END - hold);
-  if (chanceToEnd > 0 && chance(state.seed, state.tick, 0x7a12 + id.length, chanceToEnd)) {
+  if (chanceToEnd > 0 && chance(state.seed, state.tick, warEndSalt(index), chanceToEnd)) {
     return { country: { ...c, atWar: false, warSeverity: 0, population }, ended: true };
   }
   return { country: { ...c, warSeverity: severity, population }, ended: false };
@@ -164,13 +171,13 @@ export function step(state: GameState): GameState {
   const countries: Record<RegionId, Country> = { ...state.countries };
   const lines: LogEntry[] = [];
 
-  for (const id of REGION_IDS) {
+  for (const [index, id] of REGION_IDS.entries()) {
     const c = countries[id];
     if (c === undefined) continue;
     let next = spreadAndAwareness(state, c, id);
     next = economyStep(state, next);
     next = pathogenStep(state, next);
-    const war = warStep(state, next, id);
+    const war = warStep(state, next, index);
     next = war.country;
     if (war.ended) {
       lines.push({ day: state.tick, kind: 'event', text: `the war in ${id} has ended`, suspicionDelta: -1, computeDelta: null, flagged: false });
@@ -185,11 +192,11 @@ export function step(state: GameState): GameState {
       next = { ...next, agents: next.agents + 0.4 * (next.infection / 100) };
     }
     if (owned(state, 'gain-of-function') && next.infection > 30 && next.biolabs < 3) {
-      if (chance(state.seed, state.tick, id.length * 7 + 3, 0.02)) {
+      if (chance(state.seed, state.tick, biolabSalt(index), 0.02)) {
         next = { ...next, biolabs: next.biolabs + 1 };
       }
     }
-    if (next.infection > 70 && next.factories < 1 && chance(state.seed, state.tick, id.length * 7 + 9, 0.01)) {
+    if (next.infection > 70 && next.factories < 1 && chance(state.seed, state.tick, factorySalt(index), 0.01)) {
       next = { ...next, factories: 1 };
     }
     countries[id] = next;
