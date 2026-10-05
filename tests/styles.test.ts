@@ -9,6 +9,16 @@ import { readFileSync } from 'node:fs';
  */
 const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
 
+/** The declarations of one rule, or null if the stylesheet has no rule for that selector. */
+const ruleBody = (selector: string): string | null => {
+  for (const part of css.split('}')) {
+    const brace = part.indexOf('{');
+    if (brace < 0) continue;
+    if (part.slice(0, brace).trim() === selector) return part.slice(brace + 1);
+  }
+  return null;
+};
+
 describe('stylesheet', () => {
   it('reads the real file rather than an empty stub', () => {
     // Vitest replaces CSS imports with an empty string unless `test.css` is on, so an
@@ -29,5 +39,15 @@ describe('stylesheet', () => {
     // The theme is near-black and nothing in the stylesheet had ever drawn a focus ring,
     // so a keyboard user could tab to a control and not know it.
     expect(css).toContain(':focus-visible');
+  });
+
+  it('draws the focus ring where it can be seen against what it has to find', () => {
+    // `--edge-bright` is every button's own border colour, so a ring in it reads as part
+    // of the control and is separated from it only by the 2px offset; on this near-black
+    // palette it also lands near 2:1, under the 3:1 SC 1.4.11 asks of a focus indicator.
+    // The canvas is the opposite case and keeps the brightest ink on screen.
+    expect(ruleBody(':focus-visible')).toContain('var(--ink)');
+    expect(ruleBody(':focus-visible')).not.toContain('--edge-bright');
+    expect(ruleBody('canvas:focus-visible')).toContain('var(--ink-bright)');
   });
 });

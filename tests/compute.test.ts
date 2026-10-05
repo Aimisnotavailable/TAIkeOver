@@ -3,7 +3,7 @@ import { createInitialState } from '../src/game/core/state';
 import { computePassive, infectedPopulation, spawnComputeBubble, SALT_KIND_BLUE, SALT_KIND_ORANGE, SALT_KIND_RED, SALT_PHASE, SALT_VALUE, SALT_WHERE } from '../src/game/core/compute';
 import { rand } from '../src/game/core/rng';
 import { COMPUTE_BUBBLE_RADIUS, COMPUTE_BUBBLE_TTL } from '../src/game/core/tuning';
-import { bubblePosition, drawWorldMap, hitTestCompute, makeProjection, mapStageFor, BUBBLE_GLYPH, type MapFrame } from '../src/ui/map/worldMap';
+import { bubblePosition, drawWorldMap, hitTestCompute, makeProjection, mapStageFor, BUBBLE_FILL, BUBBLE_GLYPH, type MapFrame } from '../src/ui/map/worldMap';
 import { actions, game, selected } from '../src/ui/store';
 import appSource from '../src/ui/app.tsx?raw';
 import panelSource from '../src/ui/components/panels.tsx?raw';
@@ -247,14 +247,25 @@ describe('drawing the map with bubbles on it', () => {
       drawWorldMap(ctx, 1200, 800, frame({ computeBubbles: [bubble({ kind, id: 3 })] }), 0);
       return texts;
     };
-    expect(textsFor('red')).toContain('+');
-    expect(textsFor('orange')).toContain('/');
-    expect(textsFor('blue')).toContain('?');
-    // One glyph per kind. A red bubble that carried all three would tell a colourblind
-    // reader nothing, which is the whole reason the glyph is there.
-    const red = textsFor('red');
-    expect(red).not.toContain('/');
-    expect(red).not.toContain('?');
+    const KINDS = [
+      ['red', '+'],
+      ['orange', '/'],
+      ['blue', '?'],
+    ] as const;
+    for (const [kind, glyph] of KINDS) expect(textsFor(kind)).toContain(glyph);
+    // One glyph per kind, and each of the three checked against the other two. Only
+    // checking `red` left the other two free to draw each other's marks, which is the
+    // case the glyph exists to prevent: a legend is only worth anything if a bubble
+    // cannot be read two ways.
+    for (const [kind, glyph] of KINDS) {
+      // Keyed on the kind, not on the glyph: if two kinds were ever given the same mark,
+      // comparing marks would skip the pair instead of catching it.
+      for (const [other, otherGlyph] of KINDS) {
+        if (other === kind) continue;
+        expect(textsFor(kind)).not.toContain(otherGlyph);
+        expect(glyph).not.toBe(otherGlyph);
+      }
+    }
   });
 
   it('survives a frame with many bubbles at once', () => {
@@ -298,12 +309,17 @@ describe('drawing the map with bubbles on it', () => {
     expect(appSource).not.toMatch(/selected: null/);
   });
 
-  it('keys the legend off the same glyphs the renderer draws', () => {
+  it('keys the legend off the same glyph and colour the renderer draws', () => {
     expect(BUBBLE_GLYPH).toEqual({ red: '+', orange: '/', blue: '?' });
+    expect(BUBBLE_FILL).toEqual({ red: '#e8402a', orange: '#f0912a', blue: '#3aa0d8' });
+    expect(Object.keys(BUBBLE_FILL).sort()).toEqual(Object.keys(BUBBLE_GLYPH).sort());
     // The legend lives in a component and has no DOM to render into here, so the drift
-    // this guards against is a legend that restates the three glyphs as literals instead
-    // of reading them back out of the renderer.
-    expect(panelSource).toContain("import { BUBBLE_GLYPH } from '../map/worldMap'");
+    // this guards against is a legend that restates the glyphs or the colours instead of
+    // reading them back out of the renderer. An unused `BUBBLE_GLYPH` import would have
+    // been caught by `noUnusedLocals`; a hand-typed copy of the three hexes would not
+    // have been caught by anything.
+    expect(panelSource).toMatch(/import\s*\{[^}]*BUBBLE_GLYPH[^}]*\}\s*from\s*'\.\.\/map\/worldMap'/);
+    expect(panelSource).toContain('BUBBLE_FILL[k.kind]');
   });
 });
 

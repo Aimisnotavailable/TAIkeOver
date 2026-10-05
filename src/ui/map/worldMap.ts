@@ -143,7 +143,7 @@ export interface MapFrame {
   tick: number;
 }
 
-const BUBBLE_FILL: Record<ComputeBubbleKind, string> = {
+export const BUBBLE_FILL: Record<ComputeBubbleKind, string> = {
   red: '#e8402a',
   orange: '#f0912a',
   blue: '#3aa0d8',
@@ -151,7 +151,9 @@ const BUBBLE_FILL: Record<ComputeBubbleKind, string> = {
 
 // The three kinds were three identical circles told apart only by fill colour, with no
 // legend anywhere. The glyph is the part that survives a colourblind palette and a
-// greyscale print, and it is what the HUD legend keys off.
+// greyscale print, and it is what the HUD legend keys off. The fills are exported for
+// the same reason: the legend used to name its own three hexes, which is a second copy
+// of this table that nothing could check.
 export const BUBBLE_GLYPH: Record<ComputeBubbleKind, string> = {
   red: '+',
   orange: '/',

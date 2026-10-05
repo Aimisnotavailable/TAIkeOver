@@ -152,12 +152,12 @@ function EndScreen({ state }: { state: GameState }) {
  * either end comes back around, because there is nothing past the last country to stop at.
  */
 export function stepRegion(current: RegionId | null, delta: number): RegionId | null {
-  if (REGION_IDS.length === 0) return null;
   const at = current === null ? -1 : REGION_IDS.indexOf(current);
-  const next = at < 0
-    ? delta > 0 ? 0 : REGION_IDS.length - 1
-    : (at + delta + REGION_IDS.length) % REGION_IDS.length;
-  return REGION_IDS[next] ?? null;
+  // Three cases, not two. A delta of zero is not a step, and folding it into the
+  // "nothing selected" branch below sent an unselected map to the far end of the ring.
+  if (delta === 0) return at < 0 ? null : REGION_IDS[at] ?? null;
+  if (at < 0) return (delta > 0 ? REGION_IDS[0] : REGION_IDS[REGION_IDS.length - 1]) ?? null;
+  return REGION_IDS[(at + delta + REGION_IDS.length) % REGION_IDS.length] ?? null;
 }
 
 function Map({ state }: { state: GameState }) {
@@ -287,8 +287,9 @@ export function Game() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === ' ') { e.preventDefault(); actions.cycleSpeed(); }
       // E opens the upgrade screen, which is where the decisions are. Tab used to do
-      // this, which meant Tab could never reach a button in the HUD: every control in
-      // the game was mouse-only for the whole session.
+      // this, and preventDefault on it stopped the browser advancing focus at all, so on
+      // every frame with no decision pending no HUD button could be reached by keyboard.
+      // (While a card was up the old guard let Tab through, which is where you want it.)
       if (e.key.toLowerCase() === 'e' && !evolving.value && game.peek().cards.length === 0) {
         e.preventDefault();
         evolving.value = true;

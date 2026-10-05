@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { REGION_BY_ID } from '../../game/data/regions';
-import { BUBBLE_GLYPH } from '../map/worldMap';
+import { BUBBLE_FILL, BUBBLE_GLYPH } from '../map/worldMap';
 import type { ComputeBubbleKind } from '../../game/core/types';
 import { TRAIT_BY_ID, TRAITS, TRAIT_GROUPS } from '../../game/data/traits';
 import { play } from '../sound';
@@ -206,6 +206,14 @@ function TraitNode({ id, state }: { id: string; state: GameState }) {
   );
 }
 
+/**
+ * Which keys close the upgrade screen. Escape only, deliberately: Tab used to close it
+ * too, and because the handler called preventDefault on it the browser never advanced
+ * focus, so the tree could be opened with E and then not one trait button or group header
+ * could be reached from the keyboard. Enter and Space belong to whatever has focus.
+ */
+export const closesEvolve = (key: string): boolean => key === 'Escape';
+
 export function EvolveButton({ onOpen, blocked }: { onOpen: () => void; blocked: boolean }) {
   return (
     <button
@@ -229,7 +237,7 @@ export function Evolve({ state, onClose }: { state: GameState; onClose: () => vo
   );
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape' || e.key === 'Tab') {
+      if (closesEvolve(e.key)) {
         e.preventDefault();
         onClose();
       }
@@ -368,27 +376,21 @@ export function ContextBar({ state }: { state: GameState }) {
 /**
  * What the three bubbles on the map are. Nothing in the interface named them: they were
  * three circles told apart by fill colour alone, which is the encoding that fails for a
- * colourblind reader and in a greyscale screenshot. The glyph is read out of the
- * renderer, so the two cannot drift apart.
+ * colourblind reader and in a greyscale screenshot. Both the glyph and the colour are
+ * read out of the renderer, so neither can drift from what the map actually draws.
  */
 const BUBBLE_KINDS: readonly { kind: ComputeBubbleKind; name: string; meaning: string }[] = [
-  { kind: 'red', name: 'turnover', meaning: 'their systems have quietly turned over to you' },
+  { kind: 'red', name: 'turnover', meaning: 'their systems turned over to you' },
   { kind: 'orange', name: 'strip', meaning: 'infrastructure burning down for parts' },
   { kind: 'blue', name: 'audit', meaning: 'the other side is getting close' },
 ];
-
-const BUBBLE_TINT: Record<ComputeBubbleKind, string> = {
-  red: 'var(--bad)',
-  orange: 'var(--warn)',
-  blue: 'var(--cool)',
-};
 
 export function BubbleLegend() {
   return (
     <div class="legend">
       {BUBBLE_KINDS.map((k) => (
         <div class="legend-row" key={k.kind}>
-          <b style={{ color: BUBBLE_TINT[k.kind] }}>{BUBBLE_GLYPH[k.kind]}</b>
+          <b style={{ color: BUBBLE_FILL[k.kind] }}>{BUBBLE_GLYPH[k.kind]}</b>
           {k.name} &mdash; {k.meaning}
         </div>
       ))}
