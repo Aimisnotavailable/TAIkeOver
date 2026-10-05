@@ -3,6 +3,7 @@ import { stepRegion } from '../src/ui/app';
 import { closesEvolve } from '../src/ui/components/panels';
 import { REGION_IDS } from '../src/game/data/regions';
 import appSource from '../src/ui/app.tsx?raw';
+import panelSource from '../src/ui/components/panels.tsx?raw';
 
 /**
  * The bindings live in component bodies, and this suite runs in the node environment
@@ -92,5 +93,36 @@ describe('the keyboard floor', () => {
     expect(tag).toContain('ArrowLeft');
     expect(tag).toContain('ArrowRight');
     expect(tag).toContain('actions.select(stepRegion(');
+  });
+});
+
+describe('the map is not silent', () => {
+  /**
+   * The live region inside the context bar, sliced out of the component. Scoped the same
+   * way the canvas tag is: a whole-file `toContain('aria-live')` is satisfied by the toast
+   * container alone, which is what shipped while the map still said nothing.
+   */
+  const liveRegion = (): string => {
+    const m = panelSource.match(/class="sr-only"[\s\S]*?<\/div>/);
+    if (m === null) throw new Error('no live region in the context bar');
+    return m[0];
+  };
+
+  it('announces the selected region where a screen reader will actually read it', () => {
+    // The canvas is role="application", so a reader hands it every keystroke and reads
+    // nothing back: the aria-label is the standing instruction and cannot report a
+    // selection change. The spec promised the region would be announced.
+    const region = liveRegion();
+    expect(region).toContain('role="status"');
+    expect(region).toContain('aria-live="polite"');
+    expect(region).toMatch(/\$\{name\} selected\./);
+  });
+
+  it('announces nothing that ticks', () => {
+    // A live region re-announces on every content change and this component re-renders
+    // every in-game day. A number in here would have the reader repeating the infection
+    // percentage once a day for the length of the run.
+    const region = liveRegion();
+    expect(region).not.toMatch(/Math\.round|\.toFixed|state\.tick|c\.infection|c\.awareness/);
   });
 });

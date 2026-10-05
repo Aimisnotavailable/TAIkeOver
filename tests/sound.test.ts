@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { musicPlaying, setAudioEnabled, startMusic, unlockAudio } from '../src/ui/sound';
+import { setAudioEnabled, startMusic, unlockAudio } from '../src/ui/sound';
 
 describe('music', () => {
   // The audio layer is browser-only, so these guard the module against crashing
@@ -7,11 +7,6 @@ describe('music', () => {
   it('survives being asked to play with no DOM', () => {
     expect(() => startMusic(true)).not.toThrow();
     expect(() => startMusic(false)).not.toThrow();
-  });
-
-  it('reports not playing when there is no audio element', () => {
-    startMusic(false);
-    expect(musicPlaying()).toBe(false);
   });
 
   it('survives an unlock attempt with no DOM', () => {

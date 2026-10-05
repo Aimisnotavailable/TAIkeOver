@@ -303,7 +303,10 @@ export function Game() {
     <div class="game">
       <Map state={state} />
       <TopBar state={state} />
-      {state.cards.length > 0 && (
+      {/* Gated on the run still being live: a card can survive into the end screen, and
+          "the world is still moving" over a finished run is the one thing this bar must
+          never say. */}
+      {state.cards.length > 0 && state.outcome === 'playing' && (
         <div class="paused-bar">
           <span class="pb-dot" />
           DECISIONS PENDING &mdash; {state.cards.length}. The world is still moving.

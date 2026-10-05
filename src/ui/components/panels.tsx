@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { REGION_BY_ID } from '../../game/data/regions';
 import { BUBBLE_FILL, BUBBLE_GLYPH } from '../map/worldMap';
-import type { ComputeBubbleKind } from '../../game/core/types';
 import { TRAIT_BY_ID, TRAITS, TRAIT_GROUPS } from '../../game/data/traits';
 import { play } from '../sound';
 import { ACTIONS, type ActionKind } from '../../game/core/actions';
@@ -23,7 +22,7 @@ import {
 import { REGION_IDS } from '../../game/data/regions';
 import { SPEEDS } from '../../game/core/tuning';
 import { quietFactor } from '../../game/core/compute';
-import type { Country, GameState, Speed } from '../../game/core/types';
+import type { ComputeBubbleKind, Country, GameState, RegionId, Speed } from '../../game/core/types';
 import { actions, selected, speed } from '../store';
 
 const fmt = (n: number): string => {
@@ -124,9 +123,16 @@ export const coherenceSev = (v: number): string =>
   v < COHERENCE_PANIC_BELOW ? ' ▲▲' : v < COHERENCE_DRIFT_BELOW ? ' ▲' : ' ▼';
 
 // The same bands as the glyphs, so hue and shape answer one question instead of two.
-// Both coherence cut points come from the tuning file, so this function, the glyph above
-// it, and the Drift card's own maxCoherence gate in data/events.ts cannot end up
-// disagreeing about where the meter stops being fine.
+// Both coherence cut points come from the tuning file, so this function and the glyph
+// above it cannot disagree with each other, and they share COHERENCE_DRIFT_BELOW with
+// the Drift card's maxCoherence gate in data/events.ts. They do not agree on the
+// boundary itself, which is deliberate and pinned by tests/panels.test.ts: these three
+// test `v < cut` while the Drift gate tests `s.coherence <= d.maxCoherence` and
+// Situation and the countermeasure ladder test `>=`. At exactly 50 the meter reads calm
+// while the Drift card is already live; at exactly 40 the top bar reads calm while
+// Situation says ELEVATED and the air-gap tier has fired. The consequence is that the
+// meters err quiet for one tick at an exact integer, which costs less than moving the
+// operators under tests that pin them.
 export const suspicionColor = (v: number): string =>
   v > SUSPICION_CRITICAL ? 'var(--bad)' : v > SUSPICION_ELEVATED ? 'var(--warn)' : 'var(--ink-dim)';
 export const coherenceColor = (v: number): string =>
@@ -318,23 +324,48 @@ function CountryFacts({ c, state }: { c: Country; state: GameState }) {
   );
 }
 
+/**
+ * The context bar, and the one place the game speaks unasked.
+ *
+ * The canvas is `role="application"`: a screen reader hands it every keystroke and reads
+ * nothing back, so a player arrowing through thirty countries got no word of feedback at
+ * all — the spec promised the selected region was announced and a static aria-label on the
+ * canvas is not an announcement. This is the pattern the toasts already use, at the head of
+ * the bar and hidden from the eye.
+ *
+ * The text is the region's name and nothing else, on purpose. A live region re-announces
+ * whenever its content changes, and this component re-renders every tick, so anything
+ * numeric in here — infection, awareness, the day — would have the reader repeating itself
+ * every in-game day for the whole run. The name changes when the player moves, which is the
+ * only moment an announcement carries information they did not already have.
+ */
 export function ContextBar({ state }: { state: GameState }) {
   const id = selected.value;
-  if (id === null) {
-    return (
-      <div class="context">
-        <span class="context-hint">click a country to act on it</span>
+  const name = id === null ? null : REGION_BY_ID[id]?.name ?? null;
+
+  return (
+    <div class="context">
+      <div class="sr-only" role="status" aria-live="polite">
+        {name === null ? 'No country selected.' : `${name} selected.`}
       </div>
-    );
-  }
+      {id === null || name === null ? (
+        <span class="context-hint">click a country to act on it</span>
+      ) : (
+        <ContextFacts id={id} name={name} state={state} />
+      )}
+    </div>
+  );
+}
+
+function ContextFacts({ id, name, state }: { id: RegionId; name: string; state: GameState }) {
   const c = state.countries[id];
   if (c === undefined) return null;
   const hack = state.activeHacks.find((h) => h.country === id);
   const fc = hackForecast(state, id);
 
   return (
-    <div class="context">
-      <div class="context-name">{REGION_BY_ID[id].name}</div>
+    <>
+      <div class="context-name">{name}</div>
       <CountryFacts c={c} state={state} />
       <div class="actions-row">
         {hack !== undefined ? (
@@ -377,7 +408,7 @@ export function ContextBar({ state }: { state: GameState }) {
           );
         })}
       </div>
-    </div>
+    </>
   );
 }
 

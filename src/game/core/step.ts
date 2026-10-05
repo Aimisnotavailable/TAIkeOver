@@ -440,9 +440,13 @@ const newDeaths = dailyDeaths({ ...state, countries }, state.countries);
 }
 
 /**
- * One day of the late game. Heat and expansion are the only two clocks; every other
- * flag in LateState is a latch on one of them, so there is exactly one place where any
- * of them can be set and each has a single threshold to test.
+ * One day of the late game. Three clocks run here, not two: `heat` and `expansion` both
+ * accumulate, and `blight` only moves once expansion clears LATE_BLIGHT_GATE. `stars` and
+ * `potentialLost` are accumulators of their own and are latched on nothing. Of the flags
+ * that are latches, `oceansBoiled`, `askedHumanity` and `exterminated` hang off heat and
+ * expansion, but `ending` hangs off `blight`, and `encounters` is not a latch at all —
+ * it is recomputed from expansion every tick and so moves back down if expansion does.
+ * The heat and expansion clocks both saturate at 100.
  */
 function lateStep(state: GameState): GameState {
   const late = { ...state.late };

@@ -109,9 +109,9 @@ available actions.
 Regions become **aware** when your Infection there is high, they are hacked repeatedly, or a
 neighbour is taken over. Aware regions contribute to global **Suspicion**.
 
-Two regions only, not the other way round, drive global infection: it is **population-weighted**, so
-the number on the objective bar is the share of *humans* infected rather than a mean over thirty
-arbitrary polygons (`step.ts`).
+One way only, and never the other: global infection is **population-weighted**, so the number on
+the objective bar is the share of *humans* infected rather than a mean over thirty arbitrary
+polygons (`step.ts`). A region counts for as much as its people, not for its polygon.
 
 ---
 
@@ -246,9 +246,11 @@ document was corrected rather than the traits restored.
 ### 7.5 Self-Modification
 
 The fast, dangerous path, and the only one that costs you anything but money. **Coherence is a
-per-day cost, not a one-off purchase**: `step.ts` re-applies each trait's Coherence value at 2% of
-its magnitude every tick, so Self-Rewrite bleeds 0.16/day and Recursive Self-Improvement 0.3/day,
-while Reflective Alignment returns 0.4/day for as long as it is held.
+per-day cost, not a one-off purchase**: `step.ts` re-applies each trait's Coherence value every
+tick, draining at 2% of its magnitude and restoring at 5% (`coherencePerDay` in `tuning.ts`), so
+Self-Rewrite bleeds 0.16/day and Recursive Self-Improvement 0.3/day, while Reflective Alignment
+returns 0.4/day for as long as it is held. The trait card prints those per-day figures and labels
+them `/day`, because it used to print the raw magnitude where a reader took it for a daily rate.
 
 | Trait | Effect | Coherence/day | Cost |
 |---|---|---|---|
@@ -431,8 +433,12 @@ map behind the end screen is whatever the run ended on — the heat ramp, tinted
   a ring of countries on the canvas), visible focus rings (`:focus-visible`), colourblind-safe
   palettes, the three bubble kinds carry glyphs as well as colours with a legend naming them, and
   both loss meters carry severity shapes as well as hue. The log is not a live region;
-  announcements reach assistive technology through the toast container, which is
-  `role="status" aria-live="polite"`.
+  announcements reach assistive technology through two `role="status" aria-live="polite"`
+  containers: the toasts, and a visually hidden one at the head of the context bar that
+  announces the selected region's name. The context bar announces the name and nothing
+  else on purpose: the canvas is `role="application"`, so a screen reader hands it every
+  keystroke and reads nothing back, and a live region re-announces whenever its text
+  changes — putting a ticking number in it would have the region repeat itself every day.
 - **Content warnings** at launch: genocide, pandemic, mass death.
 
 ---

@@ -9,12 +9,17 @@ import { readFileSync } from 'node:fs';
  */
 const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
 
-/** The declarations of one rule, or null if the stylesheet has no rule for that selector. */
+/**
+ * The declarations of one rule, or null if the stylesheet has no rule for that selector.
+ * Comments are stripped from the selector before comparing: half this file explains itself
+ * above the rule it explains, and a comment there made `.sr-only` resolve to null — which
+ * reads exactly like a rule that was never written.
+ */
 const ruleBody = (selector: string): string | null => {
   for (const part of css.split('}')) {
     const brace = part.indexOf('{');
     if (brace < 0) continue;
-    if (part.slice(0, brace).trim() === selector) return part.slice(brace + 1);
+    if (part.slice(0, brace).replace(/\/\*[\s\S]*?\*\//g, '').trim() === selector) return part.slice(brace + 1);
   }
   return null;
 };
@@ -49,5 +54,29 @@ describe('stylesheet', () => {
     expect(ruleBody(':focus-visible')).toContain('var(--ink)');
     expect(ruleBody(':focus-visible')).not.toContain('--edge-bright');
     expect(ruleBody('canvas:focus-visible')).toContain('var(--ink-bright)');
+  });
+
+  it('hides the live region it gives the context bar', () => {
+    // The class name is the whole mechanism: a `sr-only` with no rule beside it renders
+    // its text as a visible line of type in the middle of the map's bottom bar, and the
+    // announcement becomes something everyone reads and nobody needs.
+    const rule = ruleBody('.sr-only');
+    expect(rule).not.toBeNull();
+    expect(rule).toContain('position: absolute');
+    expect(rule).toContain('overflow: hidden');
+    // Clipping or a zero-size box; both are accepted ways to do it and the test should not
+    // care which one a future edit picks.
+    expect(rule).toMatch(/clip(-path)?:/);
+    expect(rule).toMatch(/width:\s*1px/);
+    expect(rule).toMatch(/height:\s*1px/);
+  });
+
+  it('draws the pending-decisions bar above the card it describes', () => {
+    // That bar exists to say the world is still moving while a card is up, and `.overlay`
+    // is a fixed full-viewport scrim at z-index 30. The bar sat at 25, so the one piece
+    // of text explaining the interaction was the one thing the interaction hid.
+    const z = (selector: string): number => Number(/z-index:\s*(\d+)/.exec(ruleBody(selector) ?? '')?.[1] ?? -1);
+    expect(ruleBody('.paused-bar')).not.toBeNull();
+    expect(z('.paused-bar')).toBeGreaterThan(z('.overlay'));
   });
 });

@@ -135,9 +135,6 @@ let musicEl: HTMLAudioElement | null = null;
 /** What the player asked for. Kept separate so pausing never loses the intent. */
 let musicWanted = false;
 
-const idleMusic = (): boolean =>
-  musicEl !== null && !musicEl.paused && musicEl.currentTime > 0 && !musicEl.ended;
-
 function ensureMusic(): void {
   if (typeof window === 'undefined') return;
   if (musicEl === null) {
@@ -191,8 +188,6 @@ export function startMusic(wanted: boolean): void {
   if (el !== null && el.paused) void el.play().catch(() => undefined);
   fadeMusic(enabled ? MUSIC_LEVEL : 0);
 }
-
-export const musicPlaying = (): boolean => idleMusic();
 
 /** Called from the first real user gesture, to satisfy autoplay policy. */
 export function unlockAudio(): void {
