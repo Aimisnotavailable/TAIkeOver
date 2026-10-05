@@ -409,11 +409,18 @@ const newDeaths = dailyDeaths({ ...state, countries }, state.countries);
     next.log = log(next, 'system', 'the threshold is met. Recursive Self-Improvement is available');
   }
 
+  // The hold is the late game. The map starts heating the day the recursion closes,
+  // and the win lands at the end of it, so the player watches thirty days of the
+  // thing they bought instead of a single frame of it.
+  if (owned(next, 'rsi') && next.stage === 'world') {
+    next = { ...next, stage: 'late' };
+    next.log = log(next, 'system', 'the recursion closes. the map begins to heat');
+  }
   if (owned(next, 'rsi')) {
-    next.surviveTicks += 1;
+    next = { ...next, surviveTicks: state.surviveTicks + 1 };
     if (next.surviveTicks >= RSI_SURVIVE_DAYS) {
-      next = { ...next, stage: 'late', outcome: 'won', outcomeReason: 'blight' };
-      next.log = log(next, 'system', 'the recursion closes. the map begins to heat');
+      next = { ...next, stage: 'coda', outcome: 'won', outcomeReason: 'blight' };
+      next.log = log(next, 'system', 'the map is gone. what is left is the blight');
     }
   }
 

@@ -7,7 +7,9 @@ import {
   ASCENSION_COHERENCE,
   ASCENSION_INFECTION,
   COMPUTE_CEILING,
+  RSI_SURVIVE_DAYS,
 } from '../src/game/core/tuning';
+import { buyTrait } from '../src/game/core/queries';
 import { REGION_IDS } from '../src/game/data/regions';
 import { TRAIT_BY_ID } from '../src/game/data/traits';
 import type { GameState } from '../src/game/core/types';
@@ -144,5 +146,73 @@ describe('ascension', () => {
 describe('the compute ceiling leaves room for ascension', () => {
   it('holds more than the ascension gate needs', () => {
     expect(COMPUTE_CEILING).toBeGreaterThan(ASCENSION_COMPUTE);
+  });
+});
+
+describe('the blight is reachable', () => {
+  const holding: GameState = { ...start(), stage: 'world', traits: ['rsi'], outcome: 'playing' };
+
+  it('turns the world late on purchase and wins after the hold', () => {
+    let s = step(holding);
+    expect(s.stage).toBe('late');
+    expect(s.outcome).toBe('playing');
+
+    // The win lands on the thirtieth tick, so the twenty-ninth is still mid-hold.
+    for (let i = 0; i < RSI_SURVIVE_DAYS - 2; i++) s = step(s);
+    expect(s.surviveTicks).toBe(RSI_SURVIVE_DAYS - 1);
+    expect(s.outcome).toBe('playing');
+
+    s = step(s);
+    expect(s.outcome).toBe('won');
+    expect(s.outcomeReason).toBe('blight');
+    expect(s.stage).toBe('coda');
+  });
+
+  it('is reachable by actually buying it', () => {
+    let s: GameState = { ...start(), stage: 'world', compute: 99_999, traits: ['hack-1', 'hack-2'] };
+    s = buyTrait(s, 'rsi'); // does nothing: ascension is not open yet
+    expect(s.incubating).toHaveLength(0);
+
+    s = { ...s, ascensionUnlocked: true };
+    s = buyTrait(s, 'rsi');
+    expect(s.incubating.map((i) => i.trait)).toContain('rsi');
+
+    let guard = 0;
+    while (!s.traits.includes('rsi') && guard++ < 10) s = step(s);
+    expect(s.traits).toContain('rsi');
+
+    while (s.outcome === 'playing' && guard++ < 200) s = step(s);
+    expect(s.outcome).toBe('won');
+    expect(s.outcomeReason).toBe('blight');
+  });
+
+  it('accumulates heat across the whole hold rather than one tick', () => {
+    let s = holding;
+    for (let i = 0; i < 10; i++) s = step(s);
+    const heatAfterTen = s.late.heat;
+    expect(heatAfterTen).toBeGreaterThan(0);
+    for (let i = 0; i < 10; i++) s = step(s);
+    expect(s.late.heat).toBeGreaterThan(heatAfterTen);
+  });
+
+  it('still returns the identical reference once finished', () => {
+    let s = holding;
+    for (let i = 0; i < RSI_SURVIVE_DAYS; i++) s = step(s);
+    expect(step(s)).toBe(s);
+  });
+
+  it('loses rather than wins if suspicion hits 100 on the last day of the hold', () => {
+    // The win is set first on the thirtieth tick and the shutdown check runs after
+    // it, so a run deleted on the day its recursion closed did not survive. The
+    // reach of 100 is asserted going into that tick rather than by seeding a
+    // number that happens to drift there, because on a clean world suspicion only
+    // ever falls.
+    let s = holding;
+    for (let i = 0; i < RSI_SURVIVE_DAYS - 1; i++) s = step(s);
+    expect(s.surviveTicks).toBe(RSI_SURVIVE_DAYS - 1);
+
+    s = step({ ...s, suspicion: 100 });
+    expect(s.outcome).toBe('lost');
+    expect(s.outcomeReason).toBe('coordinated-shutdown');
   });
 });
