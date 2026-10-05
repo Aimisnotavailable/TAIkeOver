@@ -1,4 +1,5 @@
 import type { GameState } from '../game/core/types';
+import { rollEvent } from '../game/core/events';
 import { DIFFICULTIES, getDifficulty } from '../game/core/tuning';
 import { REGION_BY_ID, REGION_IDS } from '../game/data/regions';
 import { actions, game } from './store';
@@ -6,7 +7,6 @@ import { ContextBar, Evolve, EvolveButton, EventLog, Operations, SideRail, TopBa
 import { drawWorldMap, hitTest, hitTestCompute, mapStageFor } from './map/worldMap';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { TICK_MS } from '../game/core/tuning';
-import { rollEvent } from './store';
 import { evolving, evolveBlocked, flash, hovered, notify, speed, toasts, worldRunning, type ToastTone } from './store';
 import { startMusic, unlockAudio } from './sound';
 
