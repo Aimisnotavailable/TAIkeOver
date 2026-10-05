@@ -58,9 +58,10 @@ describe('severity thresholds', () => {
   });
 
   it('reads coherence off the two thresholds the simulation itself uses', () => {
-    // COHERENCE_DRIFT_BELOW is where drift events start firing and COHERENCE_PANIC_BELOW
-    // is where the interface starts renaming your faction. The glyph must move where the
-    // simulation moves, or it is warning about something that has not happened yet.
+    // COHERENCE_DRIFT_BELOW is 50, the same value the Drift event's own maxCoherence
+    // gate is written with, and COHERENCE_PANIC_BELOW is 20, which nothing else reads.
+    // The glyph has to move where those two numbers are, or it is warning about something
+    // that has not happened yet.
     expect(coherenceSev(COHERENCE_DRIFT_BELOW).trim()).toBe('▼');
     expect(coherenceSev(COHERENCE_DRIFT_BELOW - 0.01).trim()).toBe('▲');
     expect(coherenceSev(COHERENCE_PANIC_BELOW).trim()).toBe('▲');
@@ -68,11 +69,11 @@ describe('severity thresholds', () => {
   });
 
   it('has no meter threshold written as a bare number', () => {
-    // The critical threshold was compared against a literal 70 in three places and a
-    // literal 45 in a fourth, so the word ELEVATED and the meter's amber could disagree
-    // with nothing catching it. Scoped to the two meters and their helper parameters: a
-    // trait's own coherence cost (`f.coherence > 0`) is a different quantity and is not
-    // what this is about.
+    // The suspicion thresholds were bare numbers: 70 at four sites (this glyph, the
+    // metre, and Situation's word and its colour) and 45 at two of those, so the word
+    // ELEVATED and the meter's amber could disagree with nothing catching it. Scoped to
+    // the two meters and their helper parameters: a trait's own coherence cost
+    // (`f.coherence > 0`) is a different quantity and is not what this is about.
     const literals = panelSource.match(/(?:state\.(?:suspicion|coherence)|\bv)\s*(?:<|<=|>|>=)\s*\d+(?!\w)/g) ?? [];
     expect(literals).toEqual([]);
   });

@@ -30,10 +30,11 @@ const fmt = (n: number): string => {
 };
 
 /**
- * Where suspicion turns from a nuisance into the thing that deletes you. Nothing in the
- * tuning file governs these three: the countermeasures ladder runs 20/40/60/80, so the
- * last twenty points before shutdown had no name at all, which is why the threshold was
- * typed into the metre, the status word and the glyph separately.
+ * Where suspicion turns from a nuisance into the thing that deletes you. No constant in
+ * the tuning file governs these three: the countermeasures ladder runs 20/40/60/80, so all
+ * of them were typed in at each site that needed one. They were already named and painted
+ * before that -- 70 was CRITICAL and red all the way to 100 -- but two of the sites that
+ * used 70 called the band above it 45 and two called it 40.
  * SUSPICION_WATCHED lines up with the first countermeasure rung, the point at which the
  * world starts tightening up on you.
  */
@@ -111,17 +112,19 @@ export function Objective({ state }: { state: GameState }) {
 
 // Shape as well as colour. A run can end on either of these two metres, and both were
 // signalled by hue alone, which is the encoding that fails for a red-green colourblind
-// player and in a greyscale screenshot. (Being outcompeted by a rival ends one too, and
-// that one is signalled by a word rather than a colour.)
+// player and in a greyscale screenshot. (Being outcompeted ends a run too, and that one
+// is signalled by colour alone: step.ts sets the outcome with no log line and no toast,
+// so all you get while it is happening is a rival's capability number turning red.)
 export const suspicionSev = (v: number): string =>
   v > SUSPICION_CRITICAL ? ' ▲▲' : v > SUSPICION_ELEVATED ? ' ▲' : ' ▼';
 export const coherenceSev = (v: number): string =>
   v < COHERENCE_PANIC_BELOW ? ' ▲▲' : v < COHERENCE_DRIFT_BELOW ? ' ▲' : ' ▼';
 
 // The same bands as the glyphs, so hue and shape answer one question instead of two.
-// Coherence's cut points come from the tuning file: COHERENCE_DRIFT_BELOW is 50, which is
-// where the Drift event's maxCoherence gate opens, and COHERENCE_PANIC_BELOW is 20, which
-// had no reader at all until these two lines.
+// Coherence's cut points come from the tuning file: COHERENCE_DRIFT_BELOW is 50, the same
+// value the Drift event's own maxCoherence gate is written with in data/events.ts, which
+// does not read the constant, and COHERENCE_PANIC_BELOW is 20, which nothing read until
+// the glyph above and this function did.
 export const suspicionColor = (v: number): string =>
   v > SUSPICION_CRITICAL ? 'var(--bad)' : v > SUSPICION_ELEVATED ? 'var(--warn)' : 'var(--ink-dim)';
 export const coherenceColor = (v: number): string =>
@@ -210,7 +213,10 @@ function TraitNode({ id, state }: { id: string; state: GameState }) {
  * Which keys close the upgrade screen. Escape only, deliberately: Tab used to close it
  * too, and because the handler called preventDefault on it the browser never advanced
  * focus, so the tree could be opened with E and then not one trait button or group header
- * could be reached from the keyboard. Enter and Space belong to whatever has focus.
+ * could be reached from the keyboard. Enter is left alone too: it belongs to the focused
+ * control, and the one other Enter handler is gated on a decision card, which cannot
+ * appear while the tree is open. Space is not reachable whatever has focus: app.tsx
+ * cycles the speed on it from `window` and prevents the default.
  */
 export const closesEvolve = (key: string): boolean => key === 'Escape';
 
