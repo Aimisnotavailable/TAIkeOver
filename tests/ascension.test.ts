@@ -184,6 +184,10 @@ describe('the blight is reachable', () => {
     while (s.outcome === 'playing' && guard++ < 200) s = step(s);
     expect(s.outcome).toBe('won');
     expect(s.outcomeReason).toBe('blight');
+    // The stage guard is the only thing keeping this from being written on every one
+    // of the thirty hold ticks, and a log line nobody reads twice is still thirty
+    // lines of noise in the one panel the player is watching.
+    expect(s.log.filter((e) => e.text === 'the recursion closes. the map begins to heat')).toHaveLength(1);
   });
 
   it('accumulates heat across the whole hold rather than one tick', () => {

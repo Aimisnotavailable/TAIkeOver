@@ -417,7 +417,7 @@ const newDeaths = dailyDeaths({ ...state, countries }, state.countries);
     next.log = log(next, 'system', 'the recursion closes. the map begins to heat');
   }
   if (owned(next, 'rsi')) {
-    next = { ...next, surviveTicks: state.surviveTicks + 1 };
+    next = { ...next, surviveTicks: next.surviveTicks + 1 };
     if (next.surviveTicks >= RSI_SURVIVE_DAYS) {
       next = { ...next, stage: 'coda', outcome: 'won', outcomeReason: 'blight' };
       next.log = log(next, 'system', 'the map is gone. what is left is the blight');
