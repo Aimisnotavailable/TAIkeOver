@@ -8,7 +8,7 @@ import { buyTrait, canBuyTrait } from '../game/core/queries';
 import { createInitialState } from '../game/core/state';
 import { step } from '../game/core/step';
 import { SPEEDS, getDifficulty } from '../game/core/tuning';
-import { REGION_BY_ID, type RegionId } from '../game/data/regions';
+import { REGION_BY_ID, REGION_IDS, type RegionId } from '../game/data/regions';
 import { BUBBLE_LABEL } from '../game/core/compute';
 import { play, setAudioEnabled, audioEnabled } from './sound';
 import type { DifficultyId, GameState, Speed, TraitId } from '../game/core/types';
@@ -50,6 +50,45 @@ export const spike = (amount: number): void => {
   if (flashTimer !== null) clearTimeout(flashTimer);
   flashTimer = setTimeout(() => (flash.value = 0), 420);
 };
+
+/**
+ * Watches for conditions the simulation creates on its own and calls out the ones
+ * that matter. Deliberately one-shot per condition per run: a toast that repeats
+ * every day is noise, and noise is why players stop reading the screen.
+ */
+export const announced = new Set<string>();
+export function announce(state: GameState): void {
+  const once = (key: string, tone: ToastTone, title: string, detail: string): void => {
+    if (announced.has(key)) return;
+    announced.add(key);
+    notify(tone, title, detail);
+  };
+
+  for (const id of REGION_IDS) {
+    const c = state.countries[id];
+    if (c === undefined) continue;
+    const name = REGION_BY_ID[id]?.name ?? id;
+    if (c.infection >= 60 && state.suspicion >= 40) {
+      once(`outbreak:${id}`, 'insurgency', `OUTBREAK · ${name.toUpperCase()}`, 'most of the country is under you and they have noticed');
+    }
+    if (c.economy <= 30) {
+      once(`collapse:${id}`, 'economy', `ECONOMIC COLLAPSE · ${name.toUpperCase()}`, 'the economy has stopped working');
+    }
+    if (c.quiet) once(`quiet:${id}`, 'quiet', `GOING QUIET · ${name.toUpperCase()}`, 'you stopped spreading here');
+    if (c.hardened >= 6) {
+      once(`hard:${id}`, 'info', `DATACENTER HARDENED · ${name.toUpperCase()}`, 'they changed everything you were counting on');
+    }
+  }
+  if (state.pathogen.released) {
+    once('plague', 'plague', 'THE PATHOGEN IS VISIBLE', 'every government can see what you did');
+  }
+  if (state.countermeasures.tier >= 2) {
+    once('cm2', 'insurgency', 'CRITICAL INFRASTRUCTURE AIR-GAPPED', 'some countries have cut themselves off. you cannot hack what is offline');
+  }
+  if (state.ascensionUnlocked) {
+    once('asc', 'plague', 'ASCENSION AVAILABLE', 'Recursive Self-Improvement is on the tree');
+  }
+}
 
 const mutate = (fn: (s: GameState) => GameState): void => {
   const before = game.peek().suspicion;
@@ -188,6 +227,13 @@ answerEvent(cardKey: number, choiceId: string): void {
     game.value = createInitialState(SEED + game.peek().tick, difficulty);
     selected.value = null;
     speed.value = 1;
+    // The keys are region ids and fixed words, never ticks, so every one of them is
+    // already in `announced` by the end of the first run and `once` would swallow every
+    // condition in every run after it. Same for the toasts and the upgrade screen: they
+    // are state from the run that just ended.
+    announced.clear();
+    toasts.value = [];
+    evolving.value = false;
   },
 
   toggleAudio(): void {

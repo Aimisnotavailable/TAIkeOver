@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createInitialState } from '../src/game/core/state';
 import { step } from '../src/game/core/step';
-import { actions, game, selected, toasts } from '../src/ui/store';
+import { actions, announce, announced, game, selected, toasts } from '../src/ui/store';
 import { quietFactor } from '../src/game/core/compute';
 import { INFLUENCE_MAX } from '../src/game/core/tuning';
 import { REGION_IDS } from '../src/game/data/regions';
@@ -100,5 +100,22 @@ describe('what influence is for', () => {
       loud = step(loud);
     }
     expect(loud.influence).toBeGreaterThan(plain.influence);
+  });
+});
+
+describe('announcements re-arm on restart', () => {
+  it('fires the same announcement again in a second run', () => {
+    const s = start({
+      pathogen: { released: true, killsPerDay: 0.005, suspicionPerDay: 1, sterility: false, targeted: false, cancer: false },
+    });
+    announce(s);
+    expect(toasts.value.map((t) => t.title)).toContain('THE PATHOGEN IS VISIBLE');
+    toasts.value = [];
+
+    actions.restart('default');
+    expect(announced.size).toBe(0);
+
+    announce(s);
+    expect(toasts.value.map((t) => t.title)).toContain('THE PATHOGEN IS VISIBLE');
   });
 });
