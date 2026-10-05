@@ -34,7 +34,7 @@ const fmt = (n: number): string => {
  * the tuning file governs these three: the countermeasures ladder runs 20/40/60/80, so all
  * of them were typed in at each site that needed one. They were already named and painted
  * before that -- 70 was CRITICAL and red all the way to 100 -- but two of the sites that
- * used 70 called the band above it 45 and two called it 40.
+ * used 70 called the band below it 45 and two called it 40.
  * SUSPICION_WATCHED lines up with the first countermeasure rung, the point at which the
  * world starts tightening up on you.
  */

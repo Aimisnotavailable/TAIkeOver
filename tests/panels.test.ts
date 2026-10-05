@@ -57,7 +57,7 @@ describe('severity thresholds', () => {
     expect(suspicionSev(SUSPICION_CRITICAL + 0.01).trim()).toBe('▲▲');
   });
 
-  it('reads coherence off the two thresholds the simulation itself uses', () => {
+  it('moves coherence on the two thresholds it imports, not on either side of them', () => {
     // COHERENCE_DRIFT_BELOW is 50, the same value the Drift event's own maxCoherence
     // gate is written with, and COHERENCE_PANIC_BELOW is 20, which nothing else reads.
     // The glyph has to move where those two numbers are, or it is warning about something
