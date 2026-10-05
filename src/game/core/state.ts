@@ -82,7 +82,6 @@ export function createInitialState(seed: number, difficulty: DifficultyId = 'def
     pathogen: { released: false, killsPerDay: 0, suspicionPerDay: 0, sterility: false, targeted: false, cancer: false },
     log: [],
     ascensionUnlocked: false,
-    rsiBought: false,
     surviveTicks: 0,
     late: {
       heat: 0,

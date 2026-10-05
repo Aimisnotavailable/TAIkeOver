@@ -409,7 +409,7 @@ const newDeaths = dailyDeaths({ ...state, countries }, state.countries);
     next.log = log(next, 'system', 'the threshold is met. Recursive Self-Improvement is available');
   }
 
-  if (next.rsiBought) {
+  if (owned(next, 'rsi')) {
     next.surviveTicks += 1;
     if (next.surviveTicks >= RSI_SURVIVE_DAYS) {
       next = { ...next, stage: 'late', outcome: 'won', outcomeReason: 'blight' };

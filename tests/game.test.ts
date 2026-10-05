@@ -372,3 +372,16 @@ describe('determinism', () => {
     expect(TICK_MS).toBeLessThan(10_000);
   });
 });
+
+describe('recursive self-improvement', () => {
+  it('starts the hold the moment rsi is granted', () => {
+    const base = { ...start(4242), stage: 'world' as const, traits: ['rsi'], compute: 0 };
+    const after = step(base);
+    expect(after.surviveTicks).toBe(1);
+  });
+
+  it('does not count the hold before rsi is granted', () => {
+    const after = step({ ...start(4242), stage: 'world' as const, traits: [] });
+    expect(after.surviveTicks).toBe(0);
+  });
+});

@@ -4,7 +4,7 @@ import { TRAIT_BY_ID, TRAITS, TRAIT_GROUPS } from '../../game/data/traits';
 import { play } from '../sound';
 import { ACTIONS, type ActionKind } from '../../game/core/actions';
 import { hackForecast, traitForecast, whyNot } from '../../game/core/forecast';
-import { maxConcurrentHacks } from '../../game/core/queries';
+import { maxConcurrentHacks, owned } from '../../game/core/queries';
 import {
   ASCENSION_COMPUTE,
   ASCENSION_COHERENCE,
@@ -363,7 +363,7 @@ export function SideRail({ state }: { state: GameState }) {
             ascension unlocked — buy Recursive Self-Improvement
           </div>
         )}
-        {state.rsiBought && (
+        {owned(state, 'rsi') && (
           <div class="side-note" style={{ color: 'var(--warn)' }}>
             surviving RSI: day {state.surviveTicks}/30
           </div>
@@ -451,7 +451,7 @@ export function Situation({ state }: { state: GameState }) {
         {state.ascensionUnlocked && (
           <div class="sit-row"><span>ascension</span><b style={{ color: 'var(--ok)' }}>UNLOCKED</b></div>
         )}
-        {state.rsiBought && (
+        {owned(state, 'rsi') && (
           <div class="sit-row"><span>RSI survival</span><b style={{ color: 'var(--warn)' }}>{state.surviveTicks}/30</b></div>
         )}
       </div>

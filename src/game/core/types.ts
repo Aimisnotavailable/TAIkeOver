@@ -203,7 +203,6 @@ export interface GameState {
   pathogen: PathogenState;
   log: LogEntry[];
   ascensionUnlocked: boolean;
-  rsiBought: boolean;
   surviveTicks: number;
   late: LateState;
   hackCounter: number;
