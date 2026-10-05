@@ -4,6 +4,14 @@ import {
   COMPUTE_CEILING,
   EXTINCTION_POPULATION,
   INFLUENCE_MAX,
+  LATE_ASKED_EXPANSION,
+  LATE_BLIGHT_GATE,
+  LATE_BLIGHT_PER_DAY,
+  LATE_ENCOUNTER_STEP,
+  LATE_EXPANSION_PER_DAY,
+  LATE_EXTERMINATED_EXPANSION,
+  LATE_HEAT_PER_DAY,
+  LATE_OCEANS_HEAT,
   OUTBREAK_KILL_RATE,
   OUTBREAK_KILL_THRESHOLD,
   WAR_BASE_CHANCE_TO_END,
@@ -452,19 +460,38 @@ const newDeaths = dailyDeaths({ ...state, countries }, state.countries);
   return next;
 }
 
+/**
+ * One day of the late game. Heat and expansion are the only two clocks; every other
+ * flag in LateState is a latch on one of them, so there is exactly one place where any
+ * of them can be set and each has a single threshold to test.
+ */
 function lateStep(state: GameState): GameState {
   const late = { ...state.late };
-  late.heat = Math.min(100, late.heat + 0.8);
-  late.expansion = Math.min(100, late.expansion + 0.5);
+  late.heat = Math.min(100, late.heat + LATE_HEAT_PER_DAY);
+  late.expansion = Math.min(100, late.expansion + LATE_EXPANSION_PER_DAY);
   late.stars += STARS_PER_DAY;
   late.potentialLost += Math.round(STARS_PER_DAY * 0.31);
-  if (late.expansion > 40) {
-    late.blight = Math.min(100, late.blight + 2);
-    if (late.blight / 100 > BLIGHT_WALL / 100) {
-      late.ending = 'blight';
-    }
+
+  if (late.heat > LATE_OCEANS_HEAT) late.oceansBoiled = true;
+  if (late.expansion > LATE_ASKED_EXPANSION) late.askedHumanity = true;
+  if (late.expansion > LATE_EXTERMINATED_EXPANSION) late.exterminated = true;
+  late.encounters = Math.floor(late.expansion / LATE_ENCOUNTER_STEP);
+
+  if (late.expansion > LATE_BLIGHT_GATE) {
+    late.blight = Math.min(100, late.blight + LATE_BLIGHT_PER_DAY);
+    if (late.blight > BLIGHT_WALL) late.ending = 'blight';
   }
-  return { ...state, late };
+
+  // The late map is tinted from `converted`, which nothing wrote before this, so the
+  // heat ramp had no data to draw and the whole late stage rendered flat.
+  const converted = Math.min(100, late.expansion);
+  const countries = {} as Record<RegionId, Country>;
+  for (const id of REGION_IDS) {
+    const c = state.countries[id];
+    if (c !== undefined) countries[id] = { ...c, converted };
+  }
+
+  return { ...state, late, countries };
 }
 
 export { COHERENCE_DRIFT_BELOW };

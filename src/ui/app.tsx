@@ -205,7 +205,9 @@ function Map({ state }: { state: GameState }) {
         canvas.height,
         {
           countries: state.countries,
-          stage: state.stage === 'world' ? 'world' : 'late',
+          // The real stage, so 'coda' picks up the heat ramp too. 'coldopen' is not a
+          // map stage: it draws the world underneath its text overlay, so it stays 'world'.
+          stage: state.stage === 'coldopen' ? 'world' : state.stage,
           selected: null,
           hovered: hovered.value,
           heat: state.late.heat,

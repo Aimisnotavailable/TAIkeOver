@@ -220,3 +220,49 @@ describe('the blight is reachable', () => {
     expect(s.outcomeReason).toBe('coordinated-shutdown');
   });
 });
+
+describe('the late game has an arc', () => {
+  const hold = (days: number) => {
+    let s = start({ stage: 'world', traits: ['rsi'] });
+    for (let i = 0; i < days; i++) s = step(s);
+    return s;
+  };
+
+  it('boils the oceans partway through', () => {
+    expect(hold(12).late.oceansBoiled).toBe(false);
+    expect(hold(20).late.oceansBoiled).toBe(true);
+  });
+
+  it('asks humanity before it exterminates anyone', () => {
+    const mid = hold(10);
+    expect(mid.late.askedHumanity).toBe(true);
+    expect(mid.late.exterminated).toBe(false);
+    expect(hold(RSI_SURVIVE_DAYS).late.exterminated).toBe(true);
+  });
+
+  it('counts encounters and reaches the blight ending', () => {
+    const end = hold(RSI_SURVIVE_DAYS);
+    expect(end.late.encounters).toBeGreaterThan(0);
+    expect(end.late.ending).toBe('blight');
+  });
+
+  it('counts civilizations in proportion to the hold, not as a constant', () => {
+    expect(hold(RSI_SURVIVE_DAYS).late.potentialLost).toBeGreaterThan(30_000);
+  });
+
+  it('fills the late map by writing converted', () => {
+    expect(hold(RSI_SURVIVE_DAYS).countries.us?.converted ?? 0).toBeGreaterThan(0);
+  });
+
+  it('wins without any event card ever being answered', () => {
+    // The blight must be reachable from lateStep alone. Two other writers touch
+    // late.blight — the blight-wall card choices, +9 for negotiate and +4 for fight —
+    // so a test that only passed with a card in play would be testing the card.
+    // `resolved` is where every answered card lands, so an empty one proves the card
+    // path never ran. (There is no top-level `blight` on GameState; that field is on
+    // LateState, so asserting it proved nothing.)
+    const end = hold(RSI_SURVIVE_DAYS);
+    expect(end.resolved).toHaveLength(0);  // no card was ever answered
+    expect(end.late.blight).toBeGreaterThan(0);
+  });
+});

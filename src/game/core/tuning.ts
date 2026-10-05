@@ -71,6 +71,19 @@ export const RSI_SURVIVE_DAYS = 30;
 
 export const STARS_PER_DAY = 4200;
 export const BLIGHT_WALL = 62;
+
+// The late game is the thirty-day hold, not an open-ended aftermath, so every rate
+// below is sized to produce a full arc inside it. At the old rates the hold reached
+// heat 23 and expansion 14, which never crossed the blight gate and left the end screen
+// reporting the same number every run.
+export const LATE_HEAT_PER_DAY = 3.2;
+export const LATE_EXPANSION_PER_DAY = 2.5;
+export const LATE_BLIGHT_GATE = 20;
+export const LATE_BLIGHT_PER_DAY = 4;
+export const LATE_OCEANS_HEAT = 55;
+export const LATE_ASKED_EXPANSION = 20;
+export const LATE_EXTERMINATED_EXPANSION = 60;
+export const LATE_ENCOUNTER_STEP = 15;
 export const COHERENCE_DRIFT_BELOW = 50;
 export const COHERENCE_PANIC_BELOW = 20;
 export const MAX_LOG = 300;
