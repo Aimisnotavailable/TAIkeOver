@@ -60,10 +60,6 @@ describe('the world does not stop for a card', () => {
       expect(worldRunning(s, sp, false)).toBe(true);
     }
   });
-
-  it('still refuses to open the trait tree behind a card', () => {
-    expect(evolveBlocked(world({ cards: card }))).toBe(true);
-  });
 });
 
 describe('a card and the upgrade screen', () => {

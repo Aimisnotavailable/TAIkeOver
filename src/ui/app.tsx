@@ -1,4 +1,4 @@
-import type { GameState } from '../game/core/types';
+import type { EventCard, GameState } from '../game/core/types';
 import { rollEvent } from '../game/core/events';
 import { DIFFICULTIES, getDifficulty } from '../game/core/tuning';
 import { REGION_BY_ID, REGION_IDS } from '../game/data/regions';
@@ -110,6 +110,15 @@ function ColdOpen({ onDone }: { onDone: () => void }) {
   );
 }
 
+/**
+ * The card the player is actually looking at. Every pending card renders an
+ * `.overlay` at the same z-index, so the last one drawn is the one on top, and
+ * dismissing any other one from the keyboard acts on a card they cannot see.
+ */
+export function topmostCardKey(cards: readonly EventCard[]): number | null {
+  return cards[cards.length - 1]?.key ?? null;
+}
+
 function EventCards({ state }: { state: GameState }) {
   const dismiss = actions.dismissCard;
 
@@ -117,8 +126,10 @@ function EventCards({ state }: { state: GameState }) {
     if (state.cards.length === 0) return;
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Enter' || e.key === 'Escape' || e.key === ' ') {
+        const top = topmostCardKey(state.cards);
+        if (top === null) return;
         e.preventDefault();
-        dismiss(state.cards[0]?.key ?? 0);
+        dismiss(top);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -268,8 +279,8 @@ export function Game() {
     return () => clearInterval(h);
   }, [running, state.stage, speed.value]);
 
-  // Music runs with the world and stops with it. Paused for a card, paused on
-  // purpose, and paused before the game has even been opened.
+// Music runs with the world and stops with it: paused on purpose, paused during the
+  // cold open, and paused once the run is over. A pending card no longer stops it.
   useEffect(() => {
     startMusic(!paused && state.outcome === 'playing');
   }, [paused, state.outcome]);

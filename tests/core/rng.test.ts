@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { chance, mix32, rand } from '../../src/game/core/rng';
 import { biolabSalt, factorySalt, warEndSalt } from '../../src/game/core/step';
 import { REGION_IDS } from '../../src/game/data/regions';
+import stepSource from '../../src/game/core/step.ts?raw';
 
 describe('mix32', () => {
   it('returns the same value for the same three inputs', () => {
@@ -87,18 +88,32 @@ describe('chance', () => {
 });
 
 describe('region salts', () => {
-  it('are unique across all thirty regions for every purpose', () => {
-    for (const saltFn of [warEndSalt, biolabSalt, factorySalt]) {
-      const values = REGION_IDS.map((_, i) => saltFn(i));
-      expect(new Set(values).size).toBe(REGION_IDS.length);
+  const allSalts = (): number[] =>
+    REGION_IDS.flatMap((_, i) => [warEndSalt(i), biolabSalt(i), factorySalt(i)]);
+
+  it('are globally unique across all thirty regions and all three purposes', () => {
+    const values = allSalts();
+    expect(values).toHaveLength(REGION_IDS.length * 3);
+    expect(new Set(values).size).toBe(values.length);
+  });
+
+  it('never collides with the country-seeding salts', () => {
+    // `seedNewCountries` in step.ts rolls with `1300 + index * 3`. That formula is not
+    // exported, so it is reproduced here; the raw-source test below pins the literal in
+    // step.ts so this cannot quietly drift out of date.
+    const seeding = REGION_IDS.map((_, i) => 1300 + i * 3);
+    for (const salt of allSalts()) {
+      expect(seeding).not.toContain(salt);
     }
   });
 
-  it('does not share a salt with country seeding, which already used indices', () => {
-    const seeding = REGION_IDS.map((_, i) => 1300 + i * 3);
-    for (const salt of REGION_IDS.map((_, i) => biolabSalt(i))) {
-      expect(seeding).not.toContain(salt);
-    }
+  it('is rolled from a region index, never from an id string', () => {
+    // The defect this file exists for: every salt used to be built from an id's string
+    // length, so eu-west and eu-east drew the same number on the same tick. Reading the
+    // source is the only assertion that catches a reintroduction.
+    expect(stepSource).not.toMatch(/id\.length/);
+    expect(stepSource).toContain('1300 + index * 3');
+    expect(stepSource).toMatch(/REGION_IDS\.entries\(\)/);
   });
 
   it('would have collided when derived from id length', () => {

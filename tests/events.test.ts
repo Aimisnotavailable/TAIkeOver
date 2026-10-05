@@ -3,6 +3,7 @@ import { createInitialState } from '../src/game/core/state';
 import { EVENT_DEFS } from '../src/game/data/events';
 import { answerEvent, dismissCard, EVENT_QUEUE_MAX, rollEvent } from '../src/game/core/events';
 import { game } from '../src/ui/store';
+import { topmostCardKey } from '../src/ui/app';
 import type { EventCard, GameState } from '../src/game/core/types';
 
 const seedWith = (over: Partial<GameState> = {}): GameState => ({
@@ -79,11 +80,10 @@ describe('event core', () => {
   it('answers a card and records the choice', () => {
     const card: EventCard = { key: 1, event: 'drift', title: 'Drift', body: '', country: 'us', choices: [], urgent: true };
     const s = seedWith({ cards: [card] });
-    const before = s.coherence;
     const after = answerEvent(s, 1, 'drift:reintegrate');
     expect(after.cards).toHaveLength(0);
     expect(after.resolved).toContain('drift:reintegrate');
-    expect(after.coherence).toBeLessThan(before);
+    expect(after.coherence).toBe(s.coherence - 3);
   });
 
   it('records ignoring so the same event is not handed back', () => {
@@ -92,14 +92,24 @@ describe('event core', () => {
     expect(after.resolved).toContain('leak:ignore');
   });
 
-  it('never queues more than EVENT_QUEUE_MAX', () => {
+  it('fills the queue to EVENT_QUEUE_MAX and never queues a duplicate', () => {
     let s = seedWith({ suspicion: 60, globalInfection: 60 });
     for (let i = 0; i < 300; i++) s = rollEvent(s);
-    expect(s.cards.length).toBeLessThanOrEqual(EVENT_QUEUE_MAX);
+    expect(s.cards).toHaveLength(EVENT_QUEUE_MAX);
+    const ids = s.cards.map((c) => c.event);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 
   it('is deterministic: the same seed and tick give the same card', () => {
     const base = seedWith({ suspicion: 60, globalInfection: 60 });
     expect(rollEvent(base)).toEqual(rollEvent(base));
+  });
+
+  it('names the topmost card, which is the last one drawn', () => {
+    const a: EventCard = { key: 1, event: 'leak', title: 'Leak', body: '', country: null, choices: [], urgent: false };
+    const b: EventCard = { key: 2, event: 'drift', title: 'Drift', body: '', country: null, choices: [], urgent: true };
+    expect(topmostCardKey([a, b])).toBe(2);
+    expect(topmostCardKey([a])).toBe(1);
+    expect(topmostCardKey([])).toBeNull();
   });
 });

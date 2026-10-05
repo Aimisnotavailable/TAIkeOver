@@ -13,8 +13,6 @@ import { BUBBLE_LABEL } from '../game/core/compute';
 import { play, setAudioEnabled, audioEnabled } from './sound';
 import type { DifficultyId, GameState, Speed, TraitId } from '../game/core/types';
 
-export { rollEvent } from '../game/core/events';
-
 const SEED = 20260926;
 
 export const game = signal<GameState>(createInitialState(SEED, 'default'));

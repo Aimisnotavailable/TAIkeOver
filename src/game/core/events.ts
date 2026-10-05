@@ -15,6 +15,9 @@ export function rollEvent(s: GameState): GameState {
     (d) =>
       d.stage === stage &&
       !s.resolved.some((r) => r.startsWith(`${d.id}:`)) &&
+      // Also against what is already queued. The pick is derived from the tick, so two
+      // rolls on one tick would otherwise append the same event twice.
+      !s.cards.some((c) => c.event === d.id) &&
       s.suspicion >= d.minSuspicion &&
       s.coherence <= d.maxCoherence &&
       s.globalInfection >= d.minInfection,
