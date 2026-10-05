@@ -11,10 +11,12 @@ import {
   ASCENSION_COMPUTE,
   ASCENSION_COHERENCE,
   ASCENSION_INFECTION,
+  AWARE_THRESHOLD,
   COHERENCE_DRIFT_BELOW,
   COHERENCE_PANIC_BELOW,
   COUNTERMEASURE_TIERS,
   HACK_FAIL_COST,
+  OUTBREAK_KILL_THRESHOLD,
   RSI_SURVIVE_DAYS,
   WORLD_POPULATION,
 } from '../../game/core/tuning';
@@ -298,7 +300,7 @@ function CountryFacts({ c, state }: { c: Country; state: GameState }) {
   return (
     <div class="facts">
       <span>infection <b style={{ color: 'var(--ok)' }}>{Math.round(c.infection)}%</b></span>
-      <span>awareness <b style={{ color: c.awareness > 50 ? 'var(--warn)' : 'var(--ink)' }}>{Math.round(c.awareness)}</b></span>
+      <span>awareness <b style={{ color: c.awareness > AWARE_THRESHOLD ? 'var(--warn)' : 'var(--ink)' }}>{Math.round(c.awareness)}</b></span>
       <span>security <b>{c.cyber.toFixed(1)}</b></span>
       <span>datacenter <b>tier {c.tier}</b></span>
       {c.hardened > 0.2 && (
@@ -307,10 +309,10 @@ function CountryFacts({ c, state }: { c: Country; state: GameState }) {
       <span>economy <b style={{ color: c.economy < 30 ? 'var(--bad)' : 'var(--ink)' }}>{Math.round(c.economy)}</b></span>
       <span>people <b>{c.population.toFixed(0)}M</b></span>
       {c.agents > 0 && <span>agents <b style={{ color: 'var(--cool)' }}>{c.agents.toFixed(1)}</b></span>}
-      {c.awareness > 50 && <span class="tag active">active — contributes to suspicion</span>}
+      {c.awareness > AWARE_THRESHOLD && <span class="tag active">active — contributes to suspicion</span>}
       {c.atWar && <span class="tag war">at war · {c.warSeverity.toFixed(1)} — killing, and it will not stop while you hold it</span>}
       {c.quiet && <span class="tag quiet">gone quiet — not spreading here</span>}
-      {!state.pathogen.released && c.infection >= 75 && <span class="tag bio">outbreak — this is killing people on its own</span>}
+      {!state.pathogen.released && c.infection >= OUTBREAK_KILL_THRESHOLD && <span class="tag bio">outbreak — this is killing people on its own</span>}
       {state.pathogen.released && c.population < 1000 && <span class="tag bio">pathogen active here</span>}
     </div>
   );

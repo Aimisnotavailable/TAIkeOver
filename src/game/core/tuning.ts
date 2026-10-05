@@ -29,7 +29,6 @@ export const HACK_SUSPICION_FAIL: Record<number, number> = { 1: 4, 2: 5, 3: 7, 4
 
 export const SPREAD_BASE = 0.55;
 export const SPREAD_NEIGHBOUR = 0.35;
-export const SPREAD_HACKED = 1.4;
 export const AWARE_THRESHOLD = 50;
 export const AWARENESS_GROWTH = 1.6;
 export const COUNTER_HACK_DRAIN = 9;

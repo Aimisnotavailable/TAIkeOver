@@ -1,6 +1,7 @@
 import { EVENT_DEFS, toCard } from '../data/events';
 import { REGION_IDS } from '../data/regions';
 import { rand } from './rng';
+import { MAX_LOG } from './tuning';
 import type { EventChoiceId, GameState } from './types';
 
 export const EVENT_QUEUE_MAX = 3;
@@ -95,7 +96,7 @@ export function answerEvent(s: GameState, cardKey: number, choiceId: string): Ga
     log: [
       ...next.log,
       { day: next.tick, kind: 'event' as const, text: `${card.title}: ${choiceId.split(':')[1]}`, suspicionDelta: null, computeDelta: null, flagged: false },
-    ].slice(-300),
+    ].slice(-MAX_LOG),
   };
 }
 
@@ -114,6 +115,6 @@ export function dismissCard(s: GameState, cardKey: number): GameState {
     log: [
       ...s.log,
       { day: s.tick, kind: 'event' as const, text: `${card.title}: let it pass`, suspicionDelta: null, computeDelta: null, flagged: true },
-    ].slice(-300),
+    ].slice(-MAX_LOG),
   };
 }

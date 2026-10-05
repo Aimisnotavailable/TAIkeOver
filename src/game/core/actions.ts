@@ -3,6 +3,7 @@ import { chance, rand } from './rng';
 import {
   AIR_GAP_PENALTY,
   BANK_DAMAGE_AWARENESS,
+  BASE_HACK_SUCCESS,
   COUNTER_HACK_INTERVAL,
   COUNTER_HACK_DRAIN,
   CRASH_AWARENESS,
@@ -18,6 +19,7 @@ import {
   INSURGENCY_SUSPICION,
   COLLAPSED_THRESHOLD,
   MAX_DEPTH,
+  MAX_LOG,
   HARDEN_PENALTY,
   getDifficulty,
 } from './tuning';
@@ -211,7 +213,7 @@ export function doAction(state: GameState, id: RegionId, kind: ActionKind): Game
   }
 
   next.countries = countries;
-  return { ...next, log: [...next.log, ...lines].slice(-300) };
+  return { ...next, log: [...next.log, ...lines].slice(-MAX_LOG) };
 }
 
 /**
@@ -248,7 +250,7 @@ export function resolveHacks(state: GameState): GameState {
 
     const airGapped = state.countermeasures.tier >= 2 && state.countermeasures.airGappedLab === hack.country;
     const successChance = clamp(
-      60 + hackSuccessBonus(state) + diff.hackBonus + (country.agents > 0 ? 40 : 0) -
+      BASE_HACK_SUCCESS + hackSuccessBonus(state) + diff.hackBonus + (country.agents > 0 ? 40 : 0) -
         (airGapped ? AIR_GAP_PENALTY : 0) - (country.cyber - 5) * 1.5 - country.hardened * HARDEN_PENALTY,
       5, 92,
     );
@@ -300,7 +302,7 @@ export function resolveHacks(state: GameState): GameState {
     compute: Math.max(0, compute),
     suspicion: clamp(suspicion, 0, 100),
     activeHacks: kept,
-    log: [...state.log, ...lines].slice(-300),
+    log: [...state.log, ...lines].slice(-MAX_LOG),
   };
 }
 

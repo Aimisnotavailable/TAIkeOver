@@ -4,6 +4,7 @@ import { canDo, type ActionKind } from './actions';
 import { hackSuccessBonus, hackTier, hackYieldMultiplier, maxConcurrentHacks, owned } from './queries';
 import {
   AIR_GAP_PENALTY,
+  BASE_HACK_SUCCESS,
   HARDEN_PENALTY,
   COLLAPSED_THRESHOLD,
   HACK_DURATION,
@@ -49,7 +50,7 @@ export function hackForecast(state: GameState, id: RegionId): HackForecast {
   const airGapped = state.countermeasures.tier >= 2 && state.countermeasures.airGappedLab === id;
   const agents = c.agents > 0;
   const raw =
-    60 +
+    BASE_HACK_SUCCESS +
     hackSuccessBonus(state) +
     diff.hackBonus +
     (agents ? 40 : 0) -

@@ -4,7 +4,7 @@ import { canDo, doAction, hackSuccessSalt, hackYieldSalt } from '../src/game/cor
 import { canBuyTrait, hackTier, maxConcurrentHacks, owned } from '../src/game/core/queries';
 import { SALT_KIND_BLUE, SALT_KIND_ORANGE, SALT_KIND_RED, SALT_PHASE, SALT_VALUE, SALT_WHERE } from '../src/game/core/compute';
 import { createInitialState, log } from '../src/game/core/state';
-import { biolabSalt, factorySalt, step, warEndSalt } from '../src/game/core/step';
+import { biolabSalt, step, warEndSalt } from '../src/game/core/step';
 import { DIFFICULTIES, ASCENSION_COMPUTE, MAX_DEPTH, MAX_LOG, TICK_MS } from '../src/game/core/tuning';
 import { TRAITS, TRAIT_BY_ID } from '../src/game/data/traits';
 import { REGION_IDS, type RegionId } from '../src/game/data/regions';
@@ -407,7 +407,6 @@ describe('hack outcome and yield are separate draws', () => {
       ...family(hackSuccessSalt),
       warEndSalt(0), warEndSalt(REGION_IDS.length - 1),
       biolabSalt(0), biolabSalt(REGION_IDS.length - 1),
-      factorySalt(0), factorySalt(REGION_IDS.length - 1),
       1300, 0x0d11a, 555, 700,
       SALT_KIND_BLUE, SALT_KIND_ORANGE, SALT_KIND_RED, SALT_WHERE, SALT_VALUE, SALT_PHASE,
     ]);
@@ -498,13 +497,18 @@ const srcFiles = (): { path: string; text: string }[] => {
 };
 
 /**
- * Comments are not readers. A constant whose only mention in the tree is a line of prose
- * describing it is exactly as dead as one nobody mentions, and tuning.ts is full of
- * sentences about the numbers next to them. Block comments are blanked rather than
- * deleted so the line numbers in a failure still point at the source.
+ * Comments and string bodies are not readers. A constant whose only mention in the tree
+ * is a line of prose about it, or a name typed into a log line, is exactly as dead as one
+ * nobody mentions. Strings go first so that a `//` inside one is gone before comments
+ * are read; both are blanked rather than deleted so the line numbers in a failure still
+ * point at the source. A template literal is blanked whole, interpolations included:
+ * every constant that is read inside a `${…}` is also read somewhere as a bare
+ * identifier, so nothing legitimate hides in there, and the failure mode if one ever
+ * does is a loud one.
  */
 const codeOnly = (text: string): string =>
   text
+    .replace(/(['"`])(?:\\[\s\S]|[^\\])*?\1/g, (m) => m.replace(/[^\n]/g, ' '))
     .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
     .replace(/(^|[^:'"`])\/\/[^\n]*/gm, '$1');
 
@@ -521,40 +525,6 @@ const readerPaths = (files: { path: string; text: string }[], name: string): str
   return out;
 };
 
-/**
- * Tuning constants that are allowed to have no reader, and why each is still here.
- * Anything exported from tuning.ts that is not on this list and not read by src/ fails
- * the test below; the list itself is checked in both directions, so an entry that has
- * gained a reader has to come off rather than sit there as a stale exemption.
- *
- * Five of the six are the same rot: the value the core still runs on is a literal at the
- * one site that needs it, so retuning the constant has never done anything. Each entry
- * says where the literal is, so the two can be put back together; wiring them up is a
- * separate change from this cleanup. The sixth has no literal either, and nothing else in
- * the tree mentions it.
- */
-const KNOWN_DEAD_TUNING: Record<string, string> = {
-  BASE_HACK_SUCCESS: 'typed in as 60 at the head of the success chance in actions.ts',
-  SPREAD_BASE: 'typed in as 0.55 in spreadAndAwareness, step.ts',
-  SPREAD_NEIGHBOUR: 'typed in as 0.35 in spreadAndAwareness, step.ts',
-  // The odd one out: there is no literal for this one either, because nothing in
-  // spreadAndAwareness rewards a hacked country any more.
-  SPREAD_HACKED: 'no literal, and no hacked-country term left in spreadAndAwareness',
-  AWARE_THRESHOLD: 'typed in as 50 where step.ts counts aware countries, and again where panels.tsx tags a country active',
-  AWARENESS_GROWTH: 'typed in as 1.6 in spreadAndAwareness, step.ts',
-};
-
-/**
- * Retained for a drift event that is not built. The Drift card in data/events.ts gates on
- * COHERENCE_DRIFT_BELOW and the top bar's coherence glyph reads both cut points, but the
- * rest of the machinery — an instance that disobeys, and the three choices that answer
- * it — is still card text, so neither constant governs anything yet.
- */
-const RETAINED_FOR_UNBUILT_DRIFT: Record<string, string> = {
-  COHERENCE_DRIFT_BELOW: 'the Drift event gate in data/events.ts',
-  COHERENCE_PANIC_BELOW: 'the coherence glyph in panels.tsx, below the drift band',
-};
-
 describe('no dead branches', () => {
   it('reads only trait ids that exist', () => {
     const source = readSrc('game/core/step.ts') + readSrc('game/core/actions.ts');
@@ -565,7 +535,10 @@ describe('no dead branches', () => {
     expect([...new Set(referenced)].filter((id) => !known.has(id))).toEqual([]);
   });
 
-  it('emits only effect kinds the core understands', () => {
+  it('emits only effect kinds the core handles', () => {
+    // One direction only, deliberately. A kind the core emits but nothing reads is
+    // inert rather than wrong — `coherence` is one today — and flagging those is a
+    // balance decision about which traits mean something, not a cleanup.
     const emitted = new Set(TRAITS.flatMap((t) => t.effects.map((e) => e.kind)));
     const handled = new Set([
       'hack', 'hack-success', 'half-fail-suspicion', 'gain-of-function', 'pathogen',
@@ -577,7 +550,9 @@ describe('no dead branches', () => {
 
   it('has no tuning constant with no reader', () => {
     const tuning = readSrc(SRC_TUNING);
-    const declared = [...tuning.matchAll(/^export const ([A-Za-z_$][\w$]*)/gm)].map((m) => m[1] ?? '');
+    // Indented or trailing exports count too, so a constant cannot dodge the sweep by
+    // being written anywhere other than column 0.
+    const declared = [...tuning.matchAll(/^\s*export const ([A-Za-z_$][\w$]*)/gm)].map((m) => m[1] ?? '');
     // Guards against the enumeration quietly matching nothing, which would leave the
     // test asserting that a list of nothing has no dead members.
     expect(declared.length).toBeGreaterThan(50);
@@ -588,21 +563,11 @@ describe('no dead branches', () => {
     expect(paths).toContain('ui/components/panels.tsx');
     expect(paths.length).toBeGreaterThan(15);
 
-    const exempt = new Set([...Object.keys(KNOWN_DEAD_TUNING), ...Object.keys(RETAINED_FOR_UNBUILT_DRIFT)]);
-    const dead = declared.filter((n) => readerPaths(files, n).length === 0);
-
-    expect(dead.filter((n) => !exempt.has(n)), 'tuning constants with no reader under src/').toEqual([]);
-    // Both directions, so the exemptions cannot quietly become permanent: an entry that
-    // has gained a reader is stale, and one that is gone is a typo.
+    // No exemptions. Every name the seventeen-trait cut orphaned was wired back to the
+    // literal it already governed or deleted, so a count here is a real count.
     expect(
-      dead.filter((n) => n in KNOWN_DEAD_TUNING).sort(),
-      'entries on the dead-constant list that now have a reader',
-    ).toEqual(Object.keys(KNOWN_DEAD_TUNING).sort());
-    for (const [name, why] of Object.entries(KNOWN_DEAD_TUNING)) {
-      expect(declared, `${name} is listed as dead (${why}) but is no longer exported`).toContain(name);
-    }
-    for (const [name, why] of Object.entries(RETAINED_FOR_UNBUILT_DRIFT)) {
-      expect(declared, `${name} is retained for ${why} but is no longer exported`).toContain(name);
-    }
+      declared.filter((n) => readerPaths(files, n).length === 0),
+      'tuning constants with no reader under src/',
+    ).toEqual([]);
   });
 });

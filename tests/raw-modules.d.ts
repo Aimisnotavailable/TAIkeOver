@@ -1,8 +1,9 @@
 /**
- * Vite's `?raw` suffix hands back a file's contents as a string. This project has no
- * `@types/node`, so a test cannot `readFileSync` without adding a dependency, and the
- * salt invariant in `tests/core/rng.test.ts` needs to read source as text. `?raw` is
- * resolved by Vite at transform time and needs no runtime module at all.
+ * Vite's `?raw` suffix hands back a file's contents as a string, resolved at transform
+ * time and needing no runtime module at all. That suits a test that already knows which
+ * file it wants: the salt invariant in `tests/core/rng.test.ts` names its one target and
+ * imports it this way. It cannot enumerate, so the guards in `tests/game.test.ts`, which
+ * have to walk all of `src/`, read from disk through the `node:fs` declaration below.
  */
 declare module '*?raw' {
   const contents: string;

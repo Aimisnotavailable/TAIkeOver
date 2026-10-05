@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { chance, mix32, rand } from '../../src/game/core/rng';
-import { biolabSalt, factorySalt, warEndSalt } from '../../src/game/core/step';
+import { biolabSalt, warEndSalt } from '../../src/game/core/step';
 import { REGION_IDS } from '../../src/game/data/regions';
 import stepSource from '../../src/game/core/step.ts?raw';
 
@@ -89,11 +89,11 @@ describe('chance', () => {
 
 describe('region salts', () => {
   const allSalts = (): number[] =>
-    REGION_IDS.flatMap((_, i) => [warEndSalt(i), biolabSalt(i), factorySalt(i)]);
+    REGION_IDS.flatMap((_, i) => [warEndSalt(i), biolabSalt(i)]);
 
-  it('are globally unique across all thirty regions and all three purposes', () => {
+  it('are globally unique across all thirty regions and both purposes', () => {
     const values = allSalts();
-    expect(values).toHaveLength(REGION_IDS.length * 3);
+    expect(values).toHaveLength(REGION_IDS.length * 2);
     expect(new Set(values).size).toBe(values.length);
   });
 

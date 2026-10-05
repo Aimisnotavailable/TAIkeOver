@@ -28,6 +28,8 @@ import { chance, rand } from './rng';
 import { log } from './state';
 import { AWARENESS_PRESSURE } from './tuning';
 import {
+  AWARE_THRESHOLD,
+  AWARENESS_GROWTH,
   HARDEN_FALL,
   HARDEN_MAX,
   HARDEN_RISE,
@@ -44,7 +46,10 @@ import {
   CYBER_GROWTH,
   ECONOMY_RECOVER,
   FAMINE_RATE,
+  MAX_LOG,
   RSI_SURVIVE_DAYS,
+  SPREAD_BASE,
+  SPREAD_NEIGHBOUR,
   STARS_PER_DAY,
   STRIKE_DRAIN,
   COMPUTE_BUBBLE_MAX,
@@ -57,22 +62,23 @@ import type { Country, GameState, LogEntry } from './types';
 
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
 
-// Region-indexed salts. Deriving these from an id's string length gave eu-west and
-// eu-east the same draw on the same tick, and likewise every other equal-length pair,
-// so pairs of countries made identical decisions in lockstep for the whole run.
+// Region-indexed salts, one for each per-country draw that needs its own stream.
+// Deriving these from an id's string length gave eu-west and eu-east the same draw on the
+// same tick, and likewise every other equal-length pair, so pairs of countries made
+// identical decisions in lockstep for the whole run. There was a third of these, for a
+// factory spawn; the seventeen-trait cut removed the spawn, and the salt went with it.
 export const warEndSalt = (index: number): number => 0x7a12 + index;
 export const biolabSalt = (index: number): number => 1500 + index * 3 + 1;
-export const factorySalt = (index: number): number => 1500 + index * 3 + 2;
 
 const spreadAndAwareness = (state: GameState, c: Country, id: RegionId): Country => {
   if (c.quiet || c.infection <= 0) return c;
   const neighbours = ADJACENCY[id].some((n) => (state.countries[n]?.infection ?? 0) > 15);
-  let gain = 0.55 + (neighbours ? 0.35 : 0);
+  let gain = SPREAD_BASE + (neighbours ? SPREAD_NEIGHBOUR : 0);
   if (c.agents > 0) gain += 0.8;
   gain *= 0.4 + c.infection / 100;
   const infection = clamp(c.infection + gain, 0, 100);
 
-  let awareness = c.awareness + (infection > 40 ? 1.6 : 0.5);
+  let awareness = c.awareness + (infection > 40 ? AWARENESS_GROWTH : 0.5);
   return { ...c, infection, awareness: clamp(awareness, 0, 100) };
 };
 
@@ -255,7 +261,7 @@ export function step(state: GameState): GameState {
   let topAwareValue = 0;
   for (const id of REGION_IDS) {
     const c = countries[id];
-    if (c === undefined || c.awareness < 50) continue;
+    if (c === undefined || c.awareness < AWARE_THRESHOLD) continue;
     const share = (c.infection / 100) * (c.detection / 100) * AWARENESS_PRESSURE * diff.suspicionRate;
     awarePressure += share;
     if (share > topAwareValue) {
@@ -367,14 +373,14 @@ const newDeaths = dailyDeaths({ ...state, countries }, state.countries);
     cumulativeDeaths: state.cumulativeDeaths + newDeaths,
     suspicionSources: sources.sort((a, b) => Math.abs(b.value) - Math.abs(a.value)).slice(0, 5),
     suspicionTrend,
-    log: [...state.log, ...lines].slice(-300),
+    log: [...state.log, ...lines].slice(-MAX_LOG),
   };
 
   next = resolveHacks(next);
   if (next.compute > COMPUTE_CEILING) {
     const over = next.compute - COMPUTE_CEILING;
     next = { ...next, compute: COMPUTE_CEILING };
-    next.log = [...next.log, { day: next.tick, kind: 'system' as const, text: 'bubble surplus spent down to the ceiling', suspicionDelta: null, computeDelta: -Math.round(over), flagged: true }].slice(-300);
+    next.log = [...next.log, { day: next.tick, kind: 'system' as const, text: 'bubble surplus spent down to the ceiling', suspicionDelta: null, computeDelta: -Math.round(over), flagged: true }].slice(-MAX_LOG);
   }
 
   // Ascension gate.

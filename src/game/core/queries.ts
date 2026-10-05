@@ -33,8 +33,6 @@ export const hackYieldMultiplier = (state: GameState): number => sumMultiplier(s
 
 export const maxConcurrentHacks = (state: GameState): number => Math.max(1, hackTier(state));
 
-export const computeRegen = (state: GameState): number => sumMultiplier(state, 'compute-regen');
-
 export const canBuyTrait = (state: GameState, id: TraitId): boolean => {
   const def = TRAIT_BY_ID[id];
   if (def === undefined) return false;

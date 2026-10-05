@@ -7,7 +7,7 @@ import {
 import { buyTrait, canBuyTrait } from '../game/core/queries';
 import { createInitialState } from '../game/core/state';
 import { step } from '../game/core/step';
-import { SPEEDS, getDifficulty } from '../game/core/tuning';
+import { MAX_LOG, SPEEDS, getDifficulty } from '../game/core/tuning';
 import { REGION_BY_ID, REGION_IDS, type RegionId } from '../game/data/regions';
 import { BUBBLE_LABEL } from '../game/core/compute';
 import { play, setAudioEnabled, audioEnabled } from './sound';
@@ -187,7 +187,7 @@ export const actions = {
         log: [
           ...s.log,
           { day: s.tick, kind: 'system' as const, text: `${BUBBLE_LABEL[bubble.kind]} in ${name} +${bubble.value}`, suspicionDelta: null, computeDelta: bubble.value, flagged: false },
-        ].slice(-300),
+        ].slice(-MAX_LOG),
       };
     });
   },
