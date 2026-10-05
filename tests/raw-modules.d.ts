@@ -8,3 +8,14 @@ declare module '*?raw' {
   const contents: string;
   export default contents;
 }
+
+/**
+ * Vitest replaces CSS imports with an empty string unless `test.css` is on, so `?raw`
+ * on `styles.css` yields `""` rather than the file — a test that greps the stylesheet
+ * for undefined custom properties would pass against nothing at all. Reading the file
+ * from disk is the only way to see it, and there is no `@types/node` to type that with.
+ * Only the one function `tests/styles.test.ts` uses is declared.
+ */
+declare module 'node:fs' {
+  export function readFileSync(path: string | URL, encoding: 'utf8'): string;
+}
