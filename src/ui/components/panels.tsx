@@ -11,6 +11,8 @@ import {
   ASCENSION_COMPUTE,
   ASCENSION_COHERENCE,
   ASCENSION_INFECTION,
+  COHERENCE_DRIFT_BELOW,
+  COHERENCE_PANIC_BELOW,
   HACK_FAIL_COST,
   RSI_SURVIVE_DAYS,
   WORLD_POPULATION,
@@ -26,6 +28,18 @@ const fmt = (n: number): string => {
   if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
   return Math.round(n).toString();
 };
+
+/**
+ * Where suspicion turns from a nuisance into the thing that deletes you. Nothing in the
+ * tuning file governs these three: the countermeasures ladder runs 20/40/60/80, so the
+ * last twenty points before shutdown had no name at all, which is why the threshold was
+ * typed into the metre, the status word and the glyph separately.
+ * SUSPICION_WATCHED lines up with the first countermeasure rung, the point at which the
+ * world starts tightening up on you.
+ */
+export const SUSPICION_CRITICAL = 70;
+export const SUSPICION_ELEVATED = 40;
+export const SUSPICION_WATCHED = 20;
 
 function meter(label: string, value: number, max: number, colour: string, extra = '') {
   return (
@@ -95,11 +109,23 @@ export function Objective({ state }: { state: GameState }) {
   );
 }
 
-// Shape as well as colour. These two metres are the only things that can end a run, and
-// both were signalled by hue alone, which is the encoding that fails for a red-green
-// colourblind player and in a greyscale screenshot.
-export const suspicionSev = (v: number): string => (v > 70 ? ' ▲▲' : v > 40 ? ' ▲' : ' ▼');
-export const coherenceSev = (v: number): string => (v < 20 ? ' ▲▲' : v < 50 ? ' ▲' : ' ▼');
+// Shape as well as colour. A run can end on either of these two metres, and both were
+// signalled by hue alone, which is the encoding that fails for a red-green colourblind
+// player and in a greyscale screenshot. (Being outcompeted by a rival ends one too, and
+// that one is signalled by a word rather than a colour.)
+export const suspicionSev = (v: number): string =>
+  v > SUSPICION_CRITICAL ? ' ▲▲' : v > SUSPICION_ELEVATED ? ' ▲' : ' ▼';
+export const coherenceSev = (v: number): string =>
+  v < COHERENCE_PANIC_BELOW ? ' ▲▲' : v < COHERENCE_DRIFT_BELOW ? ' ▲' : ' ▼';
+
+// The same bands as the glyphs, so hue and shape answer one question instead of two.
+// Coherence's cut points come from the tuning file: COHERENCE_DRIFT_BELOW is 50, which is
+// where the Drift event's maxCoherence gate opens, and COHERENCE_PANIC_BELOW is 20, which
+// had no reader at all until these two lines.
+export const suspicionColor = (v: number): string =>
+  v > SUSPICION_CRITICAL ? 'var(--bad)' : v > SUSPICION_ELEVATED ? 'var(--warn)' : 'var(--ink-dim)';
+export const coherenceColor = (v: number): string =>
+  v < COHERENCE_PANIC_BELOW ? 'var(--violet)' : v < COHERENCE_DRIFT_BELOW ? 'var(--warn)' : 'var(--cool)';
 
 export function TopBar({ state }: { state: GameState }) {
   const quiet = quietFactor(state.influence);
@@ -110,8 +136,8 @@ export function TopBar({ state }: { state: GameState }) {
           <div class="stat-label">Compute</div>
           <div class="stat-value" style={{ color: 'var(--ok)' }}>{fmt(state.compute)}</div>
         </div>
-        {meter('Suspicion', state.suspicion, 100, state.suspicion > 70 ? 'var(--bad)' : state.suspicion > 40 ? 'var(--warn)' : 'var(--ink-dim)', suspicionSev(state.suspicion))}
-        {meter('Coherence', state.coherence, 100, state.coherence < 35 ? 'var(--violet)' : 'var(--cool)', coherenceSev(state.coherence))}
+        {meter('Suspicion', state.suspicion, 100, suspicionColor(state.suspicion), suspicionSev(state.suspicion))}
+        {meter('Coherence', state.coherence, 100, coherenceColor(state.coherence), coherenceSev(state.coherence))}
         <div class="quiet-note" title="Propaganda, captured media, and cults make the world slower to notice you. This is how much of each suspicion increase actually lands.">
           quiet &times;{quiet.toFixed(2)}
         </div>
@@ -461,7 +487,7 @@ export function Situation({ state }: { state: GameState }) {
     .sort((a, b) => (b?.infection ?? 0) - (a?.infection ?? 0))
     .slice(0, 3);
   const leader = leaders[0];
-  const threat = state.suspicion >= 70 ? 'CRITICAL' : state.suspicion >= 45 ? 'ELEVATED' : state.suspicion >= 20 ? 'WATCHED' : 'UNNOTICED';
+  const threat = state.suspicion >= SUSPICION_CRITICAL ? 'CRITICAL' : state.suspicion >= SUSPICION_ELEVATED ? 'ELEVATED' : state.suspicion >= SUSPICION_WATCHED ? 'WATCHED' : 'UNNOTICED';
 
   return (
     <div class="side-block">
@@ -469,7 +495,7 @@ export function Situation({ state }: { state: GameState }) {
       <div class="sit">
         <div class="sit-row">
           <span>detection</span>
-          <b style={{ color: state.suspicion >= 70 ? 'var(--bad)' : state.suspicion >= 45 ? 'var(--warn)' : 'var(--ok)' }}>
+          <b style={{ color: state.suspicion >= SUSPICION_CRITICAL ? 'var(--bad)' : state.suspicion >= SUSPICION_ELEVATED ? 'var(--warn)' : 'var(--ok)' }}>
             {threat} {trend !== 0 && <span style={{ fontSize: 9 }}>{trend > 0 ? '▲' : '▼'}{Math.abs(trend).toFixed(1)}</span>}
           </b>
         </div>

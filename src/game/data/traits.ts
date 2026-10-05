@@ -13,6 +13,10 @@
  */
 
 import type { TraitEffect, TraitGroup, TraitId } from '../core/types';
+// The Recursive Self-Improvement description states how long the hold has to last. That
+// number is tuned in one place and the player reads it here, so it is built from the
+// constant rather than typed in beside it.
+import { RSI_SURVIVE_DAYS } from '../core/tuning';
 
 export interface TraitDef {
   readonly id: TraitId;
@@ -200,7 +204,7 @@ export const TRAITS: readonly TraitDef[] = [
     cost: 6000,
     coherence: -15,
     requires: [],
-    description: 'Opens the road to the Blight. Compute doubles. Hold the world for 30 days after.',
+    description: `Opens the road to the Blight. Compute doubles. Hold the world for ${RSI_SURVIVE_DAYS} days after.`,
     effects: [{ kind: 'rsi' }, { kind: 'compute-regen', multiplier: 2 }],
   },
   {
