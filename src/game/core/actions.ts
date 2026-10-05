@@ -1,4 +1,3 @@
-import { ADJACENCY } from '../data/regions';
 import type { RegionId } from '../data/regions';
 import { chance, rand } from './rng';
 import {
@@ -20,12 +19,10 @@ import {
   COLLAPSED_THRESHOLD,
   MAX_DEPTH,
   HARDEN_PENALTY,
-  SUPPLY_CHAIN_SHARE,
   getDifficulty,
 } from './tuning';
 import {
   effectsOf,
-  has,
   hackSuccessBonus,
   hackTier,
   hackYieldMultiplier,
@@ -77,22 +74,22 @@ export function canDo(state: GameState, id: RegionId, kind: ActionKind): boolean
     case 'cease-hack':
       return state.activeHacks.some((h) => h.country === id);
     case 'infect-bank':
-      if (!has(state, 'banking-1')) return false;
+      if (!owned(state, 'banking-1')) return false;
       if (country.economy <= COLLAPSED_THRESHOLD) return false;
       return country.infection > 5;
     case 'trigger-crash':
-      if (!has(state, 'market-manipulation')) return false;
+      if (!owned(state, 'market-manipulation')) return false;
       if (country.economy <= COLLAPSED_THRESHOLD) return false;
       return country.infection >= 60;
     case 'fund-insurgency':
       // One war per country. Re-funding an existing one is not a decision, it is a
       // button you can hold down.
-      return has(state, 'terrorism') && country.infection > 0 && !country.atWar;
+      return owned(state, 'terrorism') && country.infection > 0 && !country.atWar;
     case 'go-quiet':
       // A toggle, not a one-way door. Going quiet and going loud are both choices.
       return country.infection > 0;
     case 'release-pathogen':
-      return !state.pathogen.released && has(state, 'pathogen-1');
+      return !state.pathogen.released && owned(state, 'pathogen-1');
     case 'sabotage-rival':
       return state.compute >= 300;
   }
@@ -147,13 +144,6 @@ export function doAction(state: GameState, id: RegionId, kind: ActionKind): Game
         economy: clamp(country.economy - damage, 0, 100),
         awareness: clamp(country.awareness + BANK_DAMAGE_AWARENESS, 0, 100),
       };
-      if (owned(next, 'supply-chain')) {
-        for (const nb of ADJACENCY[id]) {
-          const n = countries[nb];
-          if (n === undefined || n.infection < 10) continue;
-          countries[nb] = { ...n, economy: clamp(n.economy - damage * SUPPLY_CHAIN_SHARE, 0, 100) };
-        }
-      }
       lines.push({ day: next.tick, kind: 'economy', text: `banking system in ${id} compromised, -${damage} economy`, suspicionDelta: null, computeDelta: null, flagged: false });
       break;
     }
@@ -203,7 +193,7 @@ export function doAction(state: GameState, id: RegionId, kind: ActionKind): Game
         ...next,
         pathogen: {
           released: true, killsPerDay: kills, suspicionPerDay: susp,
-          sterility: owned(next, 'sterility'), targeted: owned(next, 'targeted-strain'), cancer,
+          sterility: owned(next, 'sterility'), targeted: false, cancer,
         },
         suspicion: clamp(next.suspicion + susp * 2 * diff.suspicionRate, 0, 100),
       };

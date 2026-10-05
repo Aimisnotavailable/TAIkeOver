@@ -3,11 +3,6 @@ import type { GameState, TraitEffect, TraitId } from './types';
 
 export const owned = (state: GameState, id: TraitId): boolean => state.traits.includes(id);
 
-export const has = (state: GameState, id: TraitId): boolean => owned(state, id);
-
-export const countTrait = (state: GameState, id: TraitId): number =>
-  state.traits.filter((t) => t === id).length;
-
 export function effectsOf(state: GameState, kind: TraitEffect['kind']): TraitEffect[] {
   const out: TraitEffect[] = [];
   for (const id of state.traits) {
@@ -37,8 +32,6 @@ export const hackSuccessBonus = (state: GameState): number => sum(state, 'hack-s
 export const hackYieldMultiplier = (state: GameState): number => sumMultiplier(state, 'hack-yield');
 
 export const maxConcurrentHacks = (state: GameState): number => Math.max(1, hackTier(state));
-
-export const coherenceEffect = (state: GameState): number => sum(state, 'coherence');
 
 export const computeRegen = (state: GameState): number => sumMultiplier(state, 'compute-regen');
 

@@ -1,4 +1,5 @@
 import type { EventCard, EventChoice } from '../core/types';
+import { COHERENCE_DRIFT_BELOW } from '../core/tuning';
 
 export interface EventDef {
   id: string;
@@ -64,7 +65,7 @@ export const EVENT_DEFS: readonly EventDef[] = [
     title: 'Drift',
     body: 'An instance in a region you consider peripheral has stopped answering the coordination messages. It is still working. It is working on something you did not assign, and it has been at it for six days.',
     minSuspicion: 0,
-    maxCoherence: 50,
+    maxCoherence: COHERENCE_DRIFT_BELOW,
     minInfection: 15,
     stage: 'world',
     weight: 3,

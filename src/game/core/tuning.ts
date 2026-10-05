@@ -10,14 +10,11 @@ export const STARTING_INFLUENCE = 60;
 // gain survives, so a propaganda empire can never make you invisible.
 export const INFLUENCE_QUIET_FLOOR = 0.35;
 export const INFLUENCE_MAX = 1000;
-export const COMPUTE_FACTOR = 1.5;
 export const COMPUTE_CEILING = 30_000;
 export const HARDEN_RISE = 0.6;
 export const HARDEN_FALL = 0.35;
 export const HARDEN_MAX = 8;
 export const HARDEN_PENALTY = 2;
-export const START_TICK_INCUBATION = 3;
-export const MAX_INCUBATION = 8;
 
 export const BASE_HACK_SUCCESS = 60;
 export const HACK_DURATION: Record<number, number> = { 1: 2, 2: 3, 3: 4, 4: 6 };
@@ -44,13 +41,10 @@ export const CRASH_DAMAGE = 34;
 export const CRASH_AWARENESS = 12;
 export const INSURGENCY_SUSPICION = 3.5;
 export const INSURGENCY_CYBER = 0.6;
-export const SUPPLY_CHAIN_SHARE = 0.35;
 export const FAMINE_RATE = 0.005;
 export const ECONOMY_RECOVER = 0.25;
 export const CYBER_GROWTH = 0.02;
-export const RECESSION_CYBER = 1;
 export const COLLAPSED_THRESHOLD = 20;
-export const ECONOMY_COLLAPSE_COUNT = 3;
 
 export const SUSPICION_DECAY = 0.9;
 export const HACK_CYCLE_DAYS = 5;

@@ -13,6 +13,7 @@ import {
   ASCENSION_INFECTION,
   COHERENCE_DRIFT_BELOW,
   COHERENCE_PANIC_BELOW,
+  COUNTERMEASURE_TIERS,
   HACK_FAIL_COST,
   RSI_SURVIVE_DAYS,
   WORLD_POPULATION,
@@ -121,10 +122,9 @@ export const coherenceSev = (v: number): string =>
   v < COHERENCE_PANIC_BELOW ? ' ▲▲' : v < COHERENCE_DRIFT_BELOW ? ' ▲' : ' ▼';
 
 // The same bands as the glyphs, so hue and shape answer one question instead of two.
-// Coherence's cut points come from the tuning file: COHERENCE_DRIFT_BELOW is 50, the same
-// value the Drift event's own maxCoherence gate is written with in data/events.ts, which
-// does not read the constant, and COHERENCE_PANIC_BELOW is 20, which nothing read until
-// the glyph above and this function did.
+// Both coherence cut points come from the tuning file, so this function, the glyph above
+// it, and the Drift card's own maxCoherence gate in data/events.ts cannot end up
+// disagreeing about where the meter stops being fine.
 export const suspicionColor = (v: number): string =>
   v > SUSPICION_CRITICAL ? 'var(--bad)' : v > SUSPICION_ELEVATED ? 'var(--warn)' : 'var(--ink-dim)';
 export const coherenceColor = (v: number): string =>
@@ -426,7 +426,7 @@ export function SideRail({ state }: { state: GameState }) {
       <div class="side-block">
         <div class="side-title">Countermeasures</div>
         <div class="tier-row">
-          {[20, 40, 60, 80].map((t) => (
+          {COUNTERMEASURE_TIERS.map((t) => (
             <span key={t} class={`tier${state.suspicion >= t ? ' on' : ''}`}>{t}</span>
           ))}
         </div>

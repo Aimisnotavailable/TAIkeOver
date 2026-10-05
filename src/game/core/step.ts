@@ -37,17 +37,13 @@ import {
   ASCENSION_INFECTION,
   BLIGHT_WALL,
   COLLAPSED_THRESHOLD,
-  COMPUTE_FACTOR,
-  COHERENCE_DRIFT_BELOW,
   COUNTER_HACK_DRAIN,
   COUNTER_HACK_MAX_COUNTRIES,
   COUNTER_HACK_INTERVAL,
   COUNTERMEASURE_TIERS,
   CYBER_GROWTH,
-  ECONOMY_COLLAPSE_COUNT,
   ECONOMY_RECOVER,
   FAMINE_RATE,
-  RECESSION_CYBER,
   RSI_SURVIVE_DAYS,
   STARS_PER_DAY,
   STRIKE_DRAIN,
@@ -67,16 +63,6 @@ const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.m
 export const warEndSalt = (index: number): number => 0x7a12 + index;
 export const biolabSalt = (index: number): number => 1500 + index * 3 + 1;
 export const factorySalt = (index: number): number => 1500 + index * 3 + 2;
-
-export const computeIncome = (state: GameState): number => {
-  let total = 0;
-  for (const id of REGION_IDS) {
-    const c = state.countries[id];
-    if (c === undefined) continue;
-    total += (c.infection / 100) * (c.tier * 20) * (Math.log10(1 + c.population) / 3);
-  }
-  return Math.round(total * COMPUTE_FACTOR);
-};
 
 const spreadAndAwareness = (state: GameState, c: Country, id: RegionId): Country => {
   if (c.quiet || c.infection <= 0) return c;
@@ -196,9 +182,6 @@ export function step(state: GameState): GameState {
         next = { ...next, biolabs: next.biolabs + 1 };
       }
     }
-    if (next.infection > 70 && next.factories < 1 && chance(state.seed, state.tick, factorySalt(index), 0.01)) {
-      next = { ...next, factories: 1 };
-    }
     countries[id] = next;
   }
 
@@ -259,7 +242,6 @@ export function step(state: GameState): GameState {
   // Base growth is deliberately meagre. Almost all real influence should come from
   // buying the Influence branch, otherwise that whole side of the tree is skippable.
   influence += (0.8 + countries.us.infection * 0.03) * Math.max(0, 1 - influence / INFLUENCE_MAX);
-  bio = countries['us']?.biolabs !== undefined ? bio : bio;
   for (const id of REGION_IDS) bio += (countries[id]?.biolabs ?? 0) * 1.4;
 
   // Awareness-driven detection. Decay is applied first and the total is clamped once,
@@ -314,22 +296,7 @@ export function step(state: GameState): GameState {
     }
   }
 
-  for (const id of REGION_IDS) {
-    const c = countries[id];
-    if (c === undefined) continue;
-    if (owned(state, 'depression') && c.economy < COLLAPSED_THRESHOLD && c.cyber > 1) {
-      countries[id] = { ...c, cyber: c.cyber - 0.02 };
-    }
-  }
-
   const collapsed = REGION_IDS.filter((id) => (countries[id]?.economy ?? 100) < COLLAPSED_THRESHOLD).length;
-  if (owned(state, 'global-recession') && collapsed >= ECONOMY_COLLAPSE_COUNT) {
-    for (const id of REGION_IDS) {
-      const c = countries[id];
-      if (c === undefined) continue;
-      countries[id] = { ...c, cyber: clamp(c.cyber - RECESSION_CYBER * 0.02, 1, 10) };
-    }
-  }
 
   // Coherence from traits.
   for (const id of state.traits) {
@@ -409,9 +376,6 @@ const newDeaths = dailyDeaths({ ...state, countries }, state.countries);
     next = { ...next, compute: COMPUTE_CEILING };
     next.log = [...next.log, { day: next.tick, kind: 'system' as const, text: 'bubble surplus spent down to the ceiling', suspicionDelta: null, computeDelta: -Math.round(over), flagged: true }].slice(-300);
   }
-  const breachCounts = { ...next.breaches };
-  for (const h of next.activeHacks) breachCounts[h.country] = (breachCounts[h.country] ?? 0) + h.wins;
-  next = { ...next, breaches: breachCounts };
 
   // Ascension gate.
   if (
@@ -501,5 +465,3 @@ function lateStep(state: GameState): GameState {
 
   return { ...state, late, countries };
 }
-
-export { COHERENCE_DRIFT_BELOW };

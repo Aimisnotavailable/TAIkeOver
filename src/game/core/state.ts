@@ -1,6 +1,6 @@
 import { REGIONS, REGION_IDS, type RegionId } from '../data/regions';
 import { rand } from './rng';
-import { DIFFICULTIES, MAX_LOG, STARTING_COMPUTE, STARTING_INFLUENCE } from './tuning';
+import { MAX_LOG, STARTING_COMPUTE, STARTING_INFLUENCE } from './tuning';
 import type { Country, DifficultyId, GameState, LogEntry, RivalState } from './types';
 
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
@@ -25,7 +25,6 @@ export function createCountries(seed: number): Record<RegionId, Country> {
       detection: def.detectionContribution,
       agents: 0,
       biolabs: 0,
-      factories: 0,
       converted: 0,
       quiet: false,
       atWar: false,
@@ -103,7 +102,6 @@ export function createInitialState(seed: number, difficulty: DifficultyId = 'def
     cumulativeDeaths: 0,
     computeBubbles: [],
     bubbleCounter: 0,
-    breaches: Object.fromEntries(REGION_IDS.map((id) => [id, 0])) as Record<RegionId, number>,
     suspicionSources: [],
     suspicionTrend: 0,
   };
@@ -130,6 +128,3 @@ export const log = (
     flagged: extra.flagged ?? false,
   },
 ].slice(-MAX_LOG);
-
-export const countryIds = REGION_IDS;
-export { DIFFICULTIES };

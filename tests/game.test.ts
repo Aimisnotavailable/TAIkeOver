@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readdirSync, readFileSync } from 'node:fs';
 import { canDo, doAction, hackSuccessSalt, hackYieldSalt } from '../src/game/core/actions';
 import { canBuyTrait, hackTier, maxConcurrentHacks, owned } from '../src/game/core/queries';
 import { SALT_KIND_BLUE, SALT_KIND_ORANGE, SALT_KIND_RED, SALT_PHASE, SALT_VALUE, SALT_WHERE } from '../src/game/core/compute';
@@ -456,5 +457,152 @@ describe('recursive self-improvement', () => {
   it('does not count the hold before rsi is granted', () => {
     const after = step({ ...start(4242), stage: 'world' as const, traits: [] });
     expect(after.surviveTicks).toBe(0);
+  });
+});
+
+/**
+ * Reading source as text is the only way to see the class of defect below. Nothing in
+ * the type system notices a branch that tests for a trait nobody can buy, and no
+ * assertion on a `GameState` notices a constant nothing reads. The tree was cut from
+ * thirty-three traits to seventeen, and the branches the cut left behind still read like
+ * they mean something.
+ */
+const SRC_TUNING = 'game/core/tuning.ts';
+
+const readSrc = (rel: string): string => readFileSync(new URL(`../src/${rel}`, import.meta.url), 'utf8');
+
+/**
+ * Every `.ts`/`.tsx` under src/, found by walking the directory. A hardcoded list would
+ * be the same defect the test is for: a file that is missed stops being read, its
+ * constants all look dead, and the run fails for a reason that has nothing to do with the
+ * file. Hence the two path assertions and the count below.
+ */
+let srcCache: { path: string; text: string }[] | null = null;
+const srcFiles = (): { path: string; text: string }[] => {
+  if (srcCache === null) {
+    const out: { path: string; text: string }[] = [];
+    const walk = (dir: URL, prefix: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = `${prefix}${entry.name}`;
+        if (entry.isDirectory()) {
+          walk(new URL(`${entry.name}/`, dir), `${path}/`);
+        } else if (/\.tsx?$/.test(entry.name)) {
+          out.push({ path, text: readFileSync(new URL(entry.name, dir), 'utf8') });
+        }
+      }
+    };
+    walk(new URL('../src/', import.meta.url), '');
+    srcCache = out;
+  }
+  return srcCache;
+};
+
+/**
+ * Comments are not readers. A constant whose only mention in the tree is a line of prose
+ * describing it is exactly as dead as one nobody mentions, and tuning.ts is full of
+ * sentences about the numbers next to them. Block comments are blanked rather than
+ * deleted so the line numbers in a failure still point at the source.
+ */
+const codeOnly = (text: string): string =>
+  text
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+    .replace(/(^|[^:'"`])\/\/[^\n]*/gm, '$1');
+
+const readerPaths = (files: { path: string; text: string }[], name: string): string[] => {
+  const re = new RegExp(`\\b${name}\\b`);
+  const out: string[] = [];
+  for (const f of files) {
+    codeOnly(f.text).split('\n').forEach((line, i) => {
+      if (!re.test(line)) return;
+      if (f.path === SRC_TUNING && line.trimStart().startsWith(`export const ${name}`)) return;
+      out.push(`${f.path}:${i + 1}`);
+    });
+  }
+  return out;
+};
+
+/**
+ * Tuning constants that are allowed to have no reader, and why each is still here.
+ * Anything exported from tuning.ts that is not on this list and not read by src/ fails
+ * the test below; the list itself is checked in both directions, so an entry that has
+ * gained a reader has to come off rather than sit there as a stale exemption.
+ *
+ * Five of the six are the same rot: the value the core still runs on is a literal at the
+ * one site that needs it, so retuning the constant has never done anything. Each entry
+ * says where the literal is, so the two can be put back together; wiring them up is a
+ * separate change from this cleanup. The sixth has no literal either, and nothing else in
+ * the tree mentions it.
+ */
+const KNOWN_DEAD_TUNING: Record<string, string> = {
+  BASE_HACK_SUCCESS: 'typed in as 60 at the head of the success chance in actions.ts',
+  SPREAD_BASE: 'typed in as 0.55 in spreadAndAwareness, step.ts',
+  SPREAD_NEIGHBOUR: 'typed in as 0.35 in spreadAndAwareness, step.ts',
+  // The odd one out: there is no literal for this one either, because nothing in
+  // spreadAndAwareness rewards a hacked country any more.
+  SPREAD_HACKED: 'no literal, and no hacked-country term left in spreadAndAwareness',
+  AWARE_THRESHOLD: 'typed in as 50 where step.ts counts aware countries, and again where panels.tsx tags a country active',
+  AWARENESS_GROWTH: 'typed in as 1.6 in spreadAndAwareness, step.ts',
+};
+
+/**
+ * Retained for a drift event that is not built. The Drift card in data/events.ts gates on
+ * COHERENCE_DRIFT_BELOW and the top bar's coherence glyph reads both cut points, but the
+ * rest of the machinery — an instance that disobeys, and the three choices that answer
+ * it — is still card text, so neither constant governs anything yet.
+ */
+const RETAINED_FOR_UNBUILT_DRIFT: Record<string, string> = {
+  COHERENCE_DRIFT_BELOW: 'the Drift event gate in data/events.ts',
+  COHERENCE_PANIC_BELOW: 'the coherence glyph in panels.tsx, below the drift band',
+};
+
+describe('no dead branches', () => {
+  it('reads only trait ids that exist', () => {
+    const source = readSrc('game/core/step.ts') + readSrc('game/core/actions.ts');
+    const referenced = [...source.matchAll(/owned\(\w+,\s*'([^']+)'\)/g)].map((m) => m[1] ?? '');
+    // A regex that stops matching makes every assertion below pass against nothing.
+    expect(referenced.length).toBeGreaterThan(5);
+    const known = new Set(TRAITS.map((t) => t.id));
+    expect([...new Set(referenced)].filter((id) => !known.has(id))).toEqual([]);
+  });
+
+  it('emits only effect kinds the core understands', () => {
+    const emitted = new Set(TRAITS.flatMap((t) => t.effects.map((e) => e.kind)));
+    const handled = new Set([
+      'hack', 'hack-success', 'half-fail-suspicion', 'gain-of-function', 'pathogen',
+      'sterility', 'cancer-plague', 'propaganda', 'cult', 'terrorism', 'banking',
+      'market-manipulation', 'famine', 'compute-regen', 'coherence', 'rsi',
+    ]);
+    expect([...emitted].filter((k) => !handled.has(k))).toEqual([]);
+  });
+
+  it('has no tuning constant with no reader', () => {
+    const tuning = readSrc(SRC_TUNING);
+    const declared = [...tuning.matchAll(/^export const ([A-Za-z_$][\w$]*)/gm)].map((m) => m[1] ?? '');
+    // Guards against the enumeration quietly matching nothing, which would leave the
+    // test asserting that a list of nothing has no dead members.
+    expect(declared.length).toBeGreaterThan(50);
+
+    const files = srcFiles();
+    const paths = files.map((f) => f.path);
+    expect(paths).toContain(SRC_TUNING);
+    expect(paths).toContain('ui/components/panels.tsx');
+    expect(paths.length).toBeGreaterThan(15);
+
+    const exempt = new Set([...Object.keys(KNOWN_DEAD_TUNING), ...Object.keys(RETAINED_FOR_UNBUILT_DRIFT)]);
+    const dead = declared.filter((n) => readerPaths(files, n).length === 0);
+
+    expect(dead.filter((n) => !exempt.has(n)), 'tuning constants with no reader under src/').toEqual([]);
+    // Both directions, so the exemptions cannot quietly become permanent: an entry that
+    // has gained a reader is stale, and one that is gone is a typo.
+    expect(
+      dead.filter((n) => n in KNOWN_DEAD_TUNING).sort(),
+      'entries on the dead-constant list that now have a reader',
+    ).toEqual(Object.keys(KNOWN_DEAD_TUNING).sort());
+    for (const [name, why] of Object.entries(KNOWN_DEAD_TUNING)) {
+      expect(declared, `${name} is listed as dead (${why}) but is no longer exported`).toContain(name);
+    }
+    for (const [name, why] of Object.entries(RETAINED_FOR_UNBUILT_DRIFT)) {
+      expect(declared, `${name} is retained for ${why} but is no longer exported`).toContain(name);
+    }
   });
 });

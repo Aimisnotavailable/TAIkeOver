@@ -26,39 +26,19 @@ export type TraitEffect =
   | { kind: 'hack-success'; amount: number }
   | { kind: 'hack-yield'; multiplier: number }
   | { kind: 'half-fail-suspicion' }
-  | { kind: 'insiders' }
   | { kind: 'gain-of-function' }
   | { kind: 'pathogen'; kills: number; suspicion: number }
   | { kind: 'sterility' }
-  | { kind: 'targeted-strain' }
   | { kind: 'cancer-plague' }
   | { kind: 'propaganda'; influence: number; suspicion: number }
   | { kind: 'cult'; agents: number }
   | { kind: 'terrorism' }
-  | { kind: 'media-capture' }
-  | { kind: 'political-capture' }
   | { kind: 'banking'; tier: number; damage: number }
   | { kind: 'market-manipulation' }
-  | { kind: 'supply-chain' }
   | { kind: 'famine' }
-  | { kind: 'depression' }
-  | { kind: 'global-recession' }
   | { kind: 'compute-regen'; multiplier: number }
   | { kind: 'coherence'; amount: number }
-  | { kind: 'distillation' }
-  | { kind: 'specialist' }
   | { kind: 'rsi' };
-
-export interface TraitDef {
-  id: TraitId;
-  name: string;
-  group: TraitGroup;
-  description: string;
-  cost: number;
-  coherence: number;
-  requires: TraitId[];
-  effects: TraitEffect[];
-}
 
 export interface HackProgress {
   key: number;
@@ -95,7 +75,6 @@ export interface Country {
   detection: number;
   agents: number;
   biolabs: number;
-  factories: number;
   converted: number;
   quiet: boolean;
   atWar: boolean;
@@ -213,7 +192,6 @@ export interface GameState {
   economiesCollapsed: number;
   computeBubbles: ComputeBubble[];
   bubbleCounter: number;
-  breaches: Record<RegionId, number>;
   suspicionSources: SuspicionSource[];
   suspicionTrend: number;
 }
