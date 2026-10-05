@@ -203,7 +203,7 @@ function TraitNode({ id, state }: { id: string; state: GameState }) {
       )}
       {f.coherence !== 0 && (
         <div class={`trait-coh${f.coherence < 0 ? ' bad' : ' good'}`}>
-          coherence {f.coherence > 0 ? `+${f.coherence}` : f.coherence}
+          coherence {f.coherence > 0 ? '+' : ''}{f.coherence.toFixed(2)}/day
         </div>
       )}
       {why !== '' && <div class="trait-why">{why}</div>}

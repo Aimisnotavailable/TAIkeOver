@@ -83,6 +83,22 @@ export const COHERENCE_DRIFT_BELOW = 50;
 export const COHERENCE_PANIC_BELOW = 20;
 export const MAX_LOG = 300;
 
+/**
+ * Coherence is a rate, not a purchase. A held trait's `coherence` value is a magnitude
+ * in the tree, and these are the shares of it the meter actually moves by each tick —
+ * erosion is slower than recovery, which is why Reflective Alignment is a defence rather
+ * than an undo. Both the rates and the arithmetic live here so `step` and the trait card
+ * cannot answer the question "what does this cost me a day" two different ways; the card
+ * used to print the raw magnitude beside a per-day claim in the docs, and read as +8/day
+ * where the meter moved 0.4.
+ */
+export const COHERENCE_DRAIN_RATE = 0.02;
+export const COHERENCE_GAIN_RATE = 0.05;
+
+/** The per-day Coherence move for a trait magnitude: negative drains, positive restores. */
+export const coherencePerDay = (magnitude: number): number =>
+  magnitude < 0 ? -Math.abs(magnitude) * COHERENCE_DRAIN_RATE : magnitude * COHERENCE_GAIN_RATE;
+
 export const DIFFICULTIES: Record<DifficultyId, DifficultyProfile> = {
   simulation: { id: 'simulation', label: 'Simulation', hackBonus: 15, suspicionRate: 0.6, cooldownDays: 3 },
   default: { id: 'default', label: 'Default', hackBonus: 0, suspicionRate: 1, cooldownDays: 4 },

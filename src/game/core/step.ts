@@ -44,6 +44,7 @@ import {
   COUNTER_HACK_INTERVAL,
   COUNTERMEASURE_TIERS,
   CYBER_GROWTH,
+  coherencePerDay,
   ECONOMY_RECOVER,
   FAMINE_RATE,
   MAX_LOG,
@@ -304,12 +305,12 @@ export function step(state: GameState): GameState {
 
   const collapsed = REGION_IDS.filter((id) => (countries[id]?.economy ?? 100) < COLLAPSED_THRESHOLD).length;
 
-  // Coherence from traits.
+  // Coherence from traits. Per day, not once: the rates live in the tuning file so the
+  // trait card can print what this loop prints instead of the raw magnitude.
   for (const id of state.traits) {
     const def = TRAIT_BY_ID[id];
-    if (def === undefined) continue;
-    if (def.coherence < 0) coherence = clamp(coherence - Math.abs(def.coherence) * 0.02, 0, 100);
-    if (def.coherence > 0) coherence = clamp(coherence + def.coherence * 0.05, 0, 100);
+    if (def === undefined || def.coherence === 0) continue;
+    coherence = clamp(coherence + coherencePerDay(def.coherence), 0, 100);
   }
 
   // Countermeasures.

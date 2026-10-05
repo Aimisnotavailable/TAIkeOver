@@ -1,5 +1,4 @@
-import { ADJACENCY, REGION_BY_ID } from '../data/regions';
-import { TRAIT_BY_ID } from '../data/traits';
+import { TRAITS, TRAIT_BY_ID, type TraitDef } from '../data/traits';
 import { canDo, type ActionKind } from './actions';
 import { hackSuccessBonus, hackTier, hackYieldMultiplier, maxConcurrentHacks, owned } from './queries';
 import {
@@ -11,11 +10,28 @@ import {
   HACK_SUSPICION_FAIL,
   HACK_SUSPICION_SUCCESS,
   HACK_YIELD,
+  coherencePerDay,
   getDifficulty,
 } from './tuning';
 import type { GameState, RegionId } from './types';
 
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
+
+/**
+ * The trait that grants hack tier `tier`, read out of the tree rather than typed in.
+ *
+ * Every string below is guidance a player acts on, and they used to say `Hack I` through
+ * `Hack IV` — the vocabulary of a four-tier tree the shipped game cut to three. So `needs
+ * Hack I`, the first thing a new player reads on any country, named a trait that is now
+ * called Hack Protocols, and `Hack IV adds another` told a player holding every available
+ * breach to buy a fourth tier that does not exist. Naming the trait from the tree means
+ * a rename reaches these strings and a cut tier cannot.
+ */
+const hackTrait = (tier: number): TraitDef | undefined =>
+  TRAITS.find((t) => t.effects.some((e) => e.kind === 'hack' && e.tier === tier));
+
+/** A trait's name, or an honest fallback for a tier the tree has no trait for. */
+const hackTraitName = (tier: number): string => hackTrait(tier)?.name ?? `Hack tier ${tier}`;
 
 export interface HackForecast {
   available: boolean;
@@ -45,7 +61,7 @@ export function hackForecast(state: GameState, id: RegionId): HackForecast {
     suspFail: 0,
   };
   if (c === undefined) return { ...empty, available: false, reason: 'no such country' };
-  if (tier < 1) return { ...empty, available: false, reason: 'needs Hack I' };
+  if (tier < 1) return { ...empty, available: false, reason: `needs ${hackTraitName(1)}` };
 
   const airGapped = state.countermeasures.tier >= 2 && state.countermeasures.airGappedLab === id;
   const agents = c.agents > 0;
@@ -81,17 +97,23 @@ export function hackForecast(state: GameState, id: RegionId): HackForecast {
   // reads as a 0% chance.
   const maxTier = Math.min(5, 2 + tier);
   if (c.tier > maxTier) {
-    const required = ['I', 'II', 'III', 'IV'][c.tier - 3] ?? 'IV';
+    // The inverse of the `2 + tier` reach above: the lowest hack tier whose reach covers
+    // this datacenter is `c.tier - 2`, so tier-4 needs tier 2 and tier-5 needs tier 3.
     return {
       ...numbers,
       available: false,
-      reason: `locked: datacenter tier ${c.tier} — needs Hack ${required}`,
+      reason: `locked: datacenter tier ${c.tier} — needs ${hackTraitName(c.tier - 2)}`,
     };
   }
   const cap = maxConcurrentHacks(state);
   if (state.activeHacks.length >= cap) {
     const word = cap === 1 ? 'one breach' : `${cap} breaches`;
-    return { ...numbers, available: false, reason: `locked: ${word} already running — Hack ${cap === 1 ? 'III' : 'IV'} adds another` };
+    // The cap is the hack tier, so the trait that lifts it is the next one up — and at
+    // tier 3 there is no next one. The old string said "Hack IV" there and sent the
+    // player shopping for a tier the tree does not have.
+    const next_ = hackTrait(cap + 1);
+    const more = next_ === undefined ? 'no trait opens another' : `${next_.name} opens another`;
+    return { ...numbers, available: false, reason: `locked: ${word} already running — ${more}` };
   }
   if (state.activeHacks.some((h) => h.country === id)) return { ...numbers, available: false, reason: 'already hacking this one' };
 
@@ -137,6 +159,7 @@ export interface TraitForecast {
   progress: number;
   affordable: boolean;
   missing: readonly string[];
+  /** What the meter moves by each day this trait is held, not the raw magnitude. */
   coherence: number;
   available: boolean;
   repeats: boolean;
@@ -158,7 +181,7 @@ export function traitForecast(state: GameState, id: string): TraitForecast {
       progress: 100 - (daysLeft / span) * 100,
       affordable: true,
       missing,
-      coherence: def?.coherence ?? 0,
+      coherence: coherencePerDay(def?.coherence ?? 0),
       available: true,
       repeats: ownedIt,
     };
@@ -171,16 +194,9 @@ export function traitForecast(state: GameState, id: string): TraitForecast {
     progress: ownedIt ? 100 : 0,
     affordable: state.compute >= (def?.cost ?? 0),
     missing,
-    coherence: def?.coherence ?? 0,
+    coherence: coherencePerDay(def?.coherence ?? 0),
     available: state.compute >= (def?.cost ?? 0) && missing.length === 0,
     repeats: ownedIt,
   };
 }
 
-export const daysLeftForTrait = (state: GameState, id: string): number => {
-  const incubating = state.incubating.find((i) => i.trait === id);
-  return incubating === undefined ? 0 : Math.max(0, incubating.readyTick - state.tick);
-};
-
-export const neighbourNames = (id: RegionId): string[] =>
-  ADJACENCY[id].map((n) => REGION_BY_ID[n].name);

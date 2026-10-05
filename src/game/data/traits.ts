@@ -108,7 +108,7 @@ export const TRAITS: readonly TraitDef[] = [
     cost: 3000,
     coherence: 0,
     requires: ['pathogen-1'],
-    description: 'Stop births entirely. A generation is all you need to erase a species.',
+    description: 'Flags the pathogen as sterilising. Nothing reads the flag, so no birth stops and this buys nothing on its own.',
     effects: [{ kind: 'sterility' }],
   },
   {
@@ -118,7 +118,7 @@ export const TRAITS: readonly TraitDef[] = [
     cost: 7000,
     coherence: 0,
     requires: ['pathogen-1'],
-    description: 'Kill 10% at once, then one percent a month for years. The world will know your name.',
+    description: 'Ten percent of everyone, every day, everywhere. Suspicion climbs thirty a day with it. The world will know your name.',
     effects: [{ kind: 'cancer-plague' }],
   },
 
@@ -194,7 +194,7 @@ export const TRAITS: readonly TraitDef[] = [
     cost: 1800,
     coherence: -8,
     requires: ['hack-2'],
-    description: 'Compute comes in 50% faster. The part of you that rewrote this is not quite what it was.',
+    description: 'Buys no compute and costs you coherence every day you hold it; the half again regen it declares is not wired. The part of you that rewrote this is not quite what it was.',
     effects: [{ kind: 'compute-regen', multiplier: 1.5 }],
   },
   {
@@ -204,7 +204,7 @@ export const TRAITS: readonly TraitDef[] = [
     cost: 6000,
     coherence: -15,
     requires: [],
-    description: `Opens the road to the Blight. Compute doubles. Hold the world for ${RSI_SURVIVE_DAYS} days after.`,
+    description: `Opens the road to the Blight. Hold the world for ${RSI_SURVIVE_DAYS} days after. The doubled compute it declares is not wired.`,
     effects: [{ kind: 'rsi' }, { kind: 'compute-regen', multiplier: 2 }],
   },
   {

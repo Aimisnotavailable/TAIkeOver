@@ -9,6 +9,10 @@ import {
 } from '../src/ui/components/panels';
 import { COHERENCE_DRIFT_BELOW, COHERENCE_PANIC_BELOW, RSI_SURVIVE_DAYS } from '../src/game/core/tuning';
 import { TRAIT_BY_ID } from '../src/game/data/traits';
+import { createInitialState } from '../src/game/core/state';
+import { traitForecast } from '../src/game/core/forecast';
+import { step } from '../src/game/core/step';
+import type { GameState } from '../src/game/core/types';
 import panelSource from '../src/ui/components/panels.tsx?raw';
 import traitsSource from '../src/game/data/traits.ts?raw';
 
@@ -107,5 +111,31 @@ describe('the RSI hold is stated once', () => {
     // built from the constant in the first place.
     expect(TRAIT_BY_ID.rsi?.description).toContain(`Hold the world for ${RSI_SURVIVE_DAYS} days`);
     expect(traitsSource).toMatch(/description:\s*`[^`]*\$\{RSI_SURVIVE_DAYS\}[^`]*`/);
+  });
+});
+
+describe('the trait card and the meter move together', () => {
+  const start = (traits: string[]): GameState => ({
+    ...createInitialState(42, 'default'),
+    stage: 'world',
+    traits,
+  });
+
+  it('shows the figure a real tick actually moves', () => {
+    // The card printed `coherence -8` where the meter moved 0.16 a day, under a docs
+    // column headed Coherence/day. Both sides now call coherencePerDay, and this holds
+    // them to it by running the tick rather than trusting either number alone.
+    for (const id of ['self-rewrite', 'rsi', 'reflective-alignment']) {
+      const before = 60;
+      const moved = step({ ...start([id]), coherence: before }).coherence - before;
+      expect(moved, id).toBeCloseTo(traitForecast(start([id]), id).coherence, 6);
+    }
+  });
+
+  it('labels the number as a daily rate', () => {
+    // The label is what stops a reader treating the figure as a one-off cost, and it has
+    // to sit on the converted number rather than the magnitude it used to print.
+    expect(panelSource).toContain('toFixed(2)}/day');
+    expect(panelSource).not.toMatch(/`\+\$\{f\.coherence\}`/);
   });
 });
