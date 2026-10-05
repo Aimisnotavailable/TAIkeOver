@@ -9,6 +9,10 @@ const world = (over: Partial<GameState> = {}): GameState => ({
   ...over,
 });
 
+const card: GameState['cards'] = [
+  { key: 0, event: 'leak', title: 'Datacenter leak', body: 'something', country: 'us', choices: [], urgent: false },
+];
+
 const running = (s: GameState, sp: Speed, upgrading: boolean): boolean =>
   worldRunning(s, sp, upgrading);
 
@@ -43,30 +47,28 @@ describe('what stops the world', () => {
     expect(running(world({ stage: 'coldopen' }), 1, false)).toBe(false);
   });
 
-  it('stops when a card is waiting', () => {
-    const withCard = world({ cards: [{ key: 0, event: 'x', title: 'x', body: 'x', country: null, choices: [], urgent: false }] });
-    expect(running(withCard, 1, false)).toBe(false);
-  });
-
   it('stops once the run is over', () => {
     expect(running(world({ outcome: 'lost' }), 1, false)).toBe(false);
     expect(running(world({ outcome: 'won' }), 8, false)).toBe(false);
   });
+});
 
-  it('resumes the moment every reason to stop is gone', () => {
-    const card: GameState['cards'] = [{ key: 0, event: 'x', title: 'x', body: 'x', country: null, choices: [], urgent: false }];
-    expect(running(world({ cards: card }), 1, false)).toBe(false);
-    expect(running(world(), 1, false)).toBe(true);
+describe('the world does not stop for a card', () => {
+  it('keeps running at every speed while a card is pending', () => {
+    const s = world({ outcome: 'playing', cards: card });
+    for (const sp of [1, 2, 4, 8] as Speed[]) {
+      expect(worldRunning(s, sp, false)).toBe(true);
+    }
+  });
+
+  it('still refuses to open the trait tree behind a card', () => {
+    expect(evolveBlocked(world({ cards: card }))).toBe(true);
   });
 });
 
 describe('a card and the upgrade screen', () => {
-  const card: GameState['cards'] = [
-    { key: 0, event: 'leak', title: 'Datacenter leak', body: 'something', country: 'us', choices: [], urgent: false },
-  ];
-
-  // Two overlays at once is what left the run frozen: the card pausing the world
-  // while the upgrade screen sat on top of it, neither reachable.
+  // A card no longer stops the clock, so this is the only thing standing between
+  // the player and two overlays at once: the card, and the shop on top of it.
   it('blocks the upgrade screen while a card is up', () => {
     expect(evolveBlocked(world({ cards: card }))).toBe(true);
   });

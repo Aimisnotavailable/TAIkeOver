@@ -310,7 +310,7 @@ export function Game() {
       {state.cards.length > 0 && (
         <div class="paused-bar">
           <span class="pb-dot" />
-          PAUSED &mdash; a decision is pending. The world does not move until you answer.
+          DECISIONS PENDING &mdash; {state.cards.length}. The world is still moving.
         </div>
       )}
       <Toasts />

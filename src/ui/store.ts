@@ -212,7 +212,9 @@ if (import.meta.env.DEV) {
 /**
  * Whether the world should be advancing. Everything that stops the clock lives
  * here so it can be tested, rather than being inlined in an effect where a missing
- * dependency silently lets the world keep running.
+ * dependency silently lets the world keep running. A pending card is deliberately
+ * not one of them: it no longer stops the clock, and `evolveBlocked` is where a
+ * decision still has teeth.
  */
 export function worldRunning(
   state: GameState,
@@ -223,7 +225,6 @@ export function worldRunning(
   if (state.outcome !== 'playing') return false;
   if (currentSpeed === 0) return false;
   if (upgrading) return false;
-  if (state.cards.length > 0) return false;
   return true;
 }
 
