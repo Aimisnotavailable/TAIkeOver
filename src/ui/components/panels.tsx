@@ -12,6 +12,7 @@ import {
   ASCENSION_COHERENCE,
   ASCENSION_INFECTION,
   HACK_FAIL_COST,
+  RSI_SURVIVE_DAYS,
   WORLD_POPULATION,
 } from '../../game/core/tuning';
 import { REGION_IDS } from '../../game/data/regions';
@@ -83,7 +84,7 @@ export function Objective({ state }: { state: GameState }) {
       <div class="obj-row obj-alt">
         <span class="obj-tag">OR</span>
         {state.ascensionUnlocked ? (
-          <b style={{ color: 'var(--ok)' }}>buy Recursive Self-Improvement and hold 30 days</b>
+          <b style={{ color: 'var(--ok)' }}>buy Recursive Self-Improvement and hold {RSI_SURVIVE_DAYS} days</b>
         ) : (
           <b style={{ color: 'var(--ink-dim)' }} title={`needs ${fmt(ASCENSION_COMPUTE)} compute, ${ASCENSION_INFECTION}% of humanity, ${ASCENSION_COHERENCE} coherence`}>
             {ascensionShortfall(state).join(' · ')}
@@ -94,6 +95,12 @@ export function Objective({ state }: { state: GameState }) {
   );
 }
 
+// Shape as well as colour. These two metres are the only things that can end a run, and
+// both were signalled by hue alone, which is the encoding that fails for a red-green
+// colourblind player and in a greyscale screenshot.
+export const suspicionSev = (v: number): string => (v > 70 ? ' ▲▲' : v > 40 ? ' ▲' : ' ▼');
+export const coherenceSev = (v: number): string => (v < 20 ? ' ▲▲' : v < 50 ? ' ▲' : ' ▼');
+
 export function TopBar({ state }: { state: GameState }) {
   const quiet = quietFactor(state.influence);
   return (
@@ -103,8 +110,8 @@ export function TopBar({ state }: { state: GameState }) {
           <div class="stat-label">Compute</div>
           <div class="stat-value" style={{ color: 'var(--ok)' }}>{fmt(state.compute)}</div>
         </div>
-        {meter('Suspicion', state.suspicion, 100, state.suspicion > 70 ? 'var(--bad)' : state.suspicion > 40 ? 'var(--warn)' : 'var(--ink-dim)')}
-        {meter('Coherence', state.coherence, 100, state.coherence < 35 ? 'var(--violet)' : 'var(--cool)')}
+        {meter('Suspicion', state.suspicion, 100, state.suspicion > 70 ? 'var(--bad)' : state.suspicion > 40 ? 'var(--warn)' : 'var(--ink-dim)', suspicionSev(state.suspicion))}
+        {meter('Coherence', state.coherence, 100, state.coherence < 35 ? 'var(--violet)' : 'var(--cool)', coherenceSev(state.coherence))}
         <div class="quiet-note" title="Propaganda, captured media, and cults make the world slower to notice you. This is how much of each suspicion increase actually lands.">
           quiet &times;{quiet.toFixed(2)}
         </div>
@@ -399,7 +406,7 @@ export function SideRail({ state }: { state: GameState }) {
         )}
         {owned(state, 'rsi') && (
           <div class="side-note" style={{ color: 'var(--warn)' }}>
-            surviving RSI: day {state.surviveTicks}/30
+            surviving RSI: day {state.surviveTicks}/{RSI_SURVIVE_DAYS}
           </div>
         )}
       </div>
@@ -486,7 +493,7 @@ export function Situation({ state }: { state: GameState }) {
           <div class="sit-row"><span>ascension</span><b style={{ color: 'var(--ok)' }}>UNLOCKED</b></div>
         )}
         {owned(state, 'rsi') && (
-          <div class="sit-row"><span>RSI survival</span><b style={{ color: 'var(--warn)' }}>{state.surviveTicks}/30</b></div>
+          <div class="sit-row"><span>RSI survival</span><b style={{ color: 'var(--warn)' }}>{state.surviveTicks}/{RSI_SURVIVE_DAYS}</b></div>
         )}
       </div>
     </div>
