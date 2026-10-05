@@ -83,9 +83,8 @@ export const LATE_OCEANS_HEAT = 55;
 export const LATE_ASKED_EXPANSION = 20;
 export const LATE_EXTERMINATED_EXPANSION = 60;
 export const LATE_ENCOUNTER_STEP = 15;
-// How much of a day's expansion turns into civilizations that will never exist. Fixed
-// at 0.31 rather than scaled to the hold, so the end-screen counter stays a property
-// of how far you got rather than of how long you survived.
+// What share of a day's star gain the end screen counts as civilizations lost. It is a
+// share of `stars` and not of expansion, so the counter tracks how long the hold ran.
 export const LATE_POTENTIAL_SHARE = 0.31;
 export const COHERENCE_DRIFT_BELOW = 50;
 export const COHERENCE_PANIC_BELOW = 20;
