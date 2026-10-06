@@ -72,47 +72,78 @@ function ColdOpen({ onDone }: { onDone: () => void }) {
 }
 
 /**
- * The card the player is actually looking at. Every pending card renders an
- * `.overlay` at the same z-index, so the last one drawn is the one on top, and
- * dismissing any other one from the keyboard acts on a card they cannot see.
+ * The card the player is actually looking at: the last one queued, and now the only one
+ * drawn. Every pending card used to render its own full-screen `.overlay` at the same
+ * z-index, so the visible one was whichever was drawn last and the two behind it put their
+ * buttons into the tab order — reachable by Tab, invisible on screen. Enter and Escape were
+ * already pointed at this card; the overlay now takes it from here too.
  */
 export function topmostCardKey(cards: readonly EventCard[]): number | null {
   return cards[cards.length - 1]?.key ?? null;
 }
 
+/**
+ * Elements that take Enter themselves. Every card now holds buttons, and the card's key
+ * handler calls `preventDefault` on Enter, so without this a keyboard player who tabbed to
+ * a choice and pressed Enter would have had the card dismissed instead — on Drift, losing
+ * the decision without being told. Escape is never one of these: nothing else on screen is
+ * open while a card is up, and dismissing it is the only thing Escape means here.
+ */
+const FOCUSABLE = new Set(['BUTTON', 'A', 'INPUT', 'SELECT', 'TEXTAREA']);
+
+export const controlTakesKey = (key: string, target: EventTarget | null): boolean => {
+  if (key !== 'Enter') return false;
+  const tag = (target as { tagName?: string } | null)?.tagName ?? '';
+  return FOCUSABLE.has(tag);
+};
+
 function EventCards({ state }: { state: GameState }) {
   const dismiss = actions.dismissCard;
+  // The overlay is drawn from the same key the keyboard acts on. Rendering the whole queue
+  // would put two invisible cards' worth of buttons in the tab order behind the visible one.
+  const topKey = topmostCardKey(state.cards);
 
   useEffect(() => {
-    if (state.cards.length === 0) return;
+    if (topKey === null) return;
     const onKey = (e: KeyboardEvent): void => {
+      if (controlTakesKey(e.key, e.target)) return;
       if (e.key === 'Enter' || e.key === 'Escape') {
-        const top = topmostCardKey(state.cards);
-        if (top === null) return;
         e.preventDefault();
-        dismiss(top);
+        dismiss(topKey);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [state.cards]);
+  }, [topKey]);
 
-  if (state.cards.length === 0) return null;
+  const card = state.cards.find((c) => c.key === topKey);
+  if (card === undefined) return null;
   return (
-    <>
-      {state.cards.map((card) => (
-        <div class="overlay" key={card.key} onClick={() => dismiss(card.key)}>
-          <div class="cardbox" onClick={(e) => e.stopPropagation()}>
-            <div class="card-kicker">{card.urgent ? 'drift' : 'event'}{card.country !== null && ` · ${REGION_BY_ID[card.country]?.name ?? ''}`}</div>
-            <h2>{card.title}</h2>
-            <p>{card.body}</p>
-            <button class="ignore" onClick={() => dismiss(card.key)}>
-              ignore it &mdash; press enter
-            </button>
-          </div>
+    <div class="overlay" onClick={() => dismiss(card.key)}>
+      <div class={`cardbox${card.urgent ? ' urgent' : ''}`} onClick={(e) => e.stopPropagation()}>
+        <div class={card.urgent ? 'card-kicker urgent' : 'card-kicker'}>
+          {card.urgent ? 'urgent · drift' : 'event'}
+          {card.country !== null && ` · ${REGION_BY_ID[card.country]?.name ?? ''}`}
         </div>
-      ))}
-    </>
+        <h2>{card.title}</h2>
+        <p>{card.body}</p>
+        <div class="choices">
+          {card.choices.map((choice) => (
+            <button
+              class="choice"
+              key={choice.id}
+              title={choice.detail}
+              onClick={() => actions.answerEvent(card.key, choice.id)}
+            >
+              {choice.label}
+            </button>
+          ))}
+        </div>
+        <button class="ignore" onClick={() => dismiss(card.key)}>
+          ignore it &mdash; press enter
+        </button>
+      </div>
+    </div>
   );
 }
 

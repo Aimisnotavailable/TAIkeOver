@@ -31,6 +31,13 @@ export const SPREAD_BASE = 0.55;
 export const SPREAD_NEIGHBOUR = 0.35;
 export const AWARE_THRESHOLD = 50;
 export const AWARENESS_GROWTH = 1.6;
+/**
+ * What going quiet buys in the one country that does it, and what saying nothing after a
+ * screenshot buys in all of them: the same forgetting, once, in a single number. The two
+ * were separate literals of the same size in two files, which is how a retune of one would
+ * have left the other quietly out of step with the copy that describes it.
+ */
+export const GO_QUIET_AWARENESS = 18;
 export const COUNTER_HACK_DRAIN = 9;
 export const COUNTER_HACK_MAX_COUNTRIES = 6;
 export const COUNTER_HACK_INTERVAL = 3;

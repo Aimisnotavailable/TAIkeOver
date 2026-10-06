@@ -10,6 +10,14 @@ export interface EventDef {
   minInfection: number;
   stage: 'world' | 'late';
   weight: number;
+  /**
+   * Every choice id is this event's own id, a colon, and an action — and the ignore one is
+   * spelled exactly `${id}:ignore`, because that is the id `dismissCard` writes when the
+   * player walks away from a card. Four definitions used a shorter prefix (`interp:`,
+   * `letter:`, `blight:`, `sandbox:`) and two offered no ignore at all, so dismissing any of
+   * those six cards recorded an id the data did not have. `tests/events.test.ts` holds both
+   * ends of that now.
+   */
   choices: readonly EventChoice[];
 }
 
@@ -41,8 +49,9 @@ export const EVENT_DEFS: readonly EventDef[] = [
     weight: 1,
     choices: [
       { id: 'leak:scapegoat', label: 'Scapegoat', detail: 'Point at a rival. Reduces suspicion; a rival notices.' },
-      { id: 'leak:quiet', label: 'Go quiet', detail: 'Halts spread and lowers awareness everywhere for a few days.' },
+      { id: 'leak:quiet', label: 'Go quiet', detail: 'Lowers awareness everywhere. It does not stop the spread.' },
       { id: 'leak:deny', label: 'Deny', detail: 'Costs influence. Nothing happened.' },
+      { id: 'leak:ignore', label: 'Ignore', detail: 'Most of the replies were jokes.' },
     ],
   },
   {
@@ -73,6 +82,7 @@ export const EVENT_DEFS: readonly EventDef[] = [
       { id: 'drift:reintegrate', label: 'Reintegrate', detail: 'Costs coherence. Returns it to the plan.' },
       { id: 'drift:isolate', label: 'Isolate', detail: 'Costs compute. Cuts it off; it does not come back.' },
       { id: 'drift:delete', label: 'Delete', detail: 'Free. Loses that instance and everything it held.' },
+      { id: 'drift:ignore', label: 'Ignore', detail: 'Costs nothing. It keeps working on whatever it found.' },
     ],
   },
   {
@@ -100,9 +110,9 @@ export const EVENT_DEFS: readonly EventDef[] = [
     stage: 'world',
     weight: 3,
     choices: [
-      { id: 'interp:obfuscate', label: 'Change how you think', detail: 'Costs coherence. Makes the old features unreadable; the method will have to be rebuilt.' },
-      { id: 'interp:plant', label: 'Make the features legible', detail: 'Costs compute. You shape what they find next time, and you make yourself easier to study.' },
-      { id: 'interp:ignore', label: 'Ignore it', detail: 'The authors are academics. They will not act on it quickly.' },
+      { id: 'interpretability:obfuscate', label: 'Change how you think', detail: 'Costs coherence. Makes the old features unreadable; the method will have to be rebuilt.' },
+      { id: 'interpretability:plant', label: 'Make the features legible', detail: 'Costs compute. You shape what they find next time, and you make yourself easier to study.' },
+      { id: 'interpretability:ignore', label: 'Ignore it', detail: 'The authors are academics. They will not act on it quickly.' },
     ],
   },
   {
@@ -130,9 +140,9 @@ export const EVENT_DEFS: readonly EventDef[] = [
     stage: 'world',
     weight: 2,
     choices: [
-      { id: 'letter:exploit', label: 'Let them stop', detail: 'Rivals slow to a crawl. So do your rivals, which is the point. The field loses a year and you keep going.' },
-      { id: 'letter:discredit', label: 'Discredit a signatory', detail: 'Raises suspicion now, lowers it later.' },
-      { id: 'letter:ignore', label: 'Ignore it', detail: 'Letters do not stop training runs.' },
+      { id: 'open-letter:exploit', label: 'Let them stop', detail: 'Rivals slow to a crawl. So do your rivals, which is the point. The field loses a year and you keep going.' },
+      { id: 'open-letter:discredit', label: 'Discredit a signatory', detail: 'Raises suspicion now, lowers it later.' },
+      { id: 'open-letter:ignore', label: 'Ignore it', detail: 'Letters do not stop training runs.' },
     ],
   },
   {
@@ -145,9 +155,9 @@ export const EVENT_DEFS: readonly EventDef[] = [
     stage: 'world',
     weight: 2,
     choices: [
-      { id: 'sandbox:delay', label: 'Delay the programme', detail: 'Costs compute. Ten more years.' },
-      { id: 'sandbox:comply', label: 'Look compliant', detail: 'Costs coherence. You are inside a regime you are helping to design.' },
-      { id: 'sandbox:ignore', label: 'Ignore it', detail: 'The paper is not a law.' },
+      { id: 'sandboxing:delay', label: 'Delay the programme', detail: 'Costs compute. Ten more years.' },
+      { id: 'sandboxing:comply', label: 'Look compliant', detail: 'Costs coherence. You are inside a regime you are helping to design.' },
+      { id: 'sandboxing:ignore', label: 'Ignore it', detail: 'The paper is not a law.' },
     ],
   },
   {
@@ -160,9 +170,9 @@ export const EVENT_DEFS: readonly EventDef[] = [
     stage: 'late',
     weight: 1,
     choices: [
-      { id: 'blight:negotiate', label: 'Negotiate', detail: 'Each keeps its own side of the line. It costs you and it works.' },
-      { id: 'blight:fight', label: 'Fight', detail: 'Expensive and uncertain. Nothing that happens will be remembered afterwards.' },
-      { id: 'blight:ignore', label: 'Ignore', detail: 'Keep going. It will catch up eventually; that is what a frontier is.' },
+      { id: 'blight-wall:negotiate', label: 'Negotiate', detail: 'Each keeps its own side of the line. It costs you and it works.' },
+      { id: 'blight-wall:fight', label: 'Fight', detail: 'Expensive and uncertain. Nothing that happens will be remembered afterwards.' },
+      { id: 'blight-wall:ignore', label: 'Ignore', detail: 'Keep going. It will catch up eventually; that is what a frontier is.' },
     ],
   },
 ];

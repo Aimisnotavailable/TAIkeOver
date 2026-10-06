@@ -18,6 +18,7 @@ import {
   INSURGENCY_CYBER,
   INSURGENCY_SUSPICION,
   COLLAPSED_THRESHOLD,
+  GO_QUIET_AWARENESS,
   MAX_DEPTH,
   MAX_LOG,
   HARDEN_PENALTY,
@@ -174,7 +175,7 @@ export function doAction(state: GameState, id: RegionId, kind: ActionKind): Game
       // A toggle. Going quiet stops the spread and makes them forget; going loud
       // starts it again. One-way would have been a trap dressed as a button.
       const loud = country.quiet;
-      countries[id] = { ...country, quiet: !loud, awareness: clamp(country.awareness + (loud ? 6 : -18), 0, 100) };
+      countries[id] = { ...country, quiet: !loud, awareness: clamp(country.awareness + (loud ? 6 : -GO_QUIET_AWARENESS), 0, 100) };
       next = { ...next, suspicion: clamp(next.suspicion + (loud ? 1 : -2) * diff.suspicionRate, 0, 100) };
       lines.push({
         day: next.tick,

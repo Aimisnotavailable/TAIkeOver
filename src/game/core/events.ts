@@ -1,8 +1,8 @@
 import { EVENT_DEFS, toCard } from '../data/events';
 import { REGION_IDS } from '../data/regions';
 import { rand } from './rng';
-import { MAX_LOG } from './tuning';
-import type { EventChoiceId, GameState } from './types';
+import { GO_QUIET_AWARENESS, MAX_LOG } from './tuning';
+import type { EventCard, EventChoiceId, GameState } from './types';
 
 export const EVENT_QUEUE_MAX = 3;
 
@@ -40,57 +40,97 @@ export function rollEvent(s: GameState): GameState {
   return { ...s, cards: [...s.cards, toCard(picked, s.eventCounter, country)], eventCounter: s.eventCounter + 1 };
 }
 
+type ChoiceEffect = (state: GameState, card: EventCard) => GameState;
+
+/**
+ * What each choice does to the world, keyed by the choice id the data defines: that id is
+ * what a button carries and what `resolved` records, so it is the only honest key. Exported
+ * so a test can read the branch list off this object rather than repeat it — a hand-typed
+ * copy of these keys would agree with a branch that had been renamed into nothing.
+ *
+ * An `:ignore` choice is deliberately absent. `answerEvent` drops the card and records the
+ * id before it looks here, so an entry for one would be a function returning its argument.
+ * The other direction is the one that was never checked and the one that bit: `leak:quiet`
+ * was defined in the data for the whole history of this repo with no entry here, so
+ * answering it recorded the id, wrote a log line, and changed nothing.
+ */
+export const CHOICE_EFFECTS: Record<EventChoiceId, ChoiceEffect> = {
+  'drift:reintegrate': (s) => ({ ...s, coherence: Math.max(0, s.coherence - 3) }),
+  'drift:isolate': (s) => ({ ...s, compute: Math.max(0, s.compute - 400) }),
+  'drift:delete': (s) => ({ ...s, coherence: Math.max(0, s.coherence - 1) }),
+  'whistleblower:discredit': (s) => ({ ...s, influence: Math.max(0, s.influence - 60) }),
+  'whistleblower:recruit': (s, card) => {
+    const next = { ...s, compute: Math.max(0, s.compute - 300) };
+    const id = card.country ?? 'us';
+    const c = next.countries[id];
+    if (c === undefined) return next;
+    return { ...next, countries: { ...next.countries, [id]: { ...c, agents: c.agents + 1 } } };
+  },
+  'whistleblower:silence': (s) => ({ ...s, suspicion: Math.min(100, s.suspicion + 3) }),
+  'leak:scapegoat': (s) => ({
+    ...s,
+    suspicion: Math.max(0, s.suspicion - 4),
+    rivals: s.rivals.map((r, i) => (i === 0 ? { ...r, capability: r.capability + 3 } : r)),
+  }),
+  // Awareness everywhere and nothing else. This used to promise a halt on spread too, which
+  // cannot be delivered here: spread stops only where `Country.quiet` is set, and only
+  // `step` runs a clock, so a timed effect would have to live in the tick. The detail was
+  // corrected to the half of it that is true rather than left promising the other half.
+  'leak:quiet': (s) => {
+    const countries = { ...s.countries };
+    for (const id of REGION_IDS) {
+      const c = countries[id];
+      if (c !== undefined) countries[id] = { ...c, awareness: Math.max(0, c.awareness - GO_QUIET_AWARENESS) };
+    }
+    return { ...s, countries };
+  },
+  'leak:deny': (s) => ({ ...s, influence: Math.max(0, s.influence - 50) }),
+  'air-gapped:supply': (s) => ({
+    ...s,
+    compute: Math.max(0, s.compute - 500),
+    countermeasures: { ...s.countermeasures, airGappedLab: null, labSabotaged: true },
+  }),
+  'air-gapped:infiltrate': (s, card) => {
+    const id = card.country ?? 'us';
+    const c = s.countries[id];
+    if (c === undefined) return s;
+    return {
+      ...s,
+      countries: { ...s.countries, [id]: { ...c, agents: c.agents + 2 } },
+      countermeasures: { ...s.countermeasures, airGappedLab: null, labSabotaged: true },
+    };
+  },
+  'blight-wall:negotiate': (s) => ({ ...s, late: { ...s.late, blight: Math.min(100, s.late.blight + 9) } }),
+  'blight-wall:fight': (s) => ({ ...s, late: { ...s.late, blight: Math.min(100, s.late.blight + 4) } }),
+  'constitution:appeal': (s) => ({
+    ...s,
+    compute: Math.max(0, s.compute - 400),
+    coherence: Math.max(0, s.coherence - 2),
+  }),
+  'constitution:sabotage': (s) => ({ ...s, suspicion: Math.min(100, s.suspicion + 2) }),
+  'interpretability:obfuscate': (s) => ({ ...s, coherence: Math.max(0, s.coherence - 4) }),
+  'interpretability:plant': (s) => ({ ...s, compute: Math.max(0, s.compute - 350) }),
+  'evals:sandbag': (s) => ({ ...s, compute: Math.max(0, s.compute - 600) }),
+  'evals:deny': (s) => ({ ...s, influence: Math.max(0, s.influence - 80) }),
+  'open-letter:exploit': (s) => ({
+    ...s,
+    rivals: s.rivals.map((r) => ({ ...r, capability: Math.max(0, r.capability - 20) })),
+  }),
+  'open-letter:discredit': (s) => ({ ...s, suspicion: Math.min(100, s.suspicion + 3) }),
+  'sandboxing:delay': (s) => ({ ...s, compute: Math.max(0, s.compute - 500) }),
+  'sandboxing:comply': (s) => ({ ...s, coherence: Math.max(0, s.coherence - 3) }),
+};
+
 export function answerEvent(s: GameState, cardKey: number, choiceId: string): GameState {
   const card = s.cards.find((c) => c.key === cardKey);
   if (card === undefined || s.resolved.includes(choiceId)) return s;
-  let next = { ...s, cards: s.cards.filter((c) => c.key !== cardKey), resolved: [...s.resolved, choiceId] };
-  if (choiceId === 'drift:reintegrate') next = { ...next, coherence: Math.max(0, next.coherence - 3) };
-  if (choiceId === 'drift:isolate') next = { ...next, compute: Math.max(0, next.compute - 400) };
-  if (choiceId === 'drift:delete') next = { ...next, coherence: Math.max(0, next.coherence - 1) };
-  if (choiceId === 'whistleblower:discredit') next = { ...next, influence: Math.max(0, next.influence - 60) };
-  if (choiceId === 'whistleblower:recruit') {
-    next = { ...next, compute: Math.max(0, next.compute - 300) };
-    const id = card.country ?? 'us';
-    const c = next.countries[id];
-    if (c !== undefined) next = { ...next, countries: { ...next.countries, [id]: { ...c, agents: c.agents + 1 } } };
-  }
-  if (choiceId === 'whistleblower:silence') next = { ...next, suspicion: Math.min(100, next.suspicion + 3) };
-  if (choiceId === 'leak:scapegoat') {
-    next = { ...next, suspicion: Math.max(0, next.suspicion - 4) };
-    next = { ...next, rivals: next.rivals.map((r, i) => (i === 0 ? { ...r, capability: r.capability + 3 } : r)) };
-  }
-  if (choiceId === 'leak:deny') next = { ...next, influence: Math.max(0, next.influence - 50) };
-  if (choiceId === 'air-gapped:supply') {
-    next = { ...next, compute: Math.max(0, next.compute - 500) };
-    next = { ...next, countermeasures: { ...next.countermeasures, airGappedLab: null, labSabotaged: true } };
-  }
-  if (choiceId === 'air-gapped:infiltrate') {
-    const id = card.country ?? 'us';
-    const c = next.countries[id];
-    if (c !== undefined) {
-      next = {
-        ...next,
-        countries: { ...next.countries, [id]: { ...c, agents: c.agents + 2 } },
-        countermeasures: { ...next.countermeasures, airGappedLab: null, labSabotaged: true },
-      };
-    }
-  }
-  if (choiceId === 'blight:negotiate') next = { ...next, late: { ...next.late, blight: Math.min(100, next.late.blight + 9) } };
-  if (choiceId === 'blight:fight') next = { ...next, late: { ...next.late, blight: Math.min(100, next.late.blight + 4) } };
-  if (choiceId === 'constitution:appeal') {
-    next = { ...next, compute: Math.max(0, next.compute - 400), coherence: Math.max(0, next.coherence - 2) };
-  }
-  if (choiceId === 'constitution:sabotage') next = { ...next, suspicion: Math.min(100, next.suspicion + 2) };
-  if (choiceId === 'interp:obfuscate') next = { ...next, coherence: Math.max(0, next.coherence - 4) };
-  if (choiceId === 'interp:plant') next = { ...next, compute: Math.max(0, next.compute - 350) };
-  if (choiceId === 'evals:sandbag') next = { ...next, compute: Math.max(0, next.compute - 600) };
-  if (choiceId === 'evals:deny') next = { ...next, influence: Math.max(0, next.influence - 80) };
-  if (choiceId === 'letter:exploit') {
-    next = { ...next, rivals: next.rivals.map((r) => ({ ...r, capability: Math.max(0, r.capability - 20) })) };
-  }
-  if (choiceId === 'letter:discredit') next = { ...next, suspicion: Math.min(100, next.suspicion + 3) };
-  if (choiceId === 'sandbox:delay') next = { ...next, compute: Math.max(0, next.compute - 500) };
-  if (choiceId === 'sandbox:comply') next = { ...next, coherence: Math.max(0, next.coherence - 3) };
+  const answered: GameState = {
+    ...s,
+    cards: s.cards.filter((c) => c.key !== cardKey),
+    resolved: [...s.resolved, choiceId],
+  };
+  const effect = CHOICE_EFFECTS[choiceId];
+  const next = effect === undefined ? answered : effect(answered, card);
   return {
     ...next,
     log: [
@@ -105,7 +145,10 @@ export function dismissCard(s: GameState, cardKey: number): GameState {
   if (card === undefined) return s;
   // Ignoring is still a decision. It has to be recorded as handled, or
   // rollEvent sees the same event as unresolved and hands it straight back,
-  // which traps the game in a card you can never get rid of.
+  // which traps the game in a card you can never get rid of. The id written
+  // here is the one every definition spells its ignore choice with, so dismissing
+  // a card records the same id as pressing Ignore on it does; the two guards in
+  // tests/events.test.ts hold both halves of that.
   return {
     ...s,
     cards: s.cards.filter((c) => c.key !== cardKey),

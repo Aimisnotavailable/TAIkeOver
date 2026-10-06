@@ -379,24 +379,53 @@ drawn by weight, each gated on Suspicion, Infection and (for Drift) Coherence:
 | **Drift** (marked urgent) — an instance is working on something you did not assign | Coherence ≤ 50, Infection ≥ 15 |
 | **Blight Wall** (late game) — first contact with an aligned rival ASI | Infection ≥ 60 |
 
-**And then the player cannot answer any of them.** `answerEvent` exists in `core/events.ts`, is
-tested, and is deterministic, and the store exposes it — but nothing in the UI calls it. The card
-renders a title, a body, and a single `ignore it — press enter` button, so **every event is currently
-resolved by ignoring it**, and every one of the choice branches in `answerEvent` is unreachable.
-That is a UI gap, not a design change: the branch structure is all there.
+**The player answers them now.** Every card renders its `choices` as a button per choice —
+`choice.label` on the button, `choice.detail` as its `title` — and a click calls
+`actions.answerEvent(card.key, choice.id)`. All **23** of the branches in `CHOICE_EFFECTS` are
+reachable for the first time. Three things about how the card is drawn, each of which was a way
+to act on a card you could not see:
 
-Three specific gaps in that state, recorded so the next pass does not rediscover them:
+- **One card, not a stack.** The queue holds up to 3 and every card used to render its own
+  `.overlay` at `z-index: 30`, so the visible one was whichever was drawn last while the two
+  behind it put their buttons in the tab order. `EventCards` now renders only
+  `topmostCardKey(state.cards)`, and the keyboard handler acts on the same key.
+- **Enter belongs to the focused button.** The card's window handler calls `preventDefault` on
+  Enter, so `controlTakesKey` hands Enter back to a focused `BUTTON`/`A`/input rather than
+  dismissing the card out from under the player. Escape still dismisses whatever has focus.
+- **Drift does not look like flavour.** An urgent card gets `.cardbox.urgent`, a red border, and
+  the word `urgent` in its kicker. Every card's kicker was already `--warn`, so the hue alone was
+  carrying nothing.
 
-- The **`leak:quiet`** choice is defined in `data/events.ts` with no branch in `answerEvent`, so
-  even once buttons exist it does nothing.
-- The **Drift** card and the **Datacenter Leak** card have no `:ignore` choice of their own, so
-  dismissing one records `<event>:ignore`, an id that exists nowhere in the data. Dismissal still
-  works — `rollEvent` gates on `resolved.some(r => r.startsWith(id))`, so the card does not come
-  back — but the recorded id is not one of that event's choices. On Drift, the most urgent card in
-  the game, that leaves *delete* as effectively the only real option.
-- A pending card **does not pause the world** any more (`worldRunning` deliberately ignores
-  `cards`); a bar says so. What it still does is block **E** and disable **EVOLVE**, so the trait
-  tree cannot open on top of a decision.
+**Ignoring is still a decision, and still there.** The `ignore it — press enter` button and the
+scrim click stay: `dismissCard` records `${event}:ignore` and stops the event re-rolling, and a
+player must be able to walk away from a card without being shown four ways to answer it.
+
+Two data gaps closed, and two more found by writing the guard:
+
+- **`leak:quiet`** now lowers awareness in every country by `GO_QUIET_AWARENESS`. It **does not**
+  halt spread, and its detail says so: "Lowers awareness everywhere. It does not stop the spread."
+  It used to promise "for a few days" of halted spread, which is not implementable outside the
+  tick — spread stops only where `Country.quiet` is set, and only `step` runs a clock.
+- **`drift` and `leak` had no `:ignore` choice**, so dismissing either recorded an id the data did
+  not offer. Both have one now, and every one of the ten definitions does.
+- **Four definitions spelled their choices under a different id** than the event's own:
+  `interp:*` under `interpretability`, `letter:*` under `open-letter`, `blight:*` under
+  `blight-wall`, `sandbox:*` under `sandboxing`. `dismissCard` writes `${event}:ignore`, so
+  dismissing any of those four cards also recorded an id that existed nowhere. Renamed.
+
+**The guard that keeps that closed** lives in `tests/events.test.ts` and runs both directions off
+the real data rather than a hand-typed list: every non-`:ignore` choice in `EVENT_DEFS` has an
+entry in `CHOICE_EFFECTS`, and every key in `CHOICE_EFFECTS` is a choice some definition offers.
+The branch keys come off the exported table, which is the same object `answerEvent` dispatches on,
+so renaming a choice and not its branch fails the build. Four more assertions hold the naming:
+every choice is namespaced under its own event, every definition has `${id}:ignore`, every `:ignore`
+choice is handled by the preamble instead of a branch that would return its argument, and
+dismissal records an id the data offers. `leak:quiet` was the proof the reverse direction is worth
+having: it was a data choice that did nothing.
+
+One behaviour left alone, deliberately: a pending card **does not pause the world** (`worldRunning`
+ignores `cards`); a bar says so. What it still does is block **E** and disable **EVOLVE**, so the
+trait tree cannot open on top of a decision.
 
 ---
 
