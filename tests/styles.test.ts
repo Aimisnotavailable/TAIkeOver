@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import panelSource from '../src/ui/components/panels.tsx?raw';
 
 /**
  * `var(--nothing)` is not a CSS error. The declaration is dropped, the property falls
@@ -121,5 +122,55 @@ describe('stylesheet', () => {
 
   it('leaves no hardcoded copy of the bar height behind to drift from it', () => {
     expect(css).not.toMatch(/top:\s*(46|52|58)px/);
+  });
+
+  it('fits the objective block inside the bar, as the rows and the box add up', () => {
+    // Moving the primer out of `--hud` is what allowed a third `.obj-row` to be added, and
+    // three rows at 9.5px/1.5 plus two 2px gaps, 4px of padding and two 1px borders came
+    // to 57px inside a 46px bar — the block overhung onto the map by ten. Two rows fitted.
+    //
+    // The total is re-derived from the declarations rather than asserted as a constant,
+    // because the defect is arithmetic: any edit to the font, the gap, the padding or the
+    // row count brings it back, and a hardcoded "45px" would have passed against any of
+    // them. The row count is read out of the component for the same reason.
+    const rows = (panelSource.match(/class="obj-row/g) ?? []).length;
+    expect(rows).toBe(3);
+
+    const font = /font:\s*\d+\s+([\d.]+)px\/([\d.]+)/.exec(ruleBody('.obj-row') ?? '');
+    const hud = /--hud:\s*([\d.]+)px/.exec(ruleBody('.game') ?? '');
+    const gap = /gap:\s*([\d.]+)px/.exec(ruleBody('.objective') ?? '');
+    const pad = /padding:\s*([\d.]+)px/.exec(ruleBody('.objective') ?? '');
+    const border = /border:\s*([\d.]+)px/.exec(ruleBody('.objective') ?? '');
+    for (const [what, m] of [['font', font], ['--hud', hud], ['gap', gap], ['padding', pad], ['border', border]] as const) {
+      expect(m, `${what} is not declared the way this test reads it`).not.toBeNull();
+    }
+
+    const size = Number(font?.[1]);
+    const lineHeight = Number(font?.[2]);
+    const height =
+      rows * size * lineHeight +
+      (rows - 1) * Number(gap?.[1]) +
+      2 * Number(pad?.[1]) +
+      2 * Number(border?.[1]);
+    expect(height).toBeLessThanOrEqual(Number(hud?.[1]));
+  });
+
+  it('lets the objective block shrink rather than push the bar off a narrow window', () => {
+    // The next-goal headline runs to about 500px on a run short of Ascension, and a flex
+    // item's automatic minimum size is its content: without `min-width: 0` the block
+    // refuses to shrink and takes the clock group off the right edge.
+    expect(ruleBody('.hud-mid')).toContain('min-width: 0');
+    expect(ruleBody('.objective')).toMatch(/max-width:/);
+    // Wrapped, not truncated: the advice line is a sentence and there is nothing to lose.
+    expect(ruleBody('.obj-row b')).toContain('overflow-wrap');
+    expect(ruleBody('.obj-row b')).not.toContain('text-overflow: ellipsis');
+  });
+
+  it('draws the help control differently from the speed buttons it sits between', () => {
+    // `?` lives in the row of state buttons beside `|| 1x 2x 4x 8x`. Styled identically it
+    // reads as a fourth speed, and it is not one — it opens a reference screen.
+    const help = ruleBody('.sp.help-btn');
+    expect(help).not.toBeNull();
+    expect(help).not.toBe(ruleBody('.sp'));
   });
 });

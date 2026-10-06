@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { stepRegion, togglesHelp } from '../src/ui/app';
-import { closesEvolve, closesHelp, selectionAnnouncement } from '../src/ui/components/panels';
+import { closesEvolve, closesHelp, primerLine, selectionAnnouncement } from '../src/ui/components/panels';
+import { game, helpOpen, showHelp } from '../src/ui/store';
 import { REGION_BY_ID, REGION_IDS } from '../src/game/data/regions';
 import appSource from '../src/ui/app.tsx?raw';
 import panelSource from '../src/ui/components/panels.tsx?raw';
@@ -184,11 +185,24 @@ describe('opening the help screen', () => {
     expect(appSource).toMatch(/===\s*'e'\s*&&[^&]*&&\s*!helpOpen\.value/);
   });
 
-it('is reachable without the keyboard', () => {
+  it('is reachable without the keyboard', () => {
     // Tab reaches every HUD control, so a screen only bound to a key is a screen a
     // keyboard-only player can find but a screen-reader user cannot reach. It gets a
     // button in the clock group beside the other two, the way EVOLVE has one beside its
     // own key.
     expect(panelSource).toMatch(/help-btn[\s\S]{0,200}helpOpen\.value = true/);
+  });
+
+  it('does not dismiss the primer, which is what its own tooltip used to claim', () => {
+    // The ✕ said "Press H", and H is this screen. Rather than bind one key to two
+    // meanings — `store.ts` already documents that as the thing H is deliberately not —
+    // the tooltip says what the button does and the button is the only way out.
+    expect(togglesHelp('h')).toBe(true);
+    const before = showHelp.value;
+    helpOpen.value = !helpOpen.value;
+    expect(helpOpen.value).toBe(true);
+    expect(showHelp.value).toBe(before);
+    expect(primerLine(game.peek(), showHelp.value)).not.toBeNull();
+    helpOpen.value = false;
   });
 });

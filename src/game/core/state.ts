@@ -102,7 +102,7 @@ export function createInitialState(seed: number, difficulty: DifficultyId = 'def
     cumulativeDeaths: 0,
     computeBubbles: [],
     bubbleCounter: 0,
-suspicionSources: [],
+    suspicionSources: [],
     suspicionTrend: 0,
     primer: 'select',
     primerBubblesTapped: 0,

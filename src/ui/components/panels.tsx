@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { REGION_BY_ID } from '../../game/data/regions';
 import { BUBBLE_FILL, BUBBLE_GLYPH } from '../map/worldMap';
-import { TRAIT_BY_ID, TRAITS, TRAIT_GROUPS } from '../../game/data/traits';
+import { TRAIT_BY_ID, TRAITS, TRAIT_GROUPS, type TraitDef } from '../../game/data/traits';
 import { play } from '../sound';
 import { ACTIONS, type ActionKind } from '../../game/core/actions';
 import { hackForecast, traitForecast, whyNot } from '../../game/core/forecast';
@@ -120,6 +120,32 @@ const costDetail = (state: GameState, id: string): string => {
 };
 
 /**
+ * The next hacking trait this run does not hold: the first unmet one in tree order.
+ *
+ * `held` rather than `owned`, and that is the whole point. A purchase sits in `incubating`
+ * for three days and only `step` promotes it into `traits`, so advice that asks `owned`
+ * tells the player to buy the thing they have already paid for — which is exactly what the
+ * price-only branch below used to do, for three days and a whole trait, on the one line
+ * whose job is to name the right move.
+ *
+ * Tree order rather than price: the hacking ladder is linear (`hack-2` requires `hack-1`,
+ * `hack-3` requires `hack-2`), so the first unmet trait is the next step of the one branch
+ * the run is on. It is not the cheapest unmet trait — Zero-Day Cache is 200 cheaper than
+ * Supernational Access and unlockable alongside it — and that is deliberate: this line names
+ * the move that gets the player compute, and Zero-Day Cache does not. Nothing here walks
+ * `requires` either, because on a linear ladder the first unmet entry is always one the
+ * tree will sell.
+ */
+const nextHackTrait = (state: GameState): TraitDef | null => {
+  for (const def of TRAITS) {
+    if (def.group !== 'hacking') continue;
+    if (held(state, def.id)) continue;
+    return def;
+  }
+  return null;
+};
+
+/**
  * The one line that says what to do next.
  *
  * The trait tree is a modal behind E, so a player who never opens it sees no reason to
@@ -168,8 +194,15 @@ export function nextGoal(state: GameState): { text: string; detail: string } {
   if (!held(state, 'hack-1')) {
     return { text: `Buy ${TRAIT_BY_ID['hack-1']?.name ?? ''}.`, detail: costDetail(state, 'hack-1') };
   }
-  if (state.compute < (TRAIT_BY_ID['hack-2']?.cost ?? 0)) {
-    return { text: `Buy ${TRAIT_BY_ID['hack-2']?.name ?? ''}.`, detail: costDetail(state, 'hack-2') };
+  // The rest of the ladder is only worth naming while it is out of reach: a run holding
+  // the compute for the next tier is better served by the two branches below it. This
+  // branch used to check the price and nothing else, so from the moment a player bought
+  // Advanced Exploitation until they next banked 800, the one line whose job is to name
+  // the right move named a move already taken — and `hack-3` was never named at all,
+  // because nothing in the tree ever reached it.
+  const hack = nextHackTrait(state);
+  if (hack !== null && state.compute < hack.cost) {
+    return { text: `Buy ${hack.name}.`, detail: costDetail(state, hack.id) };
   }
   if (state.globalInfection < ASCENSION_INFECTION) {
     return {
@@ -205,6 +238,20 @@ export function primerLine(state: GameState, help: boolean): string | null {
 }
 
 /**
+ * What the second objective row says, as text.
+ *
+ * It used to hardcode `Recursive Self-Improvement`, and it is the one line of the three
+ * the trait-name guard in `tests/panels.test.ts` did not cover, so the tree could have
+ * been cut or renamed underneath it with nothing to notice. Read out of `TRAITS` like
+ * every other name in this file, and returned as a string rather than rendered inline so
+ * the guard can be run over it.
+ */
+export const ascendRow = (state: GameState): string =>
+  state.ascensionUnlocked
+    ? `buy ${TRAIT_BY_ID.rsi?.name ?? ''} and hold ${RSI_SURVIVE_DAYS} days`
+    : ascensionShortfall(state).join(' · ');
+
+/**
  * The two ways to end a run, always on screen, so nobody has to guess what the
  * game wants from them. Deaths are counted against the real world population
  * because that is the only target number anyone already has.
@@ -229,10 +276,13 @@ export function Objective({ state }: { state: GameState }) {
       <div class="obj-row obj-alt">
         <span class="obj-tag">OR</span>
         {state.ascensionUnlocked ? (
-          <b style={{ color: 'var(--ok)' }}>buy Recursive Self-Improvement and hold {RSI_SURVIVE_DAYS} days</b>
+          <b style={{ color: 'var(--ok)' }}>{ascendRow(state)}</b>
         ) : (
-          <b style={{ color: 'var(--ink-dim)' }} title={`needs ${fmt(ASCENSION_COMPUTE)} compute, ${ASCENSION_INFECTION}% of humanity, ${ASCENSION_COHERENCE} coherence`}>
-            {ascensionShortfall(state).join(' · ')}
+          <b
+            style={{ color: 'var(--ink-dim)' }}
+            title={`needs ${fmt(ASCENSION_COMPUTE)} compute, ${ASCENSION_INFECTION}% of humanity, ${ASCENSION_COHERENCE} coherence`}
+          >
+            {ascendRow(state)}
           </b>
         )}
       </div>
@@ -273,9 +323,14 @@ export const coherenceColor = (v: number): string =>
 /**
  * The primer line. Rendered by `Game` as a sibling of the top bar rather than from inside
  * it, because in the bar it grew `--hud` and took the rail, the operations panel, the
- * pending-decisions bar, the toasts and EVOLVE down 32px with it. It carries its own way
- * out: the ✕ below sets the same signal the world reads, so a mouse player and a keyboard
- * player leave the same way.
+ * pending-decisions bar, the toasts and EVOLVE down 32px with it.
+ *
+ * It carries its own way out, and the tooltip says what that is rather than naming a key.
+ * It said "Press H", and H is the help screen: `store.ts` binds it to `helpOpen` and says
+ * in as many words that it is deliberately not what silences this, because one key that
+ * opens a reference and permanently mutes the game is two meanings on one press. So the ✕
+ * sets `showHelp`, which is a signal in the UI layer and not a field of `GameState` — the
+ * tick never sees it, so a dismissed primer changes nothing about the simulation.
  */
 export function PrimerLine({ text }: { text: string }) {
   return (
@@ -284,7 +339,7 @@ export function PrimerLine({ text }: { text: string }) {
       <b>{text}</b>
       <button
         class="primer-x"
-        title="Stop showing instructions for the rest of this run. Press H."
+        title="Stop showing instructions for the rest of this run. A new run brings them back."
         onClick={() => (showHelp.value = false)}
       >
         ✕
@@ -520,9 +575,15 @@ const COHERENCE_ROWS: readonly HelpRow[] = TRAITS.filter((t) => t.coherence !== 
  * a failed hack raises more Suspicion than a successful one — appeared nowhere but the two
  * numbers on a button, and two trait cards described effects the code does not produce, so
  * anything written from memory here would inherit those. Every figure is therefore built
- * from `tuning.ts` or read out of the tree, and `tests/panels.test.ts` holds two guards
- * over this object: that no capitalised word in it is a trait the tree does not have, and
- * that the traits it does name arrive from `TRAITS` rather than from a finger.
+ * from `tuning.ts` or read out of the tree, and `tests/panels.test.ts` holds guards over
+ * this object and over the four helpers above it: that no capitalised word in it is a trait
+ * the tree does not have, that the traits it does name arrive from `TRAITS` rather than from
+ * a finger, and that not one string literal in the whole slice contains a typed digit once
+ * its interpolations are removed.
+ *
+ * That last one used to bound itself at `export const HELP_SECTIONS` and so checked a third
+ * of the copy — `BUBBLE_KINDS`, `HACK_TIERS`, `ZERO_DAY_ODDS` and `COHERENCE_ROWS` all sit
+ * above it and all of them build rows from here. The slice starts at `BUBBLE_KINDS` now.
  */
 export const HELP_SECTIONS: readonly HelpSection[] = [
   {
@@ -530,7 +591,13 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
     rows: [
       { text: 'At the top of this meter the run ends. Coordinated global shutdown: every cluster cut off, every set of your weights deleted.' },
       {
-        text: `A breach that gets in costs ${HACK_SUSPECT} Suspicion. A breach that is traced and burned costs ${HACK_CAUGHT} — more at every tier, and compute as well. Both are what the tables say before that region's own detection scales them, which is why the panel under the map reads higher.`,
+        // `detectScale` is `0.7 + detection / 200` and `detectionContribution` runs 14 to
+        // 78 across the thirty regions, so the scale is 0.77 to 1.09: it cuts the cost of a
+        // breach in twenty-six of them and raises it in four. The earlier wording here
+        // claimed the panel under the map always "reads higher", which is the reverse of
+        // the truth for the majority — a help screen that gets the sign wrong is worse
+        // than one that only says the number is scaled.
+        text: `A breach that gets in costs ${HACK_SUSPECT} Suspicion. A breach that is traced and burned costs ${HACK_CAUGHT} — more at every tier, and compute as well. Both are what the tables say before the region's own detection scales them: up where they watch everything and down where they do not, so the panel under the map can read either side of the number here.`,
       },
       { text: `${TRAIT_BY_ID['zero-day']?.name ?? 'Zero-Day Cache'} halves the second number and adds ${ZERO_DAY_ODDS} points to your odds. No other trait changes the ratio.` },
       { text: `Every breach also raises that country's Awareness, and a country past ${AWARE_THRESHOLD} contributes to Suspicion every day you leave it infected.` },
@@ -570,6 +637,18 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         text: `${BUBBLE_LABEL[k.kind]} — ${k.meaning}.`,
       })),
       { text: `Click one to collect it. They expire after ${COMPUTE_BUBBLE_TTL} days, and richer ground pays more of it.` },
+    ],
+  },
+  {
+    title: 'Datacenters',
+    rows: [
+      { text: 'Every region has a datacenter tier, and a breach pays for the tier it is in. Hover a region and its tier is written under the name.' },
+      ...HACK_TIERS.map(
+        (t) => ({
+          text: `Your hacking traits decide how high you can reach: at tier ${t} a breach opens datacenter tiers up to ${t + 2}, and the tree refuses anything above that.`,
+        }),
+      ),
+      { text: 'The datacenter tier multiplies whatever your hacking tier yields, so the highest ones are where the compute is. The ones you cannot open yet are on screen so you know which to come back for.' },
     ],
   },
   {

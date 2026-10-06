@@ -54,10 +54,15 @@ This is the "what to expect / goal of the dashboard" ask, as a sentence rather t
 
 ## B3 — What is worth doing where
 
-The map shows infection but not *opportunity*. Regions with a tier-4 or tier-5 datacenter get a
-marker on hover — `tier N` — because a breach there pays 500–2,000 against 50–200 at tier 1. The
-legend explains it. This is the "what to do where" ask answered on the map itself rather than
-only in the context panel.
+The map shows infection but not *opportunity*. Hovering a region writes `tier N` under its
+label, because a datacenter tier is worth more than a region's infection percentage. Note
+the two tiers are different quantities: `HACK_YIELD` is indexed by the **hacking** tier the
+tree grants (50–200 at Hack I, 75–300 at Hack II, 500–2,000 at Hack III), and the
+**datacenter** tier multiplies that row by `1 + 0.6 × (tier − 1)` on top of it — so Hack III
+into a tier-5 datacenter pays 1,700–6,800, while Hack I into the same one pays 170–680. It
+is the datacenter tier doing the multiplying, not a fourth row of the table. The help screen
+explains the tier and states the reach each hacking tier buys. This is the "what to do where"
+ask answered on the map itself rather than only in the context panel.
 
 ## B4 — A help overlay
 

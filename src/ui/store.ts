@@ -143,7 +143,7 @@ export const actions = {
     speed.value = SPEEDS[(i + 1) % SPEEDS.length] ?? 1;
   },
 
-select(id: RegionId | null): void {
+  select(id: RegionId | null): void {
     selected.value = id;
     // Clicking off the map clears the selection, which is not the same thing as having
     // picked a country to act on.
@@ -213,7 +213,6 @@ select(id: RegionId | null): void {
     });
   },
 
-
   sabotage(rivalId: string): void {
     const before = game.peek();
     const rival = before.rivals.find((r) => r.id === rivalId);
@@ -223,13 +222,14 @@ select(id: RegionId | null): void {
     notify('rival', `SABOTAGED · ${(rival?.name ?? 'them').toUpperCase()}`, '300 compute, and they know something went wrong');
   },
 
-
-buy(id: TraitId): void {
-    mutate((s) => {
-      const next = buyTrait(s, id);
-      if (next === s) return s;
-      return advancePrimer(next, { kind: 'buy', trait: id });
-    });
+  /**
+   * Buying a trait. It does not tell the primer anything: `primerFor` reads ownership out
+   * of `traits` and `incubating`, so a purchase is witnessed by the state itself. The
+   * wiring that used to sit here fed a branch that returned the state unchanged, and a
+   * call site whose only effect is none is one more thing to keep in step.
+   */
+  buy(id: TraitId): void {
+    mutate((s) => buyTrait(s, id));
   },
 
   canBuy(id: TraitId): boolean {

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { advancePrimer, primerFor, type PrimerStep } from '../src/game/core/primer';
 import { createInitialState } from '../src/game/core/state';
+import { quietFactor } from '../src/game/core/compute';
 import { step } from '../src/game/core/step';
 import { PRIMER_INFLUENCE_GOAL } from '../src/game/core/tuning';
 import { TRAIT_BY_ID } from '../src/game/data/traits';
+import primerSource from '../src/game/core/primer.ts?raw';
 import type { GameState } from '../src/game/core/types';
 
 const start = (over: Partial<GameState> = {}): GameState => ({
@@ -44,13 +46,7 @@ describe('the primer walks its steps in order', () => {
     // Every milestone already satisfied, replayed out of order. The projection walks
     // forward from state and has no memory of the order things arrived in, so none of
     // these can walk it back.
-    for (const e of [
-      { kind: 'select' },
-      { kind: 'bubble' },
-      { kind: 'breach' },
-      { kind: 'buy', trait: 'hack-1' },
-      { kind: 'tick' },
-    ] as const) {
+    for (const e of [{ kind: 'select' }, { kind: 'bubble' }, { kind: 'breach' }] as const) {
       expect(primerFor(advancePrimer(s, e)).step, e.kind).toBe('done');
     }
   });
@@ -88,22 +84,17 @@ describe('the primer walks its steps in order', () => {
 
   it('does not advance on its own', () => {
     // Keyed on what the player has done, never on the clock: twenty days of world with
-    // nobody touching anything still owes the player the first instruction.
+    // nobody touching anything still owes the player the first instruction. There is no
+    // `tick` event to send — a variant nothing calls is a branch that can only return the
+    // state unchanged — so this is the same claim made the only way it can be made.
     let s = start();
     for (let i = 0; i < 20; i++) s = step(s);
     expect(primerFor(s).step).toBe('select');
-    expect(advancePrimer(s, { kind: 'tick' })).toBe(s);
   });
 
   it('never changes any other part of the state', () => {
     const s = start({ traits: ['hack-1'], compute: 500 });
-    for (const e of [
-      { kind: 'select' },
-      { kind: 'bubble' },
-      { kind: 'breach' },
-      { kind: 'buy', trait: 'hack-1' },
-      { kind: 'tick' },
-    ] as const) {
+    for (const e of [{ kind: 'select' }, { kind: 'bubble' }, { kind: 'breach' }] as const) {
       const after = advancePrimer(s, e);
       expect(withoutPrimer(after), e.kind).toEqual(withoutPrimer(s));
       expect(Object.keys(after).sort(), e.kind).toEqual(Object.keys(s).sort());
@@ -146,7 +137,7 @@ describe('what the primer says', () => {
       `Press E and buy ${TRAIT_BY_ID['hack-1']?.name ?? 'Hack Protocols'}. Everything else in this game costs compute, and that is where compute comes from.`,
     );
     expect(primerFor(cases[2]?.[0] ?? start()).text).toBe(
-      'Red circles are compute you already own. Click them before they expire.',
+      'Circles on the map are compute you already own. Click them before they expire.',
     );
     expect(primerFor(cases[3]?.[0] ?? start()).text).toBe(
       'A breach runs on its own and repeats. Keep several open in countries with good datacenters.',
@@ -163,5 +154,40 @@ describe('a fresh run', () => {
     expect(s.primer).toBe('select');
     expect(s.primerBubblesTapped).toBe(0);
     expect(s.primerBreachesOpened).toBe(0);
+  });
+});
+
+describe('the primer asks for nothing it cannot reach', () => {
+  it('reaches its influence goal on a run that never buys the Influence branch', () => {
+    // The fifth line sat on 200 influence, which `step`'s passive growth measures as day
+    // 92 for a player keeping two breaches open and never touching the branch — that is,
+    // the primer's last sentence was on screen for the whole first act, for the player
+    // most likely to skip it. The goal is a teaching threshold, so it belongs where the
+    // run actually gets there. Measured on the seed the game ships with.
+    let s = start({ traits: ['hack-1', 'hack-2'] });
+    let days = 0;
+    while (s.influence < PRIMER_INFLUENCE_GOAL && days < 150) {
+      s = step(s);
+      days++;
+    }
+    expect(s.influence, `reached ${PRIMER_INFLUENCE_GOAL} after ${days} days`).toBeGreaterThanOrEqual(
+      PRIMER_INFLUENCE_GOAL,
+    );
+    // And it is not merely reachable: by the goal the quiet factor has visibly moved off
+    // 1, so the line was describing something the HUD is already showing.
+    expect(quietFactor(PRIMER_INFLUENCE_GOAL)).toBeLessThan(0.75);
+  });
+
+  it('has no event variant that nothing sends', () => {
+    // `tick` was in the union with no caller anywhere, and `buy`'s only caller fed a
+    // branch that returned the state unchanged — `passed` reads ownership out of `traits`
+    // and `incubating`, so the click itself records nothing. A union member is a promise
+    // to keep answering for it, and two of the three promises were free.
+    expect(primerSource).not.toMatch(/kind: '(tick|buy)'/);
+    expect(primerSource.match(/kind: '[a-z]+'/g) ?? []).toEqual([
+      "kind: 'select'",
+      "kind: 'bubble'",
+      "kind: 'breach'",
+    ]);
   });
 });

@@ -18,16 +18,21 @@
 import { TRAIT_BY_ID } from '../data/traits';
 import { held } from './queries';
 import { PRIMER_INFLUENCE_GOAL } from './tuning';
-import type { GameState, PrimerStep, TraitId } from './types';
+import type { GameState, PrimerStep } from './types';
 
 export type { PrimerStep };
 
+/**
+ * The three things the run has to witness. There is no `tick`: the primer is keyed on
+ * what the player has done and never on how long they have had, and a variant nothing
+ * sends is a branch that can only ever return the state unchanged. There is no `buy`
+ * either — a purchase is already witnessed by `traits` and `incubating`, which is why
+ * `passed` reads `held` rather than keeping a record of the click.
+ */
 export type PrimerEvent =
   | { kind: 'select' }
-  | { kind: 'buy'; trait: TraitId }
   | { kind: 'bubble' }
-  | { kind: 'breach' }
-  | { kind: 'tick' };
+  | { kind: 'breach' };
 
 /** The order the instructions come in. `done` is the end, not a step. */
 type PrimerInstruction = Exclude<PrimerStep, 'done'>;
@@ -38,7 +43,7 @@ const TEXT: Record<PrimerInstruction, string> = {
   select: 'Click any country on the map.',
   'hack-protocols':
     `Press E and buy ${TRAIT_BY_ID['hack-1']?.name ?? 'Hack Protocols'}. Everything else in this game costs compute, and that is where compute comes from.`,
-  'tap-bubble': 'Red circles are compute you already own. Click them before they expire.',
+  'tap-bubble': 'Circles on the map are compute you already own. Click them before they expire.',
   breach: 'A breach runs on its own and repeats. Keep several open in countries with good datacenters.',
   influence: 'Influence makes the world slower to notice you. Suspicion at 100 ends the run.',
 };
@@ -92,10 +97,5 @@ export function advancePrimer(state: GameState, event: PrimerEvent): GameState {
       if (state.primerBreachesOpened > 0) return state;
       return { ...state, primerBreachesOpened: state.primerBreachesOpened + 1 };
     }
-    // Nothing to record: ownership is read out of `traits` by `passed`, and the primer
-    // is keyed on what the player has done rather than on how long they have had.
-    case 'buy':
-    case 'tick':
-      return state;
   }
 }

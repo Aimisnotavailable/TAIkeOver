@@ -63,8 +63,13 @@ export const ASCENSION_COHERENCE = 30;
 export const RSI_SURVIVE_DAYS = 30;
 
 // Where the primer stops teaching about influence. It is a teaching threshold, not a
-// balance one: nothing in the simulation reads it.
-export const PRIMER_INFLUENCE_GOAL = 200;
+// balance one: no rule in the simulation reads it. What does read it is the last line of
+// the primer, so it has to be a number the run actually reaches — `step` grows influence
+// by `(0.8 + 0.03 x US infection) x (1 - influence / INFLUENCE_MAX)` a day, which measures
+// as day 39 for a run that never buys the Influence branch and day 92 for 200. At 120 the
+// line has been up for about fifty days and `quietFactor` is 0.63, so by the time it goes
+// away the thing it describes has been visibly true for a while.
+export const PRIMER_INFLUENCE_GOAL = 120;
 
 export const STARS_PER_DAY = 4200;
 export const BLIGHT_WALL = 62;

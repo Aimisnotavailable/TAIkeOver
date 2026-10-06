@@ -1,13 +1,21 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { createInitialState } from '../src/game/core/state';
 import { computePassive, infectedPopulation, spawnComputeBubble, SALT_KIND_BLUE, SALT_KIND_ORANGE, SALT_KIND_RED, SALT_PHASE, SALT_VALUE, SALT_WHERE } from '../src/game/core/compute';
 import { rand } from '../src/game/core/rng';
-import { COMPUTE_BUBBLE_RADIUS, COMPUTE_BUBBLE_TTL } from '../src/game/core/tuning';
+import { COMPUTE_BUBBLE_RADIUS, COMPUTE_BUBBLE_TTL, HACK_YIELD } from '../src/game/core/tuning';
 import { bubblePosition, drawWorldMap, hitTestCompute, makeProjection, mapStageFor, BUBBLE_FILL, BUBBLE_GLYPH, type MapFrame } from '../src/ui/map/worldMap';
 import { actions, game, selected } from '../src/ui/store';
 import appSource from '../src/ui/app.tsx?raw';
+import mapSource from '../src/ui/map/worldMap.ts?raw';
 import panelSource from '../src/ui/components/panels.tsx?raw';
 import type { ComputeBubble, GameState } from '../src/game/core/types';
+
+/** The spec this build was written from. Read, because two of its claims were copied. */
+const specSource = readFileSync(
+  new URL('../docs/superpowers/specs/2026-10-06-teach-decide-rebalance-design.md', import.meta.url),
+  'utf8',
+);
 
 const start = (over: Partial<GameState> = {}): GameState => ({
   ...createInitialState(42, 'default'),
@@ -301,10 +309,11 @@ describe('drawing the map with bubbles on it', () => {
   });
 
   it('names the datacenter tier of the region under the cursor, and only that one', () => {
-    // The map showed infection but not opportunity: a tier-5 breach pays 500-2,000 GPU
-    // against 50-200 at tier 1, and nothing on screen said where those regions were. The
-    // tier is read off the country the map already has rather than recomputed from the
-    // region table, so a retune of `datacenterTier` cannot leave this drawing a stale one.
+    // The map showed infection but not opportunity. The conflation worth avoiding here is
+    // between the two tiers: `HACK_YIELD` is indexed by the hacking tier the tree grants
+    // (50-200 at Hack I, 500-2,000 at Hack III) and the datacenter's own tier multiplies
+    // that row by `1 + 0.6 * (tier - 1)`, so Hack III into a tier-5 datacenter pays
+    // 1,700-6,800 and it is the datacenter tier doing it, not a fourth row of the table.
     const us = start().countries.us;
     if (us === undefined) throw new Error('no us');
     const { ctx, texts } = stubCtx();
@@ -314,6 +323,36 @@ describe('drawing the map with bubbles on it', () => {
     const { ctx: idle, texts: idleTexts } = stubCtx();
     drawWorldMap(idle, 1200, 800, frame(), 0);
     expect(idleTexts.some((t) => t.startsWith('tier '))).toBe(false);
+  });
+
+  it('does not confuse a datacenter tier with a hacking tier again', () => {
+    // This confusion came from the design spec rather than from the code, so it was copied
+    // into a comment rather than derived — which is how it survived into the build. The
+    // claim was `a tier-5 datacenter pays HACK_YIELD[3] where a tier-1 pays HACK_YIELD[1]`.
+    // `HACK_YIELD` has no key for a datacenter at all, and the spec text has been corrected
+    // too, so both places are checked rather than one.
+    const claim = /HACK_YIELD\[\d+\]/;
+    expect(mapSource).not.toMatch(claim);
+    expect(specSource).not.toMatch(claim);
+    // The rule the code actually applies: one row, chosen by the hacking tier, multiplied
+    // by the datacenter's own tier. `forecast.ts` builds it as
+    // `(1 + (c.tier - 1) * 0.6) * hackYieldMultiplier`.
+    const scale = (datacenter: number): number => 1 + (datacenter - 1) * 0.6;
+    const low = (hack: number, datacenter: number): number =>
+      Math.round((HACK_YIELD[hack]?.[0] ?? 0) * scale(datacenter));
+    const high = (hack: number, datacenter: number): number =>
+      Math.round((HACK_YIELD[hack]?.[1] ?? 0) * scale(datacenter));
+    expect(scale(5)).toBeCloseTo(3.4);
+    // The example AGENTS.md §8 gives: Hack III into a tier-5 datacenter, 1,700-6,800.
+    expect(low(3, 5)).toBe(1700);
+    expect(high(3, 5)).toBe(6800);
+    // And the number the old comment implied for the other end of the ladder: Hack I into
+    // the same tier-5 datacenter pays 170-680, not the 500-2,000 of Hack III's own row.
+    expect(low(1, 5)).toBe(170);
+    expect(high(1, 5)).toBe(680);
+    // Same hacking tier, two datacenter tiers: one row at two multipliers.
+    expect(low(3, 1)).toBe(HACK_YIELD[3]?.[0]);
+    expect(low(3, 5) / (HACK_YIELD[3]?.[0] ?? 1)).toBeCloseTo(scale(5));
   });
 
   it('is handed the country that is actually hovered', () => {

@@ -185,6 +185,22 @@ describe('the primer follows what the player actually did', () => {
     expect(primerFor(game.peek()).step).toBe('tap-bubble');
   });
 
+  it('counts every kind of bubble, because all three are compute', () => {
+    // The primer line said "Red circles are compute you already own" while the help screen
+    // it shipped beside named all three kinds. `hitTestCompute` returns any of them and
+    // the collection credits `bubble.value` whatever the kind, so the red was the only
+    // untrue word in a sentence about all three.
+    for (const kind of ['red', 'orange', 'blue'] as const) {
+      game.value = ready({
+        computeBubbles: [{ id: 7, region: 'us', kind, value: 12, bornTick: 1, expiresTick: 7, phase: 0 }],
+      });
+      const before = game.peek().compute;
+      actions.collectCompute(7);
+      expect(game.peek().compute, kind).toBe(before + 12);
+      expect(game.peek().primerBubblesTapped, kind).toBe(1);
+    }
+  });
+
   it('moves on when a breach is accepted', () => {
     game.value = ready();
     actions.select('us');
@@ -226,11 +242,16 @@ describe('the primer follows what the player actually did', () => {
     expect(primerFor(game.peek()).step).toBe('hack-protocols');
   });
 
-  it('keeps the buy event wired even though it records nothing', () => {
-    // Buying is the one milestone the state already witnesses by itself, so the event
-    // carries nothing a caller could read back. This pins the call site rather than an
-    // outcome, because deleting it changes nothing until a caller starts passing a trait
-    // the projection does not already know about.
-    expect(storeSource).toContain("kind: 'buy', trait: id");
+  it('wires nothing into a purchase, because the state already witnesses one', () => {
+    // `buy` used to route through `advancePrimer({ kind: 'buy', trait: id })`, whose only
+    // branch returned the state unchanged — ownership is read out of `traits` and
+    // `incubating`. Asserting the absence, because the two lines this replaced were a
+    // source-string guard on a call site with no effect.
+    expect(storeSource).not.toMatch(/advancePrimer\([^)]*kind: 'buy'/);
+    expect(storeSource).not.toMatch(/kind: 'tick'/);
+    // And the outcome is still the one that matters, reached through the state instead.
+    actions.select('us');
+    actions.buy('hack-1');
+    expect(primerFor(game.peek()).step).toBe('tap-bubble');
   });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ascendRow,
   coherenceColor,
   coherenceSev,
   HELP_SECTIONS,
@@ -21,7 +22,6 @@ import {
   COHERENCE_DRIFT_BELOW,
   COHERENCE_PANIC_BELOW,
   COMPUTE_BUBBLE_TTL,
-  COUNTERMEASURE_TIERS,
   EXTINCTION_POPULATION,
   HACK_SUSPICION_FAIL,
   HACK_SUSPICION_SUCCESS,
@@ -30,10 +30,10 @@ import {
   coherencePerDay,
 } from '../src/game/core/tuning';
 import { TRAIT_BY_ID, TRAIT_GROUPS, TRAITS } from '../src/game/data/traits';
-import { REGION_BY_ID, REGION_IDS } from '../src/game/data/regions';
+import { REGIONS, REGION_BY_ID, REGION_IDS } from '../src/game/data/regions';
 import { createInitialState } from '../src/game/core/state';
 import { primerFor } from '../src/game/core/primer';
-import { traitForecast } from '../src/game/core/forecast';
+import { hackForecast, traitForecast } from '../src/game/core/forecast';
 import { step } from '../src/game/core/step';
 import { worldRunning } from '../src/ui/store';
 import type { GameState } from '../src/game/core/types';
@@ -176,13 +176,17 @@ describe('the trait card and the meter move together', () => {
  * not a letter is what lets "Self-Improvement" contribute three words, and matching every
  * capitalised run rather than every two-word phrase is what stops a one-word trait name
  * from walking past.
+ *
+ * `K` is in the prose list because it is not prose: `fmt` renders 20,000 as `20.0K`, and
+ * the tokenizer reads that suffix as a capitalised run. It is here so the guard covers the
+ * objective bar's shortfall strings, which are the only lines that pass through `fmt`.
  */
 const TRAIT_WORDS = new Set([
   ...TRAITS.flatMap((t) => t.name.split(/[^A-Za-z]+/).filter(Boolean)),
   ...TRAIT_GROUPS.flatMap((g) => g.name.split(/[^A-Za-z]+/).filter(Boolean)),
 ]);
 const PROSE_WORDS = new Set([
-  'Ascension', 'Buy', 'E', 'Hold', 'Raise', 'Spread', 'Survive', 'Tap', 'They', 'You',
+  'Ascension', 'Buy', 'E', 'Hold', 'K', 'Raise', 'Spread', 'Survive', 'Tap', 'They', 'You',
 ]);
 
 /** The branch whose traits cost Coherence to hold, found the way the panel finds it. */
@@ -204,26 +208,43 @@ const unlisted = (s: string, prose: Set<string> = PROSE_WORDS): string[] =>
  */
 const HELP_PROSE = new Set([
   'A', 'Ascension', 'At', 'Awareness', 'Blight', 'Both', 'Buy', 'Click', 'Close', 'Coherence',
-  'Compute', 'Coordinated', 'Cycle', 'Decay', 'Dismiss', 'Escape', 'Enter', 'Every',
-  'Extinction', 'Funding', 'H', 'How', 'Influence', 'It', 'Keys', 'Left', 'Move', 'No',
+  'Compute', 'Coordinated', 'Cycle', 'Datacenters', 'Decay', 'Dismiss', 'Escape', 'Enter', 'Every',
+  'Extinction', 'Funding', 'H', 'Hover', 'How', 'Influence', 'It', 'Keys', 'Left', 'Move', 'No',
   'Nothing', 'One', 'Outcompeted', 'Past', 'Right', 'So', 'Something', 'Space', 'Step',
-  'Suspicion', 'Tab', 'The', 'There', 'They', 'This', 'Under',
+  'Suspicion', 'Tab', 'The', 'There', 'They', 'This', 'Under', 'Your',
 ]);
 
 describe('the help overlay', () => {
+  const start = (over: Partial<GameState> = {}): GameState => ({
+    ...createInitialState(42, 'default'),
+    stage: 'world',
+    ...over,
+  });
+
   const text = (): string =>
     HELP_SECTIONS.map((s) => [s.title, ...s.rows.map((r) => r.text)].join(' ')).join(' ');
 
   /**
    * The data as source text, bounded to it: the component and the HUD around it are full of
-   * figures and trait names and are not what is being checked. `?? 'name'` is stripped
-   * because it is this codebase's convention for a trait id the tree may not have —
-   * `primer.ts` does the same for `hack-1` — and a fallback is not a hardcode.
+   * figures and trait names and are not what is being checked. The slice starts at the
+   * table that builds the bubble rows rather than at `HELP_SECTIONS` itself, because four
+   * helpers sit between them and every one of them builds player-facing text: `BUBBLE_KINDS`
+   * and `HACK_TIERS` for the rows below, `ZERO_DAY_ODDS` for the odds figure, and
+   * `COHERENCE_ROWS` for the per-day rates. Bounding at `HELP_SECTIONS` checked a third of
+   * the copy.
+   *
+   * Comments are stripped because the guard is about copy and a comment is never rendered —
+   * and the widened slice is where this file keeps the numbers it thinks about, two of which
+   * are the very numbers this guard exists to keep out of the rendered text. `?? 'name'` and
+   * `?? 2` are stripped because that is this codebase's convention for a value that may be
+   * absent — `primer.ts` does the same for `hack-1` — and a fallback is not a hardcode.
    */
   const source = (): string =>
     panelSource
-      .slice(panelSource.indexOf('export const HELP_SECTIONS'), panelSource.indexOf('export const closesHelp'))
-      .replace(/\?\?\s*'[^']*'/g, '');
+      .slice(panelSource.indexOf('const BUBBLE_KINDS'), panelSource.indexOf('export const closesHelp'))
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '')
+      .replace(/\?\?\s*(?:'[^']*'|-?[\d.]+)/g, '');
 
   it('names no trait that is not in the tree', () => {
     // The overlay is the one place in the game that speaks at length about the tree, so it
@@ -248,12 +269,23 @@ describe('the help overlay', () => {
   });
 
   it('interpolates every number in its copy rather than typing one in', () => {
-    // Mechanical rather than a spot check: strip every `${…}` and what is left must contain
-    // no digit at all. A typed-in threshold would survive a word-for-word assertion until
+    // Mechanical rather than a spot check: take every string in the slice — which is where
+    // all of the rendered copy lives — strip each `${…}`, and what is left must contain no
+    // digit at all. A typed-in threshold would survive a word-for-word assertion until
     // somebody retuned it, and one of the three known-wrong claims in this game was exactly
     // that shape.
-    const literals = source().replace(/\$\{[^}]*\}/g, '').match(/\d/g) ?? [];
-    expect(literals).toEqual([]);
+    //
+    // Scoped to the literals rather than the whole slice because the slice is code as well
+    // as copy: `HACK_TIERS[0]` and a `: 0` are not a figure anybody reads. The old version
+    // got away with scanning everything only because the narrower slice it used had no
+    // numerals in it outside a template.
+    const literals = source().match(/`(?:[^`\\]|\\.)*`|'(?:[^'\n]*)'|"(?:[^"\n]*)"/g) ?? [];
+    expect(literals.length).toBeGreaterThan(20);
+    const digits = literals
+      .map((l) => l.replace(/\$\{[^}]*\}/g, ''))
+      .join('')
+      .match(/\d/g) ?? [];
+    expect(digits).toEqual([]);
   });
 
   it('says failing a breach costs more than getting in, with the real figures', () => {
@@ -300,13 +332,20 @@ describe('the help overlay', () => {
 
   it('takes its numbers from the tuning file rather than from this file', () => {
     // A hardcode that happens to be right passes a word-for-word assertion until somebody
-    // retunes it, so each of these is checked as an interpolation.
+    // retunes it, so each of these is checked as an interpolation *and* against enough of
+    // the sentence to be about the right number. Two of them used to assert a bare digit:
+    // `toContain('4')` passed on the breach-failure cost and `toContain('50')` passed on
+    // the awareness threshold whichever of the two constants the copy dropped.
     expect(text()).toContain(`${RSI_SURVIVE_DAYS} days`);
     expect(text()).toContain(`${ASCENSION_INFECTION}%`);
-    expect(text()).toContain(`${COUNTERMEASURE_TIERS.length}`);
     expect(text()).toContain(`${COMPUTE_BUBBLE_TTL} days`);
-    expect(text()).toContain(`${AWARE_THRESHOLD}`);
-    expect(text()).toContain(`${COHERENCE_DRIFT_BELOW}`);
+    expect(text()).toContain(`country past ${AWARE_THRESHOLD} contributes`);
+    expect(text()).toContain(`At or below ${COHERENCE_DRIFT_BELOW},`);
+    expect(text()).toContain(`${ASCENSION_COMPUTE.toLocaleString()} compute`);
+    // The countermeasure ladder is deliberately absent from this list: the overlay says
+    // nothing about it, so asserting its length against the text asserted a '4' that came
+    // from somewhere else entirely.
+    expect(text()).not.toContain('countermeasure');
     expect(panelSource).not.toMatch(/Hold the world for 30|expire after six|twenty thousand/i);
   });
 
@@ -319,6 +358,42 @@ describe('the help overlay', () => {
       if (row === undefined) throw new Error(`no help row for the ${kind} bubble`);
       expect(row.text).toContain(BUBBLE_LABEL[kind]);
       expect(row.tone).toBe(BUBBLE_FILL[kind]);
+    }
+  });
+
+  it('says the breach cost is scaled both up and down, because that is what happens', () => {
+    // The row used to end "which is why the panel under the map reads higher". The scale
+    // is `0.7 + detection / 200` and detection runs 14 to 78, so it is 0.77 to 1.09: the
+    // panel reads *lower* for twenty-six of the thirty regions and higher for four. A
+    // sentence that gets the direction wrong is worse than one that only says the number
+    // is scaled, so both directions are checked against the region table itself.
+    const scales = REGIONS.map((r) => 0.7 + r.detectionContribution / 200);
+    expect(Math.min(...scales)).toBeLessThan(1);
+    expect(Math.max(...scales)).toBeGreaterThan(1);
+    expect(scales.filter((s) => s > 1).length).toBeGreaterThan(0);
+    expect(scales.filter((s) => s > 1).length).toBeLessThan(scales.length);
+    expect(text()).not.toMatch(/reads higher/);
+    expect(text()).toMatch(/up where they watch everything and down where they do not/);
+  });
+
+  it('explains the tier the map writes under a hovered region', () => {
+    // `tier N` shipped with nothing saying what it is or what it pays, and on day one a
+    // hovered tier-5 region is one the player *cannot* hack: `canDo` refuses anything
+    // above `2 + hackTier`, so the number is often advertising something out of reach. An
+    // unexplained affordance is worse than no affordance. The reach is checked against the
+    // game's own answer rather than restated, so a retune of the ladder cannot leave the
+    // copy describing a reach the tree no longer grants.
+    const rows = HELP_SECTIONS.find((s) => s.title === 'Datacenters')?.rows ?? [];
+    expect(rows.length).toBeGreaterThan(2);
+    for (const tier of [1, 2, 3]) {
+      const grant = TRAITS.flatMap((t) => t.effects.flatMap((e) => (e.kind === 'hack' && e.tier === tier ? [t] : [])))[0];
+      if (grant === undefined) throw new Error(`no trait grants hack tier ${tier}`);
+      const reach = hackForecast(start({ traits: [grant.id] }), 'us').maxTier;
+      expect(rows.some((r) => r.text.includes(`at tier ${tier}`) && r.text.includes(`up to ${reach}`)), String(tier)).toBe(
+        true,
+      );
+      // And the reach the copy claims is the one the action actually enforces.
+      expect(reach).toBe(Math.min(5, 2 + tier));
     }
   });
 
@@ -356,6 +431,7 @@ describe('the next-goal line', () => {
     ['compute met, coherence short', at({ compute: ASCENSION_COMPUTE + 5_000, globalInfection: ASCENSION_INFECTION, coherence: 25 })],
     ['no hack-1', at()],
     ['cannot afford hack-2', at({ traits: ['hack-1'], compute: 100 })],
+    ['cannot afford hack-3', at({ traits: ['hack-1', 'hack-2'], compute: 300 })],
     ['infection short', at({ traits: ['hack-1', 'hack-2'], compute: 10_000, globalInfection: 12 })],
     ['nothing left to chase', at({ traits: ['hack-1', 'hack-2'], compute: 10_000, globalInfection: 70 })],
   ];
@@ -376,10 +452,75 @@ describe('the next-goal line', () => {
     );
     expect(nextGoal(BRANCHES[5]?.[1] ?? at()).text).toContain(TRAIT_BY_ID['hack-1']?.name ?? '');
     expect(nextGoal(BRANCHES[6]?.[1] ?? at()).text).toContain(TRAIT_BY_ID['hack-2']?.name ?? '');
-    expect(nextGoal(BRANCHES[7]?.[1] ?? at()).text).toBe('Spread further.');
-    expect(nextGoal(BRANCHES[8]?.[1] ?? at()).text).toBe(
+    expect(nextGoal(BRANCHES[7]?.[1] ?? at()).text).toContain(TRAIT_BY_ID['hack-3']?.name ?? '');
+    expect(nextGoal(BRANCHES[8]?.[1] ?? at()).text).toBe('Spread further.');
+    expect(nextGoal(BRANCHES[9]?.[1] ?? at()).text).toBe(
       `Tap bubbles. They expire in ${COMPUTE_BUBBLE_TTL} days.`,
     );
+  });
+
+  it('never names a trait the run already holds, or is still incubating', () => {
+    // The reported defect, exactly: the trait branch checked the price and nothing else,
+    // so from the moment a player bought Advanced Exploitation until they next banked 800
+    // the one line whose job is to name the right move named a move already taken — and
+    // it read "800 compute · 500 short" while doing it.
+    const owned = at({ traits: ['hack-1', 'hack-2'], compute: 300 });
+    expect(nextGoal(owned).text).toContain(TRAIT_BY_ID['hack-3']?.name ?? '');
+    expect(nextGoal(owned).text).not.toContain(TRAIT_BY_ID['hack-2']?.name ?? '');
+    expect(nextGoal(owned).detail).toContain(
+      `${(TRAIT_BY_ID['hack-3']?.cost ?? 0).toLocaleString()} compute`,
+    );
+
+    // Swept across the whole ladder rather than spot-checked: at any price, the trait the
+    // line names is one the run does not hold — through `owned` or through `held`, which
+    // is the same check three days apart. A sentinel rather than a space for the
+    // missing-name case, so a name the tree does not have matches nothing.
+    const ladder = TRAITS.filter((t) => t.group === 'hacking').map((t) => t.id);
+    expect(ladder.length).toBeGreaterThan(2);
+    const nameOf = new Map(TRAITS.map((t) => [t.id, t.name]));
+    for (const heldId of ladder) {
+      for (const compute of [0, 100, 300, 700, 900, 2_400, 2_600, 9_000, 25_000]) {
+        const goal = nextGoal(at({ traits: [heldId], compute }));
+        const named = ladder.filter((id) => goal.text.includes(nameOf.get(id) ?? '\u0000'));
+        expect(named.includes(heldId), `${heldId} at ${compute}: ${goal.text}`).toBe(false);
+      }
+      // The same, while it is incubating rather than owned: `buyTrait` files a purchase
+      // under `incubating` for three days, and `owned` would name the trait the player is
+      // already three days into paying for. This is the half of the guard the sweep above
+      // cannot reach, because it only ever sets `traits`.
+      const before = ladder.slice(0, ladder.indexOf(heldId));
+      for (const compute of [100, 300, 2_400]) {
+        const goal = nextGoal(at({
+          traits: before,
+          incubating: [{ trait: heldId, startTick: 1, readyTick: 4 }],
+          compute,
+        }));
+        expect(goal.text, `${heldId} incubating at ${compute}`).not.toContain(nameOf.get(heldId) ?? '\u0000');
+      }
+    }
+  });
+
+  it('names the next tier of the ladder rather than the cheapest thing on the tree', () => {
+    // The shipped Hacking branch offers an alternative to the tier tip — Zero-Day Cache,
+    // 2,200, unlockable alongside Supernational Access at 2,500. At 2,300 compute both are
+    // in the same state: the line names the tip and says it is 200 short, rather than
+    // naming the one it can pay for right now. That is a decision and it is the right one —
+    // Zero-Day Cache buys Suspicion relief and the tier buys compute, which is what this
+    // line is for — but it is a choice, so it is pinned rather than assumed.
+    const ladder = TRAITS.filter((t) => t.group === 'hacking');
+    const alternative = ladder.find((t) => !['hack-1', 'hack-2', 'hack-3'].includes(t.id));
+    if (alternative === undefined) throw new Error('no alternative in the Hacking branch');
+    const tip = TRAIT_BY_ID['hack-3'];
+    expect(alternative.cost).toBeLessThan(tip?.cost ?? 0);
+
+    const rich = nextGoal(at({ traits: ['hack-1', 'hack-2'], compute: alternative.cost + 100 }));
+    expect(rich.text).toContain(tip?.name ?? '');
+    expect(rich.text).not.toContain(alternative.name);
+    expect(rich.detail).toContain('short');
+    // One click lower and the line falls through to spreading, because now nothing on the
+    // tree is out of reach.
+    const plenty = nextGoal(at({ traits: ['hack-1', 'hack-2'], compute: tip?.cost ?? 0 }));
+    expect(plenty.text).not.toContain(tip?.name ?? '');
   });
 
   it('orders the branches, so an early one wins over a later one', () => {
@@ -494,6 +635,18 @@ describe('the next-goal line', () => {
     }
   });
 
+  it('names no trait that is not in the tree, on the objective bar either', () => {
+    // The bar's middle row is a third piece of copy the guard never reached: it hardcoded
+    // `Recursive Self-Improvement` while the row above and the row below were both
+    // covered. Rendered here as text so the same guard can be run over it.
+    expect(unlisted(ascendRow(at()))).toEqual([]);
+    expect(unlisted(ascendRow(at({ ascensionUnlocked: true })))).toEqual([]);
+    expect(ascendRow(at({ ascensionUnlocked: true }))).toBe(
+      `buy ${TRAIT_BY_ID.rsi?.name ?? ''} and hold ${RSI_SURVIVE_DAYS} days`,
+    );
+    expect(unlisted(ascendRow(at({ compute: ASCENSION_COMPUTE + 1, globalInfection: 40 })))).toEqual([]);
+  });
+
   it('would catch a trait name of any length', () => {
     // The guard itself, not the lines it guards. The Spec A version of this check
     // matched two-word phrases, so a one-word name slipped straight through; these pin
@@ -572,6 +725,23 @@ describe('the primer line', () => {
     // Two milestones pass while it is dismissed. It is not a projection step that can be
     // walked backwards by arriving somewhere, it is off.
     expect(primerLine({ ...s, primer: 'hack-protocols', traits: ['hack-1'] }, false)).toBeNull();
+  });
+
+  it('promises no key that does not dismiss it', () => {
+    // The ✕ said "Press H", and H is the help screen: `store.ts` binds it to `helpOpen`
+    // and documents in as many words that it is deliberately not what silences this. A
+    // tooltip that names a key is a promise about the keyboard, and the only fix that
+    // keeps the promise would be a key bound to two meanings at once.
+    const component = panelSource.match(/function PrimerLine[\s\S]*?\r?\n}\r?\n/);
+    if (component === null) throw new Error('no PrimerLine in panels.tsx');
+    const title = /title="([^"]*)"/.exec(component[0])?.[1] ?? '';
+    expect(title).not.toBe('');
+    for (const key of ['H', '?', 'E', 'Space', 'Enter', 'Escape', 'Tab']) {
+      expect(title, key).not.toMatch(new RegExp(`press [^.]*\\b${key.replace('?', '\\?')}\\b`, 'i'));
+    }
+    // And what it does say is true of this control.
+    expect(title).toContain('rest of this run');
+    expect(title).not.toContain('same signal the world reads');
   });
 
   it('does not stop the world', () => {

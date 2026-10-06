@@ -339,11 +339,15 @@ export function drawWorldMap(
     ctx.strokeText(sub, at.x, at.y + 10);
     ctx.fillStyle = value > 45 ? '#04141a' : '#9fd0dd';
     ctx.fillText(sub, at.x, at.y + 10);
-    // Hover, and only hover. The map showed infection but never opportunity: a breach in a
-    // tier-5 datacenter pays HACK_YIELD[3] where a tier-1 pays HACK_YIELD[1], and nothing
-    // on screen said where those regions were. Thirty permanent markers is the noise the
-    // legend already covers, so the number appears under the label the cursor is on, read
-    // off the country rather than recomputed from the region table.
+    // Hover, and only hover. The map showed infection but never opportunity, and a
+    // datacenter tier is not the same thing as a hacking tier: `HACK_YIELD` is indexed by
+    // the tier the trait tree grants, and the datacenter's own tier multiplies that row by
+    // `1 + 0.6 * (tier - 1)` on top of it — so Hack III into a tier-5 datacenter pays
+    // 3.4x the 500-2,000 the table says, and it is the datacenter tier doing that, not a
+    // fourth row of the table. Nothing on screen said where those regions were. Thirty
+    // permanent markers is the noise the legend already covers, so the number appears
+    // under the label the cursor is on, read off the country rather than recomputed from
+    // the region table.
     if (frame.hovered === region.id) {
       const tier = `tier ${state.tier}`;
       ctx.font = '700 8px ui-monospace, Consolas, monospace';

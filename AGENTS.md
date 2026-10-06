@@ -44,7 +44,7 @@ catastrophe already in progress. No triumphant music, no "You Win" banner.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│ COMPUTE  Suspicion▲  Coherence▼  ×0.86   GOAL … / OR …       │
+│ COMPUTE  Suspicion▲  Coherence▼  ×0.86   GOAL … / OR … / NEXT …│
 │                                            day 41  ▮▮ 1x 2x  │
 ├──────────────┬───────────────────────────────────────────────┤
 │ LEGEND       │  running operations (breaches, progress bars) │
@@ -426,14 +426,20 @@ map behind the end screen is whatever the run ended on — the heat ramp, tinted
 - **State:** one immutable `GameState`; `step(state)` is a pure function.
 - **Three lines of teaching, none of them a modal.** `primerFor(state)` returns the first
   outstanding first move (`core/primer.ts`), `nextGoal(state)` names the cheapest unmet goal as
-  the third row of the objective bar, and `HELP_SECTIONS` is the whole of the help screen. The
-  primer renders as **one line floating over the bottom of the map**, out of the flow: it is
-  `position: absolute` on `--dock`, and `--hud` — the top bar's height, read by the rail, the
-  operations panel, the pending-decisions bar, the toasts and EVOLVE — is declared exactly once
-  in `src/styles.css`. Nothing in the stylesheet is conditioned on the primer being on screen,
-  which is what it used to be: it was a row in the bar, it grew `--hud` from 46px to 78px, and
-  five elements moved 32px down and back. Neither the primer nor the next-goal line pauses the
-  run, and neither blocks an action.
+  the third row of the objective bar, and `HELP_SECTIONS` is the whole of the help screen.
+  `nextGoal` will not name a trait the run already holds *or is still incubating* — `held`, not
+  `owned` — and will not name one whose own requirement the run has not met, so every move it
+  suggests is one the player can actually take. The primer renders as **one line floating over the
+  bottom of the map**, out of the flow: it is `position: absolute` on `--dock`, and `--hud` — the
+  top bar's height, read by the rail, the operations panel, the pending-decisions bar, the toasts
+  and EVOLVE — is declared exactly once in `src/styles.css`. Nothing in the stylesheet is
+  conditioned on the primer being on screen, which is what it used to be: it was a row in the bar,
+  it grew `--hud` from 46px to 78px, and five elements moved 32px down and back. Neither the
+  primer nor the next-goal line pauses the run, and neither blocks an action. The objective block
+  fits inside `--hud` by arithmetic rather than by taste — three rows, and
+  `tests/styles.test.ts` re-derives the total from the declarations and fails if it stops fitting.
+  The primer is dismissed by its own ✕ and by nothing else; **H** is the help screen, which is
+  why its dismiss tooltip names no key at all.
 - **The help overlay** (`Help` in `src/ui/components/panels.tsx`) is full-screen with its own
   dismiss and closes on **Escape**, opened by **H**, **?**, or the `?` control in the clock group
   beside the speed buttons. It **does not pause**: `worldRunning` takes the state, the speed and
@@ -446,7 +452,12 @@ map behind the end screen is whatever the run ended on — the heat ramp, tinted
   and that it contains no typed-in digit at all once its interpolations are removed.
 - **Map hover** carries `MapFrame.hovered` (`src/ui/map/worldMap.ts`) and draws `tier N` under the
   region's label. Hover only: thirty permanent markers is the noise the legend already covers,
-  and a breach in a tier-5 datacenter pays what a breach in a tier-1 does not.
+  and a breach in a tier-5 datacenter pays what a breach in a tier-1 does not. The help screen's
+  **Datacenters** section explains the number and states, per hacking tier, the datacenter tiers
+  it can reach — a hovered tier-5 region is out of reach on day one, and an unexplained
+  affordance is worse than none. The two tiers are not the same quantity: `HACK_YIELD` is indexed
+  by the **hacking** tier the tree grants, and the **datacenter** tier multiplies that row by
+  `1 + 0.6 × (tier − 1)`.
 - **Save:** **not implemented.** There is no persistence of any kind — no IndexedDB, no
   `localStorage`, nothing. Restarting the page loses the run, and `restart()` reseeds from the old
   tick count rather than from a stored seed. Recorded here because an earlier revision of this
@@ -460,10 +471,12 @@ map behind the end screen is whatever the run ended on — the heat ramp, tinted
   screen naming all three from the same table, and both loss meters carry severity shapes as well
   as hue. The log is not a live region; announcements reach assistive technology through two
   `role="status" aria-live="polite"` containers: the toasts, and a visually hidden one at the head
-  of the context bar that announces the selected region's name. The context bar announces the name
-  and nothing else on purpose: the canvas is `role="application"`, so a screen reader hands it
-  every keystroke and reads nothing back, and a live region re-announces whenever its text changes
-  — putting a ticking number in it would have the region repeat itself every day.
+  of the context bar that announces the selected region's name **and its position in the ring**
+  (`United States selected, region 1 of 30.`). Nothing that ticks is in it: the announced
+  string is a function of the `RegionId` alone and takes no `GameState`, so it cannot change
+  between days and the reader is not made to repeat the region once a day for the length of the
+  run. That is the only reason the position could go in — the canvas is `role="application"`,
+  so a screen reader hands it every keystroke and reads nothing back.
 - **Content warnings** at launch: genocide, pandemic, mass death.
 
 ---

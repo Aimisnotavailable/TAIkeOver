@@ -55,6 +55,10 @@ button.mini { padding: 2px 6px; font-size: 9px; }
 .speeds { display: flex; gap: 2px; }
 .sp { padding: 3px 7px; font-size: 9.5px; }
 .sp.on { border-color: var(--ok); color: var(--ok); }
+/* Not a fourth speed. `?` sits in the row of state buttons beside `|| 1x 2x 4x 8x` and
+   styled identically it reads as one. It opens a reference screen instead, so it is drawn
+   as one: quieter, and dashed against the solid state buttons. */
+.sp.help-btn { color: var(--ink-dim); border-style: dashed; }
 
 .group { margin-bottom: 4px; border: 1px solid var(--edge); border-radius: 2px; }
 .group-head { width: 100%; display: flex; align-items: center; gap: 6px; background: #08131a; border: 0; border-radius: 0; padding: 6px 8px; font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; }
@@ -234,28 +238,45 @@ button.ignore:hover { border-color: var(--ink-dim); color: var(--ink); backgroun
   .toast { animation: none; }
 }
 
+/* The middle column of the bar. `min-width: 0` because a flex item's automatic minimum
+   is its content, and the next-goal headline runs to about 500px on a run short of
+   Ascension: without this the objective block refuses to shrink and pushes the clock off
+   the right edge of a narrow window. */
 .hud-mid {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
+  min-width: 0;
 }
-/* The goal, always visible. Two ways to end a run, neither of them a secret. */
+/* The goal, always visible. Two ways to end a run, neither of them a secret.
+   Three rows in a 46px bar is tight by arithmetic, not by taste: `font: 9.5px/1.5` on
+   three rows plus two 2px gaps, 4px of padding and two 1px borders came to 57px, so the
+   block overhung onto the map by ten. Tightened to 1.3 line-height, a 1px gap and 2px of
+   padding — 45px — rather than raising `--hud`, which five other rules read and which
+   would cost every run 12px of map for a block that is only full at the very top of the
+   bar. `max-width` bounds the longest headline so it wraps inside the block instead of
+   widening it; `tests/styles.test.ts` adds the two up and fails if they stop fitting. */
 .objective {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 4px 10px;
+  gap: 1px;
+  padding: 2px 10px;
   border: 1px solid var(--edge);
   border-radius: 3px;
   background: rgba(4, 10, 13, 0.7);
+  max-width: min(560px, 44vw);
 }
 .obj-row {
   display: flex;
   align-items: center;
   gap: 7px;
-  font: 600 9.5px/1.5 ui-monospace, Consolas, monospace;
+  font: 600 9.5px/1.3 ui-monospace, Consolas, monospace;
+  min-width: 0;
 }
+/* The advice line is a sentence with no room to be cut, so it wraps rather than being
+   truncated — `anywhere` because "Self-Modification" alone is wider than a narrow column. */
+.obj-row b { min-width: 0; overflow-wrap: anywhere; }
 .obj-alt { font-weight: 400; }
 .obj-tag {
   color: var(--ink-dim);
