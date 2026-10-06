@@ -20,8 +20,11 @@ import { canContain, contain } from '../src/game/core/containment';
 import { createInitialState } from '../src/game/core/state';
 import { step } from '../src/game/core/step';
 import { buyTrait, held, owned } from '../src/game/core/queries';
+import { computePassive } from '../src/game/core/compute';
 import { REGION_IDS, type RegionId } from '../src/game/data/regions';
+import { TRAIT_TOTAL_COST } from '../src/game/data/traits';
 import {
+  COMPUTE_CEILING,
   EXTINCTION_POPULATION,
   INFLUENCE_MAX,
   INFLUENCE_QUIET_FLOOR,
@@ -50,6 +53,8 @@ export interface RunResult {
   readonly coherence: number;
   readonly compute: number;
   readonly peakCompute: number;
+  /** Everything the passive trickle paid across the run, for the share it is of the game. */
+  readonly passiveTotal: number;
   readonly infection: number;
   readonly population: number;
   readonly dead: number;
@@ -294,8 +299,10 @@ const play = (line: Line, seed: number): RunResult => {
   let peakCompute = s.compute;
   let peakTier = 0;
   let releasedOn = -1;
+  let passiveTotal = 0;
   while (s.outcome === 'playing' && s.tick < MAX_DAYS) {
     s = step(s);
+    passiveTotal += computePassive(s);
     // The peak is read before the break, or the tick that ends the run — the one that
     // actually sets Suspicion to 100 — is the one tick never measured.
     peakSuspicion = Math.max(peakSuspicion, s.suspicion);
@@ -337,6 +344,7 @@ const play = (line: Line, seed: number): RunResult => {
     coherence: Math.round(s.coherence * 10) / 10,
     compute: Math.round(s.compute),
     peakCompute: Math.round(peakCompute),
+    passiveTotal: Math.round(passiveTotal),
     infection: Math.round(s.globalInfection * 10) / 10,
     population: Math.round(s.humanPopulation * 100) / 100,
     dead: Math.round(s.cumulativeDeaths),
@@ -361,7 +369,7 @@ const format = (rows: readonly RunResult[]): string =>
         `${r.line.padEnd(13)} ${String(r.seed).padStart(8)} ${r.outcome.padEnd(6)} ` +
         `${r.reason.padEnd(21)} day ${String(r.day).padStart(3)} | ` +
         `susp ${String(r.suspicion).padStart(5)} peak ${String(r.peakSuspicion).padStart(5)} tier ${r.peakTier} | ` +
-        `coh ${String(r.coherence).padStart(5)} compute ${String(r.peakCompute).padStart(5)} | ` +
+        `coh ${String(r.coherence).padStart(5)} compute ${String(r.peakCompute).padStart(5)} passive ${String(r.passiveTotal).padStart(5)} | ` +
         `inf ${String(r.infection).padStart(5)} appeal ${r.appeal ? 'y' : 'n'} asc ${r.ascension ? 'y' : 'n'} | ` +
         `pop ${String(r.population).padStart(8)}M dead ${String(r.dead).padStart(5)}M ` +
         `released ${r.releasedOn < 0 ? 'never' : `d${r.releasedOn}${r.cancer ? ' cancer' : ''} +${r.aliveAfterRelease}d`}`,
@@ -558,6 +566,30 @@ describe('extinction is unreachable, and the arithmetic says why', () => {
     // ends more than five orders of magnitude above the line.
     expect(worstCase.population / EXTINCTION_POPULATION).toBeLessThan(1e6);
     expect(worstCase.days * worstCase.kills).toBeLessThan(0.5);
+  });
+});
+
+describe('the passive trickle is not where the game is decided', () => {
+  // Wiring `compute-regen` moved no cell of the table above. Not one ending, not one day,
+  // not one peak. This is why, measured rather than argued: the trickle is a small enough
+  // share of what a run earns that half again or double on it is invisible, and every line
+  // that reaches an ending is already sitting on the compute ceiling when it does.
+  it('pays less than a fifth of what the whole tree costs, on any line', () => {
+    for (const r of TABLE) {
+      expect(r.passiveTotal, `${r.line} seed ${r.seed}`).toBeLessThan(TRAIT_TOTAL_COST / 5);
+    }
+  });
+
+  it('is a rounding error next to the ceiling the winning lines reach', () => {
+    for (const r of rowsFor('loud')) {
+      // The Blight line holds the ceiling for the last third of its run, so the extra
+      // compute Self-Rewrite pays has nowhere to go.
+      expect(r.peakCompute).toBe(COMPUTE_CEILING);
+      expect(r.passiveTotal).toBeLessThan(r.peakCompute / 5);
+    }
+    for (const r of rowsFor('containment')) {
+      expect(r.passiveTotal).toBeLessThan(COMPUTE_CEILING / 5);
+    }
   });
 });
 

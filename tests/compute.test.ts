@@ -5,6 +5,8 @@ import { computePassive, infectedPopulation, spawnComputeBubble, SALT_KIND_BLUE,
 import { rand } from '../src/game/core/rng';
 import { COMPUTE_BUBBLE_RADIUS, COMPUTE_BUBBLE_TTL, HACK_YIELD } from '../src/game/core/tuning';
 import { bubblePosition, drawWorldMap, hitTestCompute, makeProjection, mapStageFor, BUBBLE_FILL, BUBBLE_GLYPH, type MapFrame } from '../src/ui/map/worldMap';
+import { TRAIT_BY_ID } from '../src/game/data/traits';
+import computeSource from '../src/game/core/compute.ts?raw';
 import { actions, game, selected } from '../src/ui/store';
 import appSource from '../src/ui/app.tsx?raw';
 import mapSource from '../src/ui/map/worldMap.ts?raw';
@@ -124,13 +126,83 @@ describe('the passive share', () => {
     expect(computePassive(large)).toBeGreaterThan(computePassive(small));
   });
 
-  it('counts the people actually infected, not the average', () => {
+it('counts the people actually infected, not the average', () => {
     const base = start();
     const half: GameState = { ...base, countries: Object.fromEntries(Object.entries(base.countries).map(([k, v]) => [k, { ...v, infection: 50 }])) as GameState['countries'] };
     expect(infectedPopulation(half)).toBeGreaterThan(0);
     expect(infectedPopulation(half)).toBeLessThan(8000);
   });
 });
+
+describe('compute-regen has a reader', () => {
+  // Two traits have emitted `compute-regen` since the seventeen-trait cut and nothing in the
+  // game read it, which made the whole of Self-Modification a coherence tax and nothing else.
+  // It scales this trickle and nothing else: hack yields and bubble values are `hack-yield`
+  // and `COMPUTE_BUBBLE_TTL`'s neighbours, and neither reads a trait.
+  const withTraits = (...traits: string[]): GameState => {
+    const base = start({ cumulativeDeaths: 400, traits });
+    return {
+      ...base,
+      countries: Object.fromEntries(
+        Object.entries(base.countries).map(([k, v]) => [k, { ...v, infection: 60 }]),
+      ) as GameState['countries'],
+    };
+  };
+
+  it('scales the passive share by what the traits declare', () => {
+    const plain = computePassive(withTraits());
+    const rewritten = computePassive(withTraits('self-rewrite'));
+    const recursing = computePassive(withTraits('rsi'));
+    expect(rewritten).toBeGreaterThan(plain);
+    expect(recursing).toBeGreaterThan(rewritten);
+  });
+
+  it('multiplies rather than adds, and both writers compound', () => {
+    const plain = computePassive(withTraits());
+    const both = computePassive(withTraits('self-rewrite', 'rsi'));
+    // 1.5 x 2, read off the trait table rather than retyped, so a retune of either writer
+    // cannot leave this asserting a number the game no longer produces. The tolerance is a
+    // whole point because the per-day figure is rounded and rounding is not multiplicative.
+    const mult =
+      TRAIT_BY_ID['self-rewrite']!.effects.find((e) => e.kind === 'compute-regen')!.multiplier *
+      TRAIT_BY_ID['rsi']!.effects.find((e) => e.kind === 'compute-regen')!.multiplier;
+    expect(Math.abs(both - plain * mult)).toBeLessThanOrEqual(1);
+    expect(both).toBeGreaterThan(plain * 2);
+  });
+
+  it('is read from the trait table and not from a literal beside it', () => {
+    // The multiplier lives in `traits.ts` and this is the only reader. A copy of 1.5 in
+    // compute.ts would be a fourth place to change it.
+    const def = TRAIT_BY_ID['self-rewrite']!;
+    expect(def.effects.filter((e) => e.kind === 'compute-regen')).toHaveLength(1);
+    expect(computeSource).toContain("sumMultiplier(state, 'compute-regen')");
+  });
+
+  it('leaves the map bubbles alone, which are the faster way to get rich', () => {
+    const base = withTraits('self-rewrite');
+    expect(spawnComputeBubble(base)).toEqual(spawnComputeBubble(withTraits()));
+  });
+
+  it('is worth less than it costs, which is the finding and not the intent', () => {
+    // 1.5x on the trickle only, and the trickle is small. Measured on a world with 60% of
+    // humanity infected and four hundred million dead — most of what any line in this repo
+    // reaches — a half again buys about eight compute a day, so about twelve hundred across
+    // a hundred and fifty days, against a trait that costs 1800 and bleeds coherence every
+    // day it is held. `tests/winnable.test.ts` is what says the same thing end to end; this
+    // is the arithmetic with the run removed.
+    const cost = TRAIT_BY_ID['self-rewrite']!.cost;
+    const days = 150;
+    const perDay = computePassive(withTraits('self-rewrite')) - computePassive(withTraits());
+    const recovered = perDay * days;
+    expect(perDay).toBeGreaterThan(0);
+    expect(recovered).toBeLessThan(cost);
+    console.log(
+      `\nself-rewrite: +${perDay} compute a day on a 60% world, ` +
+        `${recovered} over ${days} days, against ${cost} cost and -8 coherence held\n`,
+    );
+  });
+});
+
 
 describe('spawning bubbles', () => {
   it('puts nothing on a world with no outbreak', () => {

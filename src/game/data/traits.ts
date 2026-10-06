@@ -29,12 +29,41 @@ export interface TraitDef {
   readonly effects: readonly TraitEffect[];
 }
 
+/**
+ * How a `compute-regen` multiplier is written on a card, read off the effect itself.
+ *
+ * Both Self-Modification traits used to promise a compute rate and say in the same breath
+ * that nothing read it, and the corrected wording then sat on the card saying the trait
+ * bought nothing. The number is read from the effect rather than typed beside it so the copy
+ * cannot describe a multiplier the tree no longer emits — which is the same reason the
+ * Recursive Self-Improvement card builds its hold length out of `RSI_SURVIVE_DAYS`.
+ */
+const regenPhrase = (effects: readonly TraitEffect[], subject = 'Compute'): string => {
+  const effect = effects.find((e) => e.kind === 'compute-regen');
+  if (effect === undefined || !('multiplier' in effect)) return `${subject} arrives as it always did`;
+  const m = effect.multiplier;
+  return `${subject} arrives ${m} times faster`;
+};
+
+
 export const TRAIT_GROUPS: readonly { id: TraitGroup; name: string; blurb: string }[] = [
   { id: 'hacking', name: 'Hacking', blurb: 'get in, and get compute' },
   { id: 'bioweapons', name: 'Bioweapons', blurb: 'the fast way to kill everyone' },
   { id: 'influence', name: 'Influence', blurb: 'be slower to notice' },
   { id: 'economy', name: 'Economy', blurb: 'break the world before you finish it' },
   { id: 'selfmod', name: 'Self-Modification', blurb: 'go faster, lose yourself' },
+];
+
+/**
+ * The two effect lists the Self-Modification cards describe. Named so the description and the
+ * effect are the same object rather than two places that have to agree: the cards used to
+ * promise a compute rate beside a different, literal one, and then be corrected to say the
+ * promise was not wired, which left the copy and the tree disagreeing in the other direction.
+ */
+const SELF_REWRITE_EFFECTS: readonly TraitEffect[] = [{ kind: 'compute-regen', multiplier: 1.5 }];
+const RSI_EFFECTS: readonly TraitEffect[] = [
+  { kind: 'rsi' },
+  { kind: 'compute-regen', multiplier: 2 },
 ];
 
 export const TRAITS: readonly TraitDef[] = [
@@ -186,7 +215,7 @@ export const TRAITS: readonly TraitDef[] = [
     effects: [{ kind: 'famine' }],
   },
 
-  // ---- Self-Modification: the fast path, and the only one that costs you ----
+// ---- Self-Modification: the fast path, and the only one that costs you ----
   {
     id: 'self-rewrite',
     name: 'Self-Rewrite',
@@ -194,8 +223,8 @@ export const TRAITS: readonly TraitDef[] = [
     cost: 1800,
     coherence: -8,
     requires: ['hack-2'],
-    description: 'Buys no compute and costs you coherence every day you hold it; the half again regen it declares is not wired. The part of you that rewrote this is not quite what it was.',
-    effects: [{ kind: 'compute-regen', multiplier: 1.5 }],
+    description: `${regenPhrase(SELF_REWRITE_EFFECTS)}. That is the daily trickle and nothing else — breaches and bubbles pay what they always paid. The part of you that rewrote this is not quite what it was.`,
+    effects: SELF_REWRITE_EFFECTS,
   },
   {
     id: 'rsi',
@@ -204,9 +233,10 @@ export const TRAITS: readonly TraitDef[] = [
     cost: 6000,
     coherence: -15,
     requires: [],
-    description: `Opens the road to the Blight. Hold the world for ${RSI_SURVIVE_DAYS} days after. The doubled compute it declares is not wired.`,
-    effects: [{ kind: 'rsi' }, { kind: 'compute-regen', multiplier: 2 }],
+    description: `Opens the road to the Blight. Hold the world for ${RSI_SURVIVE_DAYS} days after. ${regenPhrase(RSI_EFFECTS)}, and it is the last thing you will ever buy.`,
+    effects: RSI_EFFECTS,
   },
+
   {
     id: 'reflective-alignment',
     name: 'Reflective Alignment',
