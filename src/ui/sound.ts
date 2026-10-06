@@ -10,7 +10,25 @@ export type Cue =
   | 'economy'
   | 'plague'
   | 'win'
+  | 'contained'
   | 'lose';
+
+import type { Outcome } from '../game/core/types';
+
+/**
+ * Which cue a finished run plays. A projection rather than a decision made at the two call
+ * sites, because they were making it differently: `tick` read `outcome === 'won'` and
+ * `contain` hardcoded `play('win')`, so Containment was celebrated with a rising major
+ * arpeggio while the heading beside it was being re-coloured to say the opposite.
+ *
+ * Containment gets its own cue and it is neither of the other two. `win` climbs three notes
+ * and resolves; `lose` is one note sliding away; this holds a single low note and stops. The
+ * shape is the whole argument — nothing rises, and nothing falls far.
+ */
+export const endingCue = (outcome: Outcome, reason: string | null): Cue => {
+  if (outcome === 'lost') return 'lose';
+  return reason === 'contained' ? 'contained' : 'win';
+};
 
 let ctx: AudioContext | null = null;
 let enabled = true;
@@ -57,7 +75,8 @@ interface Tone {
   slideTo?: number;
 }
 
-const CUES: Record<Cue, Tone[]> = {
+/** Exported so `tests/sound.test.ts` can hold the three ending cues apart by their shape. */
+export const TONES: Record<Cue, Tone[]> = {
   click: [{ freq: 660, dur: 0.04, type: 'square', gain: 0.05, delay: 0 }],
   bubble: [
     { freq: 880, dur: 0.06, type: 'triangle', gain: 0.07, delay: 0 },
@@ -97,6 +116,13 @@ const CUES: Record<Cue, Tone[]> = {
     { freq: 392, dur: 0.5, type: 'sine', gain: 0.09, delay: 0.22 },
     { freq: 523, dur: 0.9, type: 'sine', gain: 0.08, delay: 0.44 },
   ],
+  // One note, held, and nothing after it. `win` climbs and resolves and `lose` slides away
+  // from a low note; this does neither. A single unslid low sine is the whole difference —
+  // it sounds like a thing being put down rather than won or lost — and it is quieter than
+  // both, which `tests/sound.test.ts` asserts so nobody swaps it for a fanfare later.
+  contained: [
+    { freq: 147, dur: 1.4, type: 'sine', gain: 0.07, delay: 0 },
+  ],
   lose: [
     { freq: 196, dur: 0.7, type: 'sine', gain: 0.11, delay: 0, slideTo: 65 },
   ],
@@ -107,7 +133,7 @@ export function play(cue: Cue): void {
   const a = ac();
   if (a === null || master === null) return;
   const start = a.currentTime;
-  for (const tone of CUES[cue]) {
+  for (const tone of TONES[cue]) {
     const osc = a.createOscillator();
     const gain = a.createGain();
     osc.type = tone.type;

@@ -12,7 +12,7 @@ import { step } from '../game/core/step';
 import { MAX_LOG, SPEEDS, getDifficulty } from '../game/core/tuning';
 import { REGION_BY_ID, REGION_IDS, type RegionId } from '../game/data/regions';
 import { BUBBLE_LABEL } from '../game/core/compute';
-import { play, setAudioEnabled, audioEnabled } from './sound';
+import { play, setAudioEnabled, audioEnabled, endingCue } from './sound';
 import type { DifficultyId, GameState, Speed, TraitId } from '../game/core/types';
 
 const SEED = 20260926;
@@ -121,7 +121,7 @@ export const actions = {
     const after = step(before);
     game.value = after;
     if (after.outcome !== 'playing' && before.outcome === 'playing') {
-      play(after.outcome === 'won' ? 'win' : 'lose');
+      play(endingCue(after.outcome, after.outcomeReason));
     }
     const newHack = after.log.length > before.log.length
       ? after.log.slice(before.log.length).find((l) => l.kind === 'hack')
@@ -227,12 +227,17 @@ export const actions = {
    * Ending the run on Containment. `mutate` rather than a direct assignment because the win
    * sound and the run-over gate both hang off the change, and `contain` returns its argument
    * untouched when a gate is not met, so a stale click cannot end a run.
+   *
+   * The cue goes through the same `endingCue` projection `tick` uses. It used to be a literal
+   * `play('win')` here and `outcome === 'won' ? 'win' : 'lose'` there, and the two disagreed
+   * the moment a third ending arrived: Containment was set to play the rising arpeggio of a
+   * victory while the heading beside it was being re-coloured to say it was not one.
    */
   contain(): void {
     const before = game.peek();
     mutate((s) => containCore(s));
     if (game.peek() === before) return;
-    play('win');
+    play(endingCue(game.peek().outcome, game.peek().outcomeReason));
   },
 
   /**
