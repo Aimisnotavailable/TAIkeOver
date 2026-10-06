@@ -23,11 +23,21 @@ export const hovered = signal<RegionId | null>(null);
 export const evolving = signal(false);
 /**
  * Whether the game is still allowed to explain itself. `true` until the player says
- * otherwise with H, `?`, or the line's own dismiss control; from then on the primer is
- * silent for the rest of the run. Not stored in `GameState` because it is a preference
- * about the interface rather than a fact about the world, so `step` never sees it.
+ * otherwise with the primer line's own dismiss control; from then on the primer is
+ * silent for the rest of the run, and it comes back on a new run and not sooner. Not
+ * stored in `GameState` because it is a preference about the interface rather than a fact
+ * about the world, so `step` never sees it. It is deliberately not what H does: H is the
+ * help screen, and a key that both opens a reference and permanently silences the game
+ * would be two bindings on one press.
  */
 export const showHelp = signal(true);
+/**
+ * Whether the help overlay is up. Deliberately not part of `worldRunning`: the trait tree
+ * pauses because buying is a decision, and nothing on the help screen is a decision. A
+ * player who opens it at eight times a day chose to read, and stopping the run would only
+ * mean the day counter drifted while they did.
+ */
+export const helpOpen = signal(false);
 export const flash = signal(0);
 
 export type ToastTone = 'hack' | 'economy' | 'insurgency' | 'plague' | 'quiet' | 'rival' | 'info';
@@ -249,6 +259,7 @@ answerEvent(cardKey: number, choiceId: string): void {
     announced.clear();
     toasts.value = [];
     evolving.value = false;
+    helpOpen.value = false;
     // A fresh run is a run nobody has told this player they already know the game.
     showHelp.value = true;
   },

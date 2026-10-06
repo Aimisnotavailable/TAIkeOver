@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   coherenceColor,
   coherenceSev,
+  HELP_SECTIONS,
   nextGoal,
   primerLine,
   selectionAnnouncement,
@@ -10,15 +11,23 @@ import {
   SUSPICION_CRITICAL,
   SUSPICION_ELEVATED,
 } from '../src/ui/components/panels';
+import { BUBBLE_FILL, BUBBLE_GLYPH } from '../src/ui/map/worldMap';
+import { BUBBLE_LABEL } from '../src/game/core/compute';
 import {
   ASCENSION_COMPUTE,
   ASCENSION_COHERENCE,
   ASCENSION_INFECTION,
+  AWARE_THRESHOLD,
   COHERENCE_DRIFT_BELOW,
   COHERENCE_PANIC_BELOW,
   COMPUTE_BUBBLE_TTL,
+  COUNTERMEASURE_TIERS,
+  EXTINCTION_POPULATION,
+  HACK_SUSPICION_FAIL,
+  HACK_SUSPICION_SUCCESS,
   PRIMER_INFLUENCE_GOAL,
   RSI_SURVIVE_DAYS,
+  coherencePerDay,
 } from '../src/game/core/tuning';
 import { TRAIT_BY_ID, TRAIT_GROUPS, TRAITS } from '../src/game/data/traits';
 import { REGION_BY_ID, REGION_IDS } from '../src/game/data/regions';
@@ -180,10 +189,156 @@ const PROSE_WORDS = new Set([
 const COHERENCE_BRANCH =
   TRAIT_GROUPS.find((g) => TRAITS.some((t) => t.group === g.id && t.coherence < 0))?.name ?? '';
 
-const unlisted = (s: string): string[] =>
+const unlisted = (s: string, prose: Set<string> = PROSE_WORDS): string[] =>
   [...s.matchAll(/[A-Z][A-Za-z]*/g)]
     .map((m) => m[0])
-    .filter((w) => !TRAIT_WORDS.has(w) && !PROSE_WORDS.has(w));
+    .filter((w) => !TRAIT_WORDS.has(w) && !prose.has(w));
+
+/**
+ * Prose the help overlay is allowed to use on top of the trait and branch words.
+ *
+ * A help screen is mostly English, so unlike the next-goal line it cannot be reduced to a
+ * handful of capitalised nouns. Each word below is one that is not a trait, not a branch,
+ * and not a typo — the check that matters is that none of them can drift into a trait name
+ * that the tree does not have, which is the failure this whole guard exists for.
+ */
+const HELP_PROSE = new Set([
+  'A', 'Ascension', 'At', 'Awareness', 'Blight', 'Both', 'Buy', 'Click', 'Close', 'Coherence',
+  'Compute', 'Coordinated', 'Cycle', 'Decay', 'Dismiss', 'Escape', 'Enter', 'Every',
+  'Extinction', 'Funding', 'H', 'How', 'Influence', 'It', 'Keys', 'Left', 'Move', 'No',
+  'Nothing', 'One', 'Outcompeted', 'Past', 'Right', 'So', 'Something', 'Space', 'Step',
+  'Suspicion', 'Tab', 'The', 'There', 'They', 'This', 'Under',
+]);
+
+describe('the help overlay', () => {
+  const text = (): string =>
+    HELP_SECTIONS.map((s) => [s.title, ...s.rows.map((r) => r.text)].join(' ')).join(' ');
+
+  /**
+   * The data as source text, bounded to it: the component and the HUD around it are full of
+   * figures and trait names and are not what is being checked. `?? 'name'` is stripped
+   * because it is this codebase's convention for a trait id the tree may not have —
+   * `primer.ts` does the same for `hack-1` — and a fallback is not a hardcode.
+   */
+  const source = (): string =>
+    panelSource
+      .slice(panelSource.indexOf('export const HELP_SECTIONS'), panelSource.indexOf('export const closesHelp'))
+      .replace(/\?\?\s*'[^']*'/g, '');
+
+  it('names no trait that is not in the tree', () => {
+    // The overlay is the one place in the game that speaks at length about the tree, so it
+    // is the one place a wrong trait name would do real damage: `forecast.ts` shipped
+    // "needs Hack I" on every country until a review caught it, and a help screen that
+    // names a fourth hacking tier sends a player shopping for something that cannot be
+    // bought. Everything it names comes out of `TRAITS`, and this is what catches it if a
+    // future edit types one in. Splitting on anything that is not a letter is what lets
+    // "Self-Improvement" contribute three words rather than one.
+    expect(unlisted(text(), HELP_PROSE)).toEqual([]);
+  });
+
+  it('reads its trait names out of the tree rather than typing them', () => {
+    // Without this the guard above would be checking a hand-written copy: it would pass
+    // against any text at all, because nothing in the file would connect it to `TRAITS`.
+    expect(panelSource).toContain('HELP_SECTIONS');
+    expect(panelSource).toMatch(/TRAITS\.filter\(/);
+    expect(panelSource).toMatch(/TRAIT_BY_ID\[/);
+    for (const name of ['Zero-Day Cache', 'Recursive Self-Improvement', 'Reflective Alignment', 'Self-Rewrite']) {
+      expect(source(), name).not.toContain(name);
+    }
+  });
+
+  it('interpolates every number in its copy rather than typing one in', () => {
+    // Mechanical rather than a spot check: strip every `${…}` and what is left must contain
+    // no digit at all. A typed-in threshold would survive a word-for-word assertion until
+    // somebody retuned it, and one of the three known-wrong claims in this game was exactly
+    // that shape.
+    const literals = source().replace(/\$\{[^}]*\}/g, '').match(/\d/g) ?? [];
+    expect(literals).toEqual([]);
+  });
+
+  it('says failing a breach costs more than getting in, with the real figures', () => {
+    // The rule that decides most of the early game, and it appears nowhere else but the
+    // two numbers on a button. Built from the two tables rather than typed, so the line
+    // cannot survive a retune that inverts it — and the ratio itself is checked against
+    // every tier the tree grants, because a tier that inverts would make the line a lie.
+    const tiers = TRAITS.flatMap((t) => t.effects.flatMap((e) => (e.kind === 'hack' ? [e.tier] : [])));
+    expect(tiers.length).toBeGreaterThan(1);
+    for (const tier of tiers) {
+      const fail = HACK_SUSPICION_FAIL[tier] ?? 0;
+      const succ = HACK_SUSPICION_SUCCESS[tier] ?? 0;
+      expect(fail, `tier ${tier}`).toBeGreaterThan(succ);
+    }
+    expect(text()).toContain(`traced and burned costs ${HACK_SUSPICION_FAIL[tiers[0] ?? 1]}`);
+    expect(text()).toContain(`gets in costs ${HACK_SUSPICION_SUCCESS[tiers[0] ?? 1]}`);
+  });
+
+  it('states the coherence cost of every trait that has one, as a daily rate', () => {
+    // Both halves of the claim are checked against the tree: that the only traits which
+    // move the meter are the ones the overlay lists, and that the figure it prints is what
+    // a tick actually moves.
+    const moving = TRAITS.filter((t) => t.coherence !== 0);
+    expect(moving.length).toBeGreaterThan(0);
+    for (const t of moving) {
+      const perDay = coherencePerDay(t.coherence);
+      expect(text()).toContain(`${t.name} — coherence ${perDay > 0 ? '+' : ''}${perDay.toFixed(2)}`);
+    }
+    // The branch is named from the group rather than typed, so a cut or a rename follows,
+    // and nothing outside it moves the meter — which is the claim the overlay makes.
+    expect(text()).toContain(TRAIT_GROUPS.find((g) => g.id === 'selfmod')?.name ?? 'selfmod');
+    expect(moving.every((t) => t.group === 'selfmod')).toBe(true);
+  });
+
+  it('counts the extinction threshold in people, not in millions', () => {
+    // Every population in the state is in millions — `WORLD_POPULATION` is 8.0e3 for eight
+    // billion of them — so `EXTINCTION_POPULATION` is 0.01 for ten thousand people.
+    // Rendering the constant as it stands says "under 10 humans left", which is a very
+    // different game and a very funny thing to have shipped.
+    expect(EXTINCTION_POPULATION).toBeLessThan(1);
+    expect(text()).toContain(`Under ${(EXTINCTION_POPULATION * 1e6).toLocaleString()} humans left`);
+    expect(text()).toContain('Under 10,000 humans left');
+  });
+
+  it('takes its numbers from the tuning file rather than from this file', () => {
+    // A hardcode that happens to be right passes a word-for-word assertion until somebody
+    // retunes it, so each of these is checked as an interpolation.
+    expect(text()).toContain(`${RSI_SURVIVE_DAYS} days`);
+    expect(text()).toContain(`${ASCENSION_INFECTION}%`);
+    expect(text()).toContain(`${COUNTERMEASURE_TIERS.length}`);
+    expect(text()).toContain(`${COMPUTE_BUBBLE_TTL} days`);
+    expect(text()).toContain(`${AWARE_THRESHOLD}`);
+    expect(text()).toContain(`${COHERENCE_DRIFT_BELOW}`);
+    expect(panelSource).not.toMatch(/Hold the world for 30|expire after six|twenty thousand/i);
+  });
+
+  it('names the three bubbles with the glyphs and colours the renderer draws', () => {
+    // Three circles told apart by fill alone is the encoding that fails in a greyscale
+    // screenshot, so the overlay's copy has to be the renderer's: the legend already keys
+    // off `BUBBLE_GLYPH`, and a second set of names here would be a third.
+    for (const kind of ['red', 'orange', 'blue'] as const) {
+      const row = HELP_SECTIONS.flatMap((s) => s.rows).find((r) => r.mark === BUBBLE_GLYPH[kind]);
+      if (row === undefined) throw new Error(`no help row for the ${kind} bubble`);
+      expect(row.text).toContain(BUBBLE_LABEL[kind]);
+      expect(row.tone).toBe(BUBBLE_FILL[kind]);
+    }
+  });
+
+  it('has a row for every key the game binds', () => {
+    // The key map is only worth having if it is complete, and a binding added without a
+    // line here is a binding nobody documented.
+    const marks = HELP_SECTIONS.flatMap((s) => s.rows.map((r) => r.mark)).filter((m): m is string => m !== undefined);
+    for (const key of ['E', 'Space', 'H', 'Tab', 'Escape', 'Enter', 'Left', 'Right']) {
+      expect(marks, key).toContain(key);
+    }
+  });
+
+  it('is not a modal that stops the world', () => {
+    // The trait tree pauses because buying is a decision. This screen is a reference: the
+    // player opened it, so stopping the run would only mean the day counter drifted while
+    // they read. `worldRunning` keeps its three arguments and none of them is this.
+    expect(worldRunning.length).toBe(3);
+    expect(worldRunning({ ...createInitialState(42, 'default'), stage: 'world' }, 1, false)).toBe(true);
+  });
+});
 
 describe('the next-goal line', () => {
   const at = (over: Partial<GameState> = {}): GameState => ({

@@ -25,16 +25,19 @@ button:disabled { opacity: 0.32; cursor: not-allowed; }
 button.primary { border-color: var(--ok); color: var(--ok); }
 button.mini { padding: 2px 6px; font-size: 9px; }
 
-/* `--hud` is the height of the top bar, and everything pinned under it reads it rather
-   than repeating the number. The bar is 46px until the primer needs a second row, at
-   which point `.game.priming` makes room and the rail, the operations panel, the bar and
-   the toasts all move down together. Every offset below is `46px` plus what it always was,
-   so with the primer dismissed nothing moves. */
+/* `--hud` is the height of the top bar, and everything pinned under it reads it rather than
+   repeating the number. `--dock` is the bottom bar, and everything that has to clear
+   it reads that instead. Both are single numbers for one reason: five elements are measured
+   from the top of the screen (the rail, the operations panel, the pending-decisions bar, the
+   toasts and EVOLVE), so a second value for the bar's height is five things that move when
+   it changes. The primer line used to grow `--hud` from 46px to 78px and take all five down
+   with it for as long as it was on screen. It is a floating line over the map now and takes
+   part in no layout. */
 .game {
   position: fixed; inset: 0;
   --hud: 46px;
+  --dock: 150px;
 }
-.game.priming { --hud: 78px; }
 .game canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 
 .topbar {
@@ -69,7 +72,7 @@ button.mini { padding: 2px 6px; font-size: 9px; }
 .trait.incubating { border-color: var(--warn); opacity: 0.8; }
 .trait.locked { opacity: 0.38; }
 
-.side { position: absolute; top: var(--hud); left: 0; bottom: 150px; width: 186px; background: var(--pane); border-right: 1px solid var(--edge); padding: 8px; overflow-y: auto; }
+.side { position: absolute; top: var(--hud); left: 0; bottom: var(--dock); width: 186px; background: var(--pane); border-right: 1px solid var(--edge); padding: 8px; overflow-y: auto; }
 .side-block { margin-bottom: 14px; }
 .side-title { font-size: 8.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-dim); margin-bottom: 6px; }
 .rival { margin-bottom: 7px; }
@@ -80,7 +83,7 @@ button.mini { padding: 2px 6px; font-size: 9px; }
 .tier.on { border-color: var(--bad); color: var(--bad); }
 .side-note { font-size: 9.5px; color: var(--warn); margin-top: 6px; line-height: 1.5; }
 
-.bottom { position: absolute; left: 0; right: 0; bottom: 0; height: 150px; display: flex; border-top: 1px solid var(--edge); background: rgba(3, 7, 9, 0.9); }
+.bottom { position: absolute; left: 0; right: 0; bottom: 0; height: var(--dock); display: flex; border-top: 1px solid var(--edge); background: rgba(3, 7, 9, 0.9); }
 .context { flex: 1; padding: 9px 12px; overflow-y: auto; }
 .context-hint { color: var(--ink-dim); font-size: 10.5px; }
 .context-name { font-size: 14px; font-weight: 700; color: var(--ink-bright); margin-bottom: 6px; }
@@ -282,13 +285,27 @@ button.ignore:hover { border-color: var(--ink-dim); color: var(--ink); backgroun
   cursor: help;
 }
 
-/* The primer. A line in the bar and not a card over it: the world runs underneath this,
-   and it only gets shorter as the player does the things it names. */
+/* The primer. A floating line over the bottom of the map and not a row in the bar: in the
+   bar it grew `--hud` and moved the rail, the operations panel, the pending-decisions bar,
+   the toasts and EVOLVE down 32px and back again. The world runs underneath this, and it
+   only gets shorter as the player does the things it names.
+   Bottom-centre is the one band of the screen nothing else is anchored to — `.ops` and the
+   EVOLVE button hang off the top, the rail off the top left, the toasts off the top
+   centre — and it sits just above the context bar, which is where the player's eye already
+   goes for the state of the country they have selected. */
 .primer {
+  position: absolute;
+  bottom: calc(var(--dock) + 8px);
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: 8px;
   max-width: 520px;
+  padding: 5px 9px;
+  background: var(--pane);
+  border: 1px solid var(--edge);
+  border-radius: 3px;
 }
 .primer b {
   font: 400 9.5px/1.5 ui-monospace, Consolas, monospace;
@@ -393,3 +410,73 @@ canvas:focus-visible { outline: 2px solid var(--ink-bright); outline-offset: -3p
 .legend { margin-bottom: 10px; }
 .legend-row { font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink); line-height: 1.6; }
 .legend-row b { font-family: var(--mono); font-size: 11px; }
+
+/* The help screen. Modelled on the upgrade screen — full-screen, its own dismiss, Escape —
+   and on the ordinary `.overlay`, because unlike the trait tree it does not pause. */
+.help-box {
+  width: min(1120px, 94vw);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  background: rgba(3, 8, 11, 0.98);
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  padding: 20px 22px 22px;
+}
+.help-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--edge);
+}
+.help-head h1 {
+  margin: 0;
+  font: 600 20px/1.2 ui-monospace, Consolas, monospace;
+  letter-spacing: 0.18em;
+  color: var(--ink);
+}
+.help-sub {
+  margin-top: 4px;
+  font: 400 10px/1.5 ui-monospace, Consolas, monospace;
+  color: var(--ink-dim);
+}
+.help-sections {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+  gap: 10px 18px;
+  overflow-y: auto;
+  align-content: start;
+}
+.help-section {
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+}
+.help-title {
+  font-size: 8.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  margin-bottom: 7px;
+}
+.help-row {
+  display: flex;
+  gap: 8px;
+  font: 400 10px/1.6 ui-monospace, Consolas, monospace;
+  color: var(--ink);
+  margin-bottom: 5px;
+}
+.help-row:last-child { margin-bottom: 0; }
+/* A key cap, or the glyph the map paints inside a bubble. A fixed width so the copy in a
+   section lines up whether or not a row has one. */
+.help-mark {
+  flex: none;
+  width: 44px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--ink-bright);
+}

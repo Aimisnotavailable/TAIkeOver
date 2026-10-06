@@ -80,30 +80,46 @@ describe('stylesheet', () => {
     expect(z('.paused-bar')).toBeGreaterThan(z('.overlay'));
   });
 
-  it('draws the primer in the bar rather than over the world', () => {
+  it('draws the primer over the map rather than as a modal', () => {
     // `.overlay` is what "modal" means in this stylesheet: `position: fixed; inset: 0`
-    // behind a scrim. The primer is one line in the top bar, so its own rule must not be
-    // one of those — a tutorial that covers the world is the defect, not the fix.
+    // behind a scrim. The primer must not be one of those — a tutorial that covers the
+    // world is the defect, not the fix — and it must not be `fixed` either, or it would
+    // stop being a floating line over the map and start being a second top bar.
     expect(ruleBody('.primer')).not.toBeNull();
     expect(ruleBody('.primer')).not.toContain('position: fixed');
     expect(ruleBody('.primer')).not.toContain('inset: 0');
     expect(ruleBody('.primer')).not.toContain('z-index');
   });
 
-  it('gives the bar its second row from one variable', () => {
-    // The primer needs a row above the goal, and the goal is not the only thing measured
-    // from the top of the screen: the rail, the operations panel, the pending-decisions
-    // bar, the toasts and EVOLVE all sit under it. `--hud` is the one number they share,
-    // so growing the bar moves them together instead of leaving one of them behind.
-    expect(ruleBody('.game')).toContain('--hud: 46px');
-    expect(ruleBody('.game.priming')).toMatch(/--hud:\s*\d+px/);
-    expect(Number(/--hud:\s*(\d+)px/.exec(ruleBody('.game.priming') ?? '')?.[1]))
-      .toBeGreaterThan(46);
+  it('takes the primer out of the layout, so no rule keys a size off it', () => {
+    // The bar grew from 46px to 78px while the primer line was showing, and five things
+    // pinned under it moved 32px down and back. A tutorial line that reflows the screen
+    // is worse than the clutter it avoids, so the primer is out of flow and nothing in the
+    // stylesheet may be conditioned on whether it is on screen — `priming` anywhere in the
+    // file is that defect coming back under a new selector.
+    expect(ruleBody('.primer')).toContain('position: absolute');
+    expect(css).not.toContain('priming');
+    // One declaration of the bar's height and no second one anywhere: a second value, on
+    // any selector, is five things that move when it changes.
+    const declared = [...css.matchAll(/--hud:\s*(\d+)px/g)].map((m) => m[1]);
+    expect(declared).toEqual(['46']);
     expect(ruleBody('.topbar')).toContain('height: var(--hud)');
     for (const selector of ['.side', '.ops', '.paused-bar', '.toasts', '.evolve-btn']) {
       expect(ruleBody(selector), selector).toContain('var(--hud)');
     }
-    // No hardcoded copy of the bar's height left behind to drift from it.
+  });
+
+  it('names the bottom dock once, for the bar and the line that floats above it', () => {
+    // `.bottom`'s height was written into `.side` and the primer's offset separately, which
+    // is how a floating line ends up sitting inside the context bar after one retune. One
+    // number, read by everything that has to clear the dock or fill it.
+    expect(ruleBody('.game')).toContain('--dock: 150px');
+    expect(ruleBody('.bottom')).toContain('height: var(--dock)');
+    expect(ruleBody('.side')).toContain('bottom: var(--dock)');
+    expect(ruleBody('.primer')).toContain('var(--dock)');
+  });
+
+  it('leaves no hardcoded copy of the bar height behind to drift from it', () => {
     expect(css).not.toMatch(/top:\s*(46|52|58)px/);
   });
 });

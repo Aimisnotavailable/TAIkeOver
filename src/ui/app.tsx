@@ -3,11 +3,11 @@ import { rollEvent } from '../game/core/events';
 import { DIFFICULTIES, getDifficulty } from '../game/core/tuning';
 import { REGION_BY_ID, REGION_IDS, type RegionId } from '../game/data/regions';
 import { actions, game } from './store';
-import { ContextBar, Evolve, EvolveButton, EventLog, Operations, primerLine, SideRail, TopBar } from './components/panels';
+import { ContextBar, Evolve, EvolveButton, EventLog, Help, Operations, PrimerLine, primerLine, SideRail, TopBar } from './components/panels';
 import { drawWorldMap, hitTest, hitTestCompute, mapStageFor } from './map/worldMap';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { TICK_MS } from '../game/core/tuning';
-import { announce, evolving, evolveBlocked, flash, hovered, selected, showHelp, speed, toasts, worldRunning, type ToastTone } from './store';
+import { announce, evolving, evolveBlocked, flash, helpOpen, hovered, selected, showHelp, speed, toasts, worldRunning, type ToastTone } from './store';
 import { startMusic, unlockAudio } from './sound';
 
 const TOAST_TONE: Record<ToastTone, string> = {
@@ -243,12 +243,11 @@ function Map({ state }: { state: GameState }) {
 }
 
 /**
- * The keys that dismiss the primer line. One-way for the run: the point is that someone
- * who already knows the game is not made to read it again, and a toggle invites a press
- * that brings back the thing they just turned off. `?` is `Shift+/` on most layouts, so it
- * arrives as its own `key` rather than as a shifted `/`.
+ * The keys that open and close the help screen. One key, two directions: a screen you can
+ * only open is a screen you have to find a second way to leave. `?` is `Shift+/` on most
+ * layouts, so it arrives as its own `key` rather than as a shifted `/`.
  */
-export const dismissesPrimer = (key: string): boolean => key.toLowerCase() === 'h' || key === '?';
+export const togglesHelp = (key: string): boolean => key.toLowerCase() === 'h' || key === '?';
 
 export function Game() {
   const state = game.value;
@@ -264,9 +263,10 @@ export function Game() {
     if (!running) return;
     const h = setInterval(() => {
       actions.tick();
-      // Never queue a card while the upgrade screen is open. One appearing behind
-      // it leaves two overlays stacked and the run frozen until both are cleared.
-      if (!evolving.value) game.value = rollEvent(game.peek());
+      // Never queue a card while one of the two full-screen overlays is open. One
+      // appearing behind either leaves two overlays stacked and the run frozen until both
+      // are cleared.
+      if (!evolving.value && !helpOpen.value) game.value = rollEvent(game.peek());
     }, TICK_MS / speed.value);
     return () => clearInterval(h);
   }, [running, state.stage, speed.value]);
@@ -299,25 +299,25 @@ export function Game() {
       // this, and preventDefault on it stopped the browser advancing focus at all, so on
       // every frame with no decision pending no HUD button could be reached by keyboard.
       // (While a card was up the old guard let Tab through, which is where you want it.)
-      if (e.key.toLowerCase() === 'e' && !evolving.value && game.peek().cards.length === 0) {
+      if (e.key.toLowerCase() === 'e' && !evolving.value && !helpOpen.value && game.peek().cards.length === 0) {
         e.preventDefault();
         evolving.value = true;
       }
-      // H and ? take the primer away for the rest of the run. No preventDefault: neither
-      // key has a default action, and swallowing one would be a claim about a binding
-      // that has not been made.
-      if (dismissesPrimer(e.key)) showHelp.value = false;
+      // H and ? open and close the help screen. Neither may open on top of the other:
+      // both overlays register a window handler for Escape, so a run with both up closes
+      // them with one press and leaves two scrims and no way back. No preventDefault on
+      // this one — neither key has a default action to swallow.
+      if (togglesHelp(e.key) && !evolving.value) helpOpen.value = !helpOpen.value;
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   return (
-    // `.priming` is what gives the bar its extra row: the primer sits above the goal, so
-    // the goal and everything pinned below the bar move down while there is one to read.
-    <div class={`game${primer !== null ? ' priming' : ''}`}>
+    <div class="game">
       <Map state={state} />
-      <TopBar state={state} primer={primer} />
+      <TopBar state={state} />
+      {primer !== null && <PrimerLine text={primer} />}
       {/* Gated on the run still being live: a card can survive into the end screen, and
           "the world is still moving" over a finished run is the one thing this bar must
           never say. */}
@@ -332,6 +332,7 @@ export function Game() {
       <EvolveButton onOpen={() => (evolving.value = true)} blocked={cardPending} />
       <SideRail state={state} />
       {evolving.value && <Evolve state={state} onClose={() => (evolving.value = false)} />}
+      {helpOpen.value && <Help onClose={() => (helpOpen.value = false)} />}
       <div class="bottom">
         <ContextBar state={state} />
         <EventLog state={state} />

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { dismissesPrimer, stepRegion } from '../src/ui/app';
-import { closesEvolve, selectionAnnouncement } from '../src/ui/components/panels';
+import { stepRegion, togglesHelp } from '../src/ui/app';
+import { closesEvolve, closesHelp, selectionAnnouncement } from '../src/ui/components/panels';
 import { REGION_BY_ID, REGION_IDS } from '../src/game/data/regions';
 import appSource from '../src/ui/app.tsx?raw';
 import panelSource from '../src/ui/components/panels.tsx?raw';
@@ -146,27 +146,49 @@ describe('the map is not silent', () => {
   });
 });
 
-describe('dismissing the primer', () => {
+describe('opening the help screen', () => {
   it('takes H and ? and nothing else', () => {
-    expect(dismissesPrimer('h')).toBe(true);
-    expect(dismissesPrimer('H')).toBe(true);
+    expect(togglesHelp('h')).toBe(true);
+    expect(togglesHelp('H')).toBe(true);
     // Shift+/ on most layouts, so it arrives as its own key rather than a shifted one.
-    expect(dismissesPrimer('?')).toBe(true);
-    // E is the trait tree, Space is the speed, Enter and Escape belong to a card, and a
-    // bare / is how someone mid-sentence types an address.
-    expect(dismissesPrimer('e')).toBe(false);
-    expect(dismissesPrimer(' ')).toBe(false);
-    expect(dismissesPrimer('Enter')).toBe(false);
-    expect(dismissesPrimer('Escape')).toBe(false);
-    expect(dismissesPrimer('/')).toBe(false);
+    expect(togglesHelp('?')).toBe(true);
+    // E is the trait tree, Space is the speed, Enter and Escape belong to whatever is
+    // open, and a bare / is how someone mid-sentence types an address.
+    expect(togglesHelp('e')).toBe(false);
+    expect(togglesHelp(' ')).toBe(false);
+    expect(togglesHelp('Enter')).toBe(false);
+    expect(togglesHelp('Escape')).toBe(false);
+    expect(togglesHelp('/')).toBe(false);
+  });
+
+  it('closes on Escape and leaves Tab to the browser', () => {
+    // Same floor as the trait tree: the one control on the screen is a button, and a Tab
+    // that cannot reach it makes this screen unusable from the keyboard it opens with.
+    expect(closesHelp('Escape')).toBe(true);
+    expect(closesHelp('Tab')).toBe(false);
+    expect(closesHelp('Enter')).toBe(false);
   });
 
   it('is bound in the shell, beside the other global keys', () => {
     // The shell is where Space and E live and where a key still works while the map has
-    // focus. A binding inside the primer itself would stop working the moment the line
-    // did, which is exactly when somebody wants to get rid of it.
-    expect(appSource).toMatch(/dismissesPrimer\(e\.key\)/);
-    expect(appSource).toContain('showHelp.value = false');
-    expect(panelSource).toContain('showHelp.value = false');
+    // focus. A binding inside the overlay would stop working the moment it closed, and
+    // one bound to the primer would stop working the moment the primer did.
+    expect(appSource).toMatch(/togglesHelp\(e\.key\)/);
+    expect(appSource).toContain('helpOpen.value = !helpOpen.value');
+  });
+
+  it('cannot be opened on top of the trait tree, or the tree on top of it', () => {
+    // Both screens register a window keydown for Escape, so a run with both open closes
+    // them with one press and leaves two scrims and no way back. They are alternatives.
+    expect(appSource).toMatch(/togglesHelp\(e\.key\)\s*&&\s*!evolving\.value/);
+    expect(appSource).toMatch(/===\s*'e'\s*&&[^&]*&&\s*!helpOpen\.value/);
+  });
+
+it('is reachable without the keyboard', () => {
+    // Tab reaches every HUD control, so a screen only bound to a key is a screen a
+    // keyboard-only player can find but a screen-reader user cannot reach. It gets a
+    // button in the clock group beside the other two, the way EVOLVE has one beside its
+    // own key.
+    expect(panelSource).toMatch(/help-btn[\s\S]{0,200}helpOpen\.value = true/);
   });
 });

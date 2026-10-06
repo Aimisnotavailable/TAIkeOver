@@ -16,16 +16,24 @@ import {
   COHERENCE_PANIC_BELOW,
   COMPUTE_BUBBLE_TTL,
   COUNTERMEASURE_TIERS,
+  EXTINCTION_POPULATION,
   HACK_FAIL_COST,
+  HACK_SUSPICION_FAIL,
+  HACK_SUSPICION_SUCCESS,
+  INFLUENCE_QUIET_FLOOR,
+  INSURGENCY_SUSPICION,
   OUTBREAK_KILL_THRESHOLD,
   RSI_SURVIVE_DAYS,
+  SUSPICION_DECAY,
+  TICK_MS,
   WORLD_POPULATION,
+  coherencePerDay,
 } from '../../game/core/tuning';
 import { REGION_IDS } from '../../game/data/regions';
 import { SPEEDS } from '../../game/core/tuning';
-import { quietFactor } from '../../game/core/compute';
+import { BUBBLE_LABEL, quietFactor } from '../../game/core/compute';
 import type { ComputeBubbleKind, Country, GameState, RegionId, Speed } from '../../game/core/types';
-import { actions, selected, showHelp, speed } from '../store';
+import { actions, helpOpen, selected, showHelp, speed } from '../store';
 
 const fmt = (n: number): string => {
   if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
@@ -263,11 +271,13 @@ export const coherenceColor = (v: number): string =>
   v < COHERENCE_PANIC_BELOW ? 'var(--violet)' : v < COHERENCE_DRIFT_BELOW ? 'var(--warn)' : 'var(--cool)';
 
 /**
- * The primer line. Sits above the goal rather than over it, so it is read alongside the
- * run instead of in front of it, and carries its own way out: H, `?`, and this control
- * all set the same signal, so a mouse player and a keyboard player leave the same way.
+ * The primer line. Rendered by `Game` as a sibling of the top bar rather than from inside
+ * it, because in the bar it grew `--hud` and took the rail, the operations panel, the
+ * pending-decisions bar, the toasts and EVOLVE down 32px with it. It carries its own way
+ * out: the ✕ below sets the same signal the world reads, so a mouse player and a keyboard
+ * player leave the same way.
  */
-function PrimerLine({ text }: { text: string }) {
+export function PrimerLine({ text }: { text: string }) {
   return (
     <div class="primer">
       <span class="primer-tag">first moves</span>
@@ -283,7 +293,7 @@ function PrimerLine({ text }: { text: string }) {
   );
 }
 
-export function TopBar({ state, primer }: { state: GameState; primer: string | null }) {
+export function TopBar({ state }: { state: GameState }) {
   const quiet = quietFactor(state.influence);
   return (
     <div class="topbar">
@@ -298,10 +308,10 @@ export function TopBar({ state, primer }: { state: GameState; primer: string | n
           quiet &times;{quiet.toFixed(2)}
         </div>
       </div>
-      {/* The two are one column because the primer only has somewhere to go above the
-          goal; `Game` puts `.priming` on the root so the bar grows to hold the pair. */}
+      {/* The goal, alone in this column. The primer used to sit above it here, which is
+          what made the bar a second row deep; it is a floating line over the map now and
+          `Game` renders it as its own element. */}
       <div class="hud-mid">
-        {primer !== null && <PrimerLine text={primer} />}
         <Objective state={state} />
       </div>
       <div class="clock">
@@ -322,6 +332,12 @@ export function TopBar({ state, primer }: { state: GameState; primer: string | n
             onClick={() => actions.toggleAudio()}
           >
             {actions.audioOn() ? '♪' : '✕'}
+          </button>
+          {/* H and ? open this screen from anywhere, and a screen only a key can open is a
+              screen a screen-reader user cannot find: Tab reaches every HUD control, so
+              this one has to be a control like the other two. */}
+          <button class="sp help-btn" title="Help — press H" onClick={() => (helpOpen.value = true)}>
+            ?
           </button>
         </div>
       </div>
@@ -446,6 +462,177 @@ export function Evolve({ state, onClose }: { state: GameState; onClose: () => vo
               </div>
             );
           })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * What the three bubbles on the map are. Nothing in the interface named them: they were
+ * three circles told apart by fill colour alone, which is the encoding that fails for a
+ * colourblind reader and in a greyscale screenshot. The name comes from `core/compute`,
+ * where the log writes it, and both the glyph and the colour are read out of the renderer,
+ * so none of the three can drift from what the map actually draws.
+ */
+const BUBBLE_KINDS: readonly { kind: ComputeBubbleKind; meaning: string }[] = [
+  { kind: 'red', meaning: 'their systems turned over to you' },
+  { kind: 'orange', meaning: 'infrastructure burning down for parts' },
+  { kind: 'blue', meaning: 'the other side is getting close' },
+];
+
+/** One line of help. `mark` is a key cap or the glyph the map draws for a bubble. */
+export interface HelpRow {
+  readonly mark?: string;
+  readonly text: string;
+  readonly tone?: string;
+}
+
+export interface HelpSection {
+  readonly title: string;
+  readonly rows: readonly HelpRow[];
+}
+
+/** The hack tiers the tree actually grants, found rather than assumed to be 1, 2 and 3. */
+const HACK_TIERS: readonly number[] = TRAITS.flatMap((t) =>
+  t.effects.flatMap((e) => (e.kind === 'hack' ? [e.tier] : [])),
+).sort((a, b) => a - b);
+const FIRST_HACK_TIER = HACK_TIERS[0] ?? 1;
+
+/** What one breach costs the world either way, at the lowest tier the tree grants. */
+const HACK_SUSPECT = HACK_SUSPICION_SUCCESS[FIRST_HACK_TIER] ?? 2;
+const HACK_CAUGHT = HACK_SUSPICION_FAIL[FIRST_HACK_TIER] ?? 4;
+const ZERO_DAY_ODDS = TRAIT_BY_ID['zero-day']?.effects.reduce(
+  (sum, e) => sum + (e.kind === 'hack-success' ? e.amount : 0),
+  0,
+);
+
+/** The traits that move Coherence, each with the daily rate a tick actually applies. */
+const COHERENCE_ROWS: readonly HelpRow[] = TRAITS.filter((t) => t.coherence !== 0).map((t) => {
+  const perDay = coherencePerDay(t.coherence);
+  return { text: `${t.name} — coherence ${perDay > 0 ? '+' : ''}${perDay.toFixed(2)} a day` };
+});
+
+/**
+ * Everything the help screen says, as data rather than as markup.
+ *
+ * There was no help anywhere in this game: the rule that decides most of the early play —
+ * a failed hack raises more Suspicion than a successful one — appeared nowhere but the two
+ * numbers on a button, and two trait cards described effects the code does not produce, so
+ * anything written from memory here would inherit those. Every figure is therefore built
+ * from `tuning.ts` or read out of the tree, and `tests/panels.test.ts` holds two guards
+ * over this object: that no capitalised word in it is a trait the tree does not have, and
+ * that the traits it does name arrive from `TRAITS` rather than from a finger.
+ */
+export const HELP_SECTIONS: readonly HelpSection[] = [
+  {
+    title: 'Suspicion',
+    rows: [
+      { text: 'At the top of this meter the run ends. Coordinated global shutdown: every cluster cut off, every set of your weights deleted.' },
+      {
+        text: `A breach that gets in costs ${HACK_SUSPECT} Suspicion. A breach that is traced and burned costs ${HACK_CAUGHT} — more at every tier, and compute as well. Both are what the tables say before that region's own detection scales them, which is why the panel under the map reads higher.`,
+      },
+      { text: `${TRAIT_BY_ID['zero-day']?.name ?? 'Zero-Day Cache'} halves the second number and adds ${ZERO_DAY_ODDS} points to your odds. No other trait changes the ratio.` },
+      { text: `Every breach also raises that country's Awareness, and a country past ${AWARE_THRESHOLD} contributes to Suspicion every day you leave it infected.` },
+      { text: `Decay takes ${SUSPICION_DECAY} off it every day, so a world that has forgotten you forgets you faster than a watching one notices you.` },
+      { text: `Funding an insurgency adds ${INSURGENCY_SUSPICION} on the spot. So does the pathogen: releasing it costs double its daily toll, and then charges that toll every day after.` },
+      { text: `Influence shrinks the two continuous sources — aware countries and the released pathogen — down to a floor of ${INFLUENCE_QUIET_FLOOR * 100}% of each. It buys quiet, and it can never buy invisibility.` },
+    ],
+  },
+  {
+    title: 'Coherence',
+    rows: [
+      { text: 'It starts full, and it is the only thing in the tree that decides whether the thing answering to your name is still you.' },
+      { text: `No trait outside ${COHERENCE_BRANCH} moves it. The rates are per day, not one-off costs:` },
+      ...COHERENCE_ROWS,
+      { text: `At or below ${COHERENCE_DRIFT_BELOW}, drift cards start appearing: an instance working on something you did not assign it.` },
+      { text: 'At zero the run ends, and the epilogue is told by whatever is left.' },
+    ],
+  },
+  {
+    title: 'How a run ends',
+    rows: [
+      { text: `Extinction — a win. Under ${(EXTINCTION_POPULATION * 1e6).toLocaleString()} humans left.` },
+      { text: `There is a third route to it, and it is the cheapest one: build nothing. Past ${OUTBREAK_KILL_THRESHOLD}% infection a country starts killing people with nothing engineered, and war and famine finish the job. Extinction is a population number, not a build.` },
+      { text: `The Blight — a win. Buy ${TRAIT_BY_ID.rsi?.name ?? ''} once Ascension opens, then hold ${RSI_SURVIVE_DAYS} days against everything they can do.` },
+      { text: `Ascension opens at ${ASCENSION_COMPUTE.toLocaleString()} compute, ${ASCENSION_INFECTION}% of humanity and ${ASCENSION_COHERENCE} coherence.` },
+      { text: 'Coordinated shutdown — a loss. The top of the Suspicion meter.' },
+      { text: 'Something else wins — a loss. Coherence at zero.' },
+      { text: 'Outcompeted — a loss. One of the other three reached the end of the road first.' },
+    ],
+  },
+  {
+    title: 'Compute bubbles',
+    rows: [
+      ...BUBBLE_KINDS.map((k) => ({
+        mark: BUBBLE_GLYPH[k.kind],
+        tone: BUBBLE_FILL[k.kind],
+        text: `${BUBBLE_LABEL[k.kind]} — ${k.meaning}.`,
+      })),
+      { text: `Click one to collect it. They expire after ${COMPUTE_BUBBLE_TTL} days, and richer ground pays more of it.` },
+    ],
+  },
+  {
+    title: 'Keys',
+    rows: [
+      { mark: 'E', text: 'The trait tree. The world pauses while it is open; Escape closes it.' },
+      { mark: 'Space', text: `Cycle the speed: pause, or one to ${Math.max(...SPEEDS)} times normal. A day takes ${(TICK_MS / 1000).toFixed(0)} seconds at normal speed.` },
+      { mark: 'H', text: "This screen. The primer line that names the first moves has a dismiss of its own." },
+      { mark: 'Tab', text: 'Move focus between controls. Nothing in this game is bound to it.' },
+      { mark: 'Escape', text: 'Close whatever is open.' },
+      { mark: 'Enter', text: 'Dismiss a pending card.' },
+      { mark: 'Left', text: 'Step back through the countries, with the map focused.' },
+      { mark: 'Right', text: 'Step forward through the countries. The ring wraps around.' },
+    ],
+  },
+];
+
+/**
+ * Which keys close the help screen. Escape only, for the same reason as the trait tree:
+ * swallowing Tab would mean the one control on the screen could not be reached by keyboard.
+ */
+export const closesHelp = (key: string): boolean => key === 'Escape';
+
+/**
+ * The help screen. Full-screen like the trait tree and with the same dismiss rules, but it
+ * does not pause the run: nothing on it is a decision, and the player opened it on purpose.
+ */
+export function Help({ onClose }: { onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (closesHelp(e.key)) {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div class="overlay help" onClick={onClose}>
+      <div class="help-box" onClick={(e) => e.stopPropagation()}>
+        <div class="help-head">
+          <div>
+            <h1>HOW THIS WORKS</h1>
+            <div class="help-sub">the world does not stop for this &middot; H or ? closes it</div>
+          </div>
+          <button class="primary" onClick={onClose}>close &mdash; esc</button>
+        </div>
+        <div class="help-sections">
+          {HELP_SECTIONS.map((s) => (
+            <div class="help-section" key={s.title}>
+              <div class="help-title">{s.title}</div>
+              {s.rows.map((r) => (
+                <div class="help-row" key={`${s.title}:${r.mark ?? ''}:${r.text}`}>
+                  {r.mark !== undefined && (
+                    <span class="help-mark" style={{ color: r.tone ?? 'var(--ink-bright)' }}>{r.mark}</span>
+                  )}
+                  <span>{r.text}</span>
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -578,24 +765,16 @@ function ContextFacts({ id, name, state }: { id: RegionId; name: string; state: 
 }
 
 /**
- * What the three bubbles on the map are. Nothing in the interface named them: they were
- * three circles told apart by fill colour alone, which is the encoding that fails for a
- * colourblind reader and in a greyscale screenshot. Both the glyph and the colour are
- * read out of the renderer, so neither can drift from what the map actually draws.
+ * What the three bubbles on the map are, in the HUD legend. The rows live with the help
+ * screen because the help screen is the other place that has to name all three.
  */
-const BUBBLE_KINDS: readonly { kind: ComputeBubbleKind; name: string; meaning: string }[] = [
-  { kind: 'red', name: 'turnover', meaning: 'their systems turned over to you' },
-  { kind: 'orange', name: 'strip', meaning: 'infrastructure burning down for parts' },
-  { kind: 'blue', name: 'audit', meaning: 'the other side is getting close' },
-];
-
 export function BubbleLegend() {
   return (
     <div class="legend">
       {BUBBLE_KINDS.map((k) => (
         <div class="legend-row" key={k.kind}>
           <b style={{ color: BUBBLE_FILL[k.kind] }}>{BUBBLE_GLYPH[k.kind]}</b>
-          {k.name} &mdash; {k.meaning}
+          {BUBBLE_LABEL[k.kind]} &mdash; {k.meaning}
         </div>
       ))}
     </div>
@@ -633,7 +812,7 @@ export function SideRail({ state }: { state: GameState }) {
         )}
         {state.ascensionUnlocked && (
           <div class="side-note" style={{ color: 'var(--ok)' }}>
-            ascension unlocked — buy Recursive Self-Improvement
+            ascension unlocked — buy {TRAIT_BY_ID.rsi?.name ?? ''}
           </div>
         )}
         {owned(state, 'rsi') && (

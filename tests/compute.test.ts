@@ -300,6 +300,30 @@ describe('drawing the map with bubbles on it', () => {
     expect(calls.has('stroke')).toBe(false);
   });
 
+  it('names the datacenter tier of the region under the cursor, and only that one', () => {
+    // The map showed infection but not opportunity: a tier-5 breach pays 500-2,000 GPU
+    // against 50-200 at tier 1, and nothing on screen said where those regions were. The
+    // tier is read off the country the map already has rather than recomputed from the
+    // region table, so a retune of `datacenterTier` cannot leave this drawing a stale one.
+    const us = start().countries.us;
+    if (us === undefined) throw new Error('no us');
+    const { ctx, texts } = stubCtx();
+    drawWorldMap(ctx, 1200, 800, frame({ hovered: 'us' }), 0);
+    expect(texts).toContain(`tier ${us.tier}`);
+    // Hover only. Thirty permanent markers is the noise the legend already covers.
+    const { ctx: idle, texts: idleTexts } = stubCtx();
+    drawWorldMap(idle, 1200, 800, frame(), 0);
+    expect(idleTexts.some((t) => t.startsWith('tier '))).toBe(false);
+  });
+
+  it('is handed the country that is actually hovered', () => {
+    // The same argument the selection test below makes: the frame is assembled inside a
+    // requestAnimationFrame closure, so a frame built here proves nothing about the one the
+    // component passes. Reading the source is the only assertion that catches a renderer
+    // that stops being told where the cursor is.
+    expect(appSource).toContain('hovered: hovered.value');
+  });
+
   it('is handed the country that is actually selected', () => {
     // The frame is assembled inside a requestAnimationFrame closure in a component, so the
     // two tests above cannot see it: they build their own frame and would have passed

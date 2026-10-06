@@ -424,21 +424,46 @@ map behind the end screen is whatever the run ended on — the heat ramp, tinted
 - **Determinism:** randomness derived per tick from `(seed, tick, salt)`, never a mutable stream, so a
   run is reproducible and a replay is `seed + input log`.
 - **State:** one immutable `GameState`; `step(state)` is a pure function.
+- **Three lines of teaching, none of them a modal.** `primerFor(state)` returns the first
+  outstanding first move (`core/primer.ts`), `nextGoal(state)` names the cheapest unmet goal as
+  the third row of the objective bar, and `HELP_SECTIONS` is the whole of the help screen. The
+  primer renders as **one line floating over the bottom of the map**, out of the flow: it is
+  `position: absolute` on `--dock`, and `--hud` — the top bar's height, read by the rail, the
+  operations panel, the pending-decisions bar, the toasts and EVOLVE — is declared exactly once
+  in `src/styles.css`. Nothing in the stylesheet is conditioned on the primer being on screen,
+  which is what it used to be: it was a row in the bar, it grew `--hud` from 46px to 78px, and
+  five elements moved 32px down and back. Neither the primer nor the next-goal line pauses the
+  run, and neither blocks an action.
+- **The help overlay** (`Help` in `src/ui/components/panels.tsx`) is full-screen with its own
+  dismiss and closes on **Escape**, opened by **H**, **?**, or the `?` control in the clock group
+  beside the speed buttons. It **does not pause**: `worldRunning` takes the state, the speed and
+  whether the *trait tree* is open, and nothing else, so opening help cannot stop the clock. It
+  cannot open on top of the trait tree, and the trait tree cannot open on top of it — both
+  register a window handler for Escape, so two at once would close on one press — and a decision
+  card will not queue while either is up. Its text is **data, not markup**: every figure is built
+  from `tuning.ts` or read out of `traits.ts`, and `tests/panels.test.ts` guards that no capitalised
+  word in it is a trait the tree does not have, that the traits it does name come from `TRAITS`,
+  and that it contains no typed-in digit at all once its interpolations are removed.
+- **Map hover** carries `MapFrame.hovered` (`src/ui/map/worldMap.ts`) and draws `tier N` under the
+  region's label. Hover only: thirty permanent markers is the noise the legend already covers,
+  and a breach in a tier-5 datacenter pays what a breach in a tier-1 does not.
 - **Save:** **not implemented.** There is no persistence of any kind — no IndexedDB, no
   `localStorage`, nothing. Restarting the page loses the run, and `restart()` reseeds from the old
   tick count rather than from a stored seed. Recorded here because an earlier revision of this
   document promised IndexedDB, and nothing read the promise back until now.
 - **Accessibility:** keyboard navigation (Tab reaches every HUD control, **E** opens the tree,
-  **Escape** closes it, **Space** cycles speed, **Enter**/**Escape** dismiss a card, arrow keys step
-  a ring of countries on the canvas), visible focus rings (`:focus-visible`), colourblind-safe
-  palettes, the three bubble kinds carry glyphs as well as colours with a legend naming them, and
-  both loss meters carry severity shapes as well as hue. The log is not a live region;
-  announcements reach assistive technology through two `role="status" aria-live="polite"`
-  containers: the toasts, and a visually hidden one at the head of the context bar that
-  announces the selected region's name. The context bar announces the name and nothing
-  else on purpose: the canvas is `role="application"`, so a screen reader hands it every
-  keystroke and reads nothing back, and a live region re-announces whenever its text
-  changes — putting a ticking number in it would have the region repeat itself every day.
+  **Escape** closes it, **H**/**?** open and close the help screen, **Space** cycles speed,
+  **Enter**/**Escape** dismiss a card, arrow keys step a ring of countries on the canvas; **Tab**
+  is bound to nothing, and both overlays close on **Escape** only so that focus can still reach
+  the one button they hold), visible focus rings (`:focus-visible`), colourblind-safe palettes,
+  the three bubble kinds carry glyphs as well as colours with a legend naming them and the help
+  screen naming all three from the same table, and both loss meters carry severity shapes as well
+  as hue. The log is not a live region; announcements reach assistive technology through two
+  `role="status" aria-live="polite"` containers: the toasts, and a visually hidden one at the head
+  of the context bar that announces the selected region's name. The context bar announces the name
+  and nothing else on purpose: the canvas is `role="application"`, so a screen reader hands it
+  every keystroke and reads nothing back, and a live region re-announces whenever its text changes
+  — putting a ticking number in it would have the region repeat itself every day.
 - **Content warnings** at launch: genocide, pandemic, mass death.
 
 ---
