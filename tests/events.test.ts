@@ -1,14 +1,21 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createInitialState } from '../src/game/core/state';
 import { EVENT_DEFS, toCard } from '../src/game/data/events';
-import { CHOICE_EFFECTS, answerEvent, dismissCard, EVENT_QUEUE_MAX, rollEvent } from '../src/game/core/events';
-import { GO_QUIET_AWARENESS, QUIET_RELIEF_DAYS } from '../src/game/core/tuning';
+import { CHOICE_EFFECTS, answerEvent, dismissCard, EVENT_QUEUE_MAX, rollEvent, weightFor } from '../src/game/core/events';
+import {
+  COHERENCE_DRIFT_BELOW,
+  COHERENCE_DRIFT_PRESSURE,
+  GO_QUIET_AWARENESS,
+  QUIET_RELIEF_DAYS,
+  coherenceDriftPressure,
+} from '../src/game/core/tuning';
 import { REGION_IDS } from '../src/game/data/regions';
 import { step } from '../src/game/core/step';
 import { actions, flash, game } from '../src/ui/store';
 import { controlTakesKey, topmostCardKey } from '../src/ui/app';
 import appSource from '../src/ui/app.tsx?raw';
 import eventsSource from '../src/game/data/events.ts?raw';
+import rollSource from '../src/game/core/events.ts?raw';
 import type { EventCard, GameState } from '../src/game/core/types';
 
 const seedWith = (over: Partial<GameState> = {}): GameState => ({
@@ -416,6 +423,123 @@ describe('ignoring drift', () => {
     expect(answered.compute).toBe(before.compute);
     expect(answered.suspicion).toBe(before.suspicion);
     expect(answered.countries.us?.agents).toBe(before.countries.us?.agents);
+  });
+});
+
+/**
+ * Drift's cadence, which is the one thing in the deck that the Coherence meter governs.
+ *
+ * The card's gate has always been `coherence <= COHERENCE_DRIFT_BELOW`, so below that line it
+ * could be drawn — but it weighed a flat 3 out of 18, the same shape as a letter nobody is
+ * going to act on, and the meter had no say in how likely it was to arrive. This measures the
+ * thing that changed: the share of the pool the card takes at each reading of the meter, and
+ * the share of real draws it actually wins.
+ *
+ * The state is built so the whole world-stage pool is eligible at once — Suspicion 60 clears
+ * every `minSuspicion` in the deck, infection 90 clears every `minInfection`, and `resolved`
+ * is empty — so a change in the numbers below is the weighting and nothing else.
+ */
+describe('drift gets heavier as coherence falls', () => {
+  const drift = EVENT_DEFS.find((d) => d.id === 'drift');
+  if (drift === undefined) throw new Error('no drift event');
+
+  const at = (coherence: number, seed = 1, tick = 1): GameState =>
+    seedWith({ coherence, seed, tick, suspicion: 60, globalInfection: 90 });
+
+  /** The pool `rollEvent` builds, and what fraction of its weight the card carries. */
+  const share = (coherence: number): number => {
+    const pool = EVENT_DEFS.filter((d) => d.stage === 'world' && coherence <= d.maxCoherence);
+    const total = pool.reduce((a, d) => a + weightFor(d, coherence), 0);
+    return weightFor(drift, coherence) / total;
+  };
+
+  /** Real draws, on the same seeds `tests/winnable.test.ts` plays, at the same readouts. */
+  const SEEDS = [42, 1337, 20260906, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+  const cadence = (coherence: number): number => {
+    let won = 0;
+    let drawn = 0;
+    for (const seed of SEEDS) {
+      for (let tick = 1; tick <= 400; tick++) {
+        drawn++;
+        if (rollEvent(at(coherence, seed, tick)).cards.some((c) => c.event === 'drift')) won++;
+      }
+    }
+    return won / drawn;
+  };
+
+  it('weighs exactly what the data says it weighs, above the threshold and at it', () => {
+    // `maxCoherence` is `<=`, so a run sitting on COHERENCE_DRIFT_BELOW can already draw the
+    // card — and the multiplier is 1 there, so the table's own 3 is what it weighs. A ramp
+    // that started below the gate would have made the boundary the card draws at and the
+    // boundary it draws heavier disagree by a step.
+    for (const coherence of [100, 70, COHERENCE_DRIFT_BELOW + 0.01, COHERENCE_DRIFT_BELOW]) {
+      expect(coherenceDriftPressure(coherence), String(coherence)).toBe(1);
+      expect(weightFor(drift, coherence), String(coherence)).toBe(drift.weight);
+    }
+    // Nothing above the gate is scaled, whatever its weight or its threshold.
+    for (const def of EVENT_DEFS) {
+      if (def.id === 'drift') continue;
+      for (const coherence of [100, COHERENCE_DRIFT_BELOW, 20, 0]) {
+        expect(weightFor(def, coherence), `${def.id} at ${coherence}`).toBe(def.weight);
+      }
+    }
+  });
+
+  it('takes more of the pool the further the meter falls, and all the way to the floor', () => {
+    const readings = [COHERENCE_DRIFT_BELOW, 45, 40, 35, 30, 20, 10, 0];
+    const shares = readings.map(share);
+    // Monotone, every step of it: a ramp that rose and then fell would mean the card was
+    // loudest somewhere in the middle of the collapse rather than at the bottom of it.
+    for (let i = 1; i < shares.length; i++) {
+      expect(shares[i], `below ${readings[i - 1]} against ${readings[i]}`).toBeGreaterThan(shares[i - 1] ?? 0);
+    }
+    expect(shares[0]).toBeCloseTo(drift.weight / 18, 2);
+    // About half the pool at zero, which is the point of the number: a run that has stopped
+    // being coherent is mostly being told so.
+    expect(shares[shares.length - 1]).toBeGreaterThan(0.4);
+    expect(coherenceDriftPressure(0)).toBe(1 + COHERENCE_DRIFT_PRESSURE);
+    console.log(
+      `\ndrift share of the world pool: ` +
+        readings.map((c) => `${c}:${(share(c) * 100).toFixed(1)}%`).join(' · '),
+    );
+  });
+
+  it('wins more real draws below the threshold than at it, and none at all above it', () => {
+    // The share above is arithmetic; this is the draw. Off the top of the gate it is not a
+    // matter of probability — `maxCoherence` keeps the card out of the pool entirely, which
+    // is the boundary the meters document as erring quiet at exactly one integer.
+    expect(cadence(100)).toBe(0);
+    expect(cadence(COHERENCE_DRIFT_BELOW + 0.01)).toBe(0);
+    const atThreshold = cadence(COHERENCE_DRIFT_BELOW);
+    const lower = cadence(COHERENCE_DRIFT_BELOW - 10);
+    const floor = cadence(0);
+    console.log(
+      `drift cadence: 50:${(atThreshold * 100).toFixed(1)}% · 40:${(lower * 100).toFixed(1)}% · 0:${(floor * 100).toFixed(1)}%`,
+    );
+    expect(atThreshold).toBeGreaterThan(0.1);
+    expect(atThreshold).toBeLessThan(0.25);
+    expect(lower).toBeGreaterThan(atThreshold * 1.3);
+    expect(floor).toBeGreaterThan(lower);
+    expect(floor).toBeGreaterThan(0.4);
+  });
+
+  it('rolls off the seed, not off the meter: the same seed and tick still decide', () => {
+    // The weighting reads state, which the brief allows, and the draw does not — so a replay
+    // of the same inputs picks the same card. Checked both ways: the function is a pure
+    // projection of its argument, and the one place it could have reached for a random number
+    // is the roll it no longer performs.
+    for (const coherence of [COHERENCE_DRIFT_BELOW, 30, 0]) {
+      const a = rollEvent(at(coherence, 42, 77));
+      const b = rollEvent(at(coherence, 42, 77));
+      expect(a.cards.map((c) => c.event)).toEqual(b.cards.map((c) => c.event));
+    }
+    expect(rollSource).toMatch(/rand\(s\.seed, s\.tick, EVENT_PICK_SALT\)/);
+    // Both the total and the cut points have to read the scaled weight, or the share above is
+    // a share of something the roll never used.
+    const body = /export function rollEvent[\s\S]*?\r?\n}\r?\n/.exec(rollSource)?.[0] ?? '';
+    expect(body).toContain('weightFor(d, s.coherence)');
+    expect(body.match(/weightFor\(/g) ?? []).toHaveLength(2);
+    expect(body).not.toMatch(/a \+ d\.weight/);
   });
 });
 

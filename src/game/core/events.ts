@@ -1,13 +1,36 @@
-import { EVENT_DEFS, toCard } from '../data/events';
+import { EVENT_DEFS, toCard, type EventDef } from '../data/events';
 import { REGION_IDS } from '../data/regions';
 import { rand } from './rng';
-import { GO_QUIET_AWARENESS, MAX_LOG, QUIET_RELIEF_DAYS } from './tuning';
+import { GO_QUIET_AWARENESS, MAX_LOG, QUIET_RELIEF_DAYS, coherenceDriftPressure } from './tuning';
 import type { EventCard, EventChoiceId, GameState } from './types';
 
 export const EVENT_QUEUE_MAX = 3;
 
 const EVENT_PICK_SALT = 0xe7e17;
 const EVENT_REGION_SALT = 0xe7e18;
+
+/**
+ * What one definition weighs in the pool at a given Coherence.
+ *
+ * Exported because the number is the deliverable and a test has to be able to read it without
+ * running a card: the claim being made is about the *share* the Drift card takes, and the
+ * share is this figure over the pool's total.
+ *
+ * Only a definition that opts in is scaled, and one of them does — `weight: 3` is a fair share
+ * for a paper about interpretability or a letter nobody will act on, and it is not a fair
+ * share for the one card that describes an instance of you working on something you did not
+ * assign. Below COHERENCE_DRIFT_BELOW that card gets heavier the further the meter falls, so
+ * the cadence the player feels tracks the meter rather than having to be read off it. At or
+ * above the threshold the multiplier is exactly 1 and this is the data's own weight, which is
+ * what keeps the boundary the gate uses (`<=`, so 50 can already draw it) the boundary this
+ * uses too.
+ *
+ * The draw is untouched: `rand(seed, tick, salt)` still decides, and only the cut points move.
+ * A replay of the same inputs picks the same card, which is the whole of `step`'s determinism
+ * claim and the reason the weighting reads state rather than rolling again.
+ */
+export const weightFor = (def: EventDef, coherence: number): number =>
+  def.pressureByCoherence === true ? def.weight * coherenceDriftPressure(coherence) : def.weight;
 
 export function rollEvent(s: GameState): GameState {
   if (s.cards.length >= EVENT_QUEUE_MAX || s.outcome !== 'playing') return s;
@@ -24,11 +47,11 @@ export function rollEvent(s: GameState): GameState {
       s.globalInfection >= d.minInfection,
   );
   if (pool.length === 0) return s;
-  const total = pool.reduce((a, d) => a + d.weight, 0);
+  const total = pool.reduce((a, d) => a + weightFor(d, s.coherence), 0);
   let roll = rand(s.seed, s.tick, EVENT_PICK_SALT) * total;
   let picked = pool[0];
   for (const d of pool) {
-    roll -= d.weight;
+    roll -= weightFor(d, s.coherence);
     if (roll <= 0) { picked = d; break; }
   }
   if (picked === undefined) return s;

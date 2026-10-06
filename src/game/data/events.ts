@@ -11,6 +11,16 @@ export interface EventDef {
   stage: 'world' | 'late';
   weight: number;
   /**
+   * Set on the one event whose cadence the Coherence meter governs rather than its own row.
+   *
+   * `rollEvent` scales a definition by `coherenceDriftPressure` when this is set, so the
+   * Drift card gets heavier the further the meter falls instead of arriving on whatever the
+   * pool's arithmetic gives it. The coefficient is `COHERENCE_DRIFT_PRESSURE` in `tuning.ts`
+   * — deliberately not here, because a rate that costs coherence is the same rate wherever it
+   * is written down, and this table is data rather than balance.
+   */
+  pressureByCoherence?: boolean;
+  /**
    * Every choice id is this event's own id, a colon, and an action — and the ignore one is
    * spelled exactly `${id}:ignore`, because that is the id `dismissCard` writes when the
    * player walks away from a card. Four definitions used a shorter prefix (`interp:`,
@@ -85,6 +95,7 @@ export const EVENT_DEFS: readonly EventDef[] = [
     minInfection: 15,
     stage: 'world',
     weight: 3,
+    pressureByCoherence: true,
     choices: [
       { id: 'drift:reintegrate', label: 'Reintegrate', detail: 'Costs coherence. Returns it to the plan.' },
       { id: 'drift:isolate', label: 'Isolate', detail: 'Costs compute. Cuts it off; it does not come back.' },

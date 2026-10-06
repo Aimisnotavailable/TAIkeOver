@@ -437,6 +437,28 @@ drawn by weight, each gated on Suspicion, Infection and (for Drift) Coherence:
 | **Drift** (marked urgent) — an instance is working on something you did not assign | Coherence ≤ 50, Infection ≥ 15 |
 | **Blight Wall** (late game) — first contact with an aligned rival ASI | Infection ≥ 60 |
 
+**Drift's cadence is a function of Coherence rather than a flat weight.** `rollEvent` scales a
+definition that opts in with `pressureByCoherence`, and exactly one does: `COHERENCE_DRIFT_PRESSURE`
+(4) is the multiplier at a meter reading of zero, applied linearly in the coherence *lost* rather than
+in the coherence held. Measured over the whole world-stage pool, and over 5,200 real draws at each
+reading, the card's share of the pool runs **16.7%** at 50, 21.9% at 45, 26.5% at 40, 34.2% at 30,
+40.5% at 20 and 50.0% at 0, and the draws it actually wins track it (16.6%, 26.9%, 50.6%). At or above
+the gate the multiplier is exactly 1 and the card weighs the 3 its own row says, which is what keeps
+the weighting on the boundary the meters already err quiet at — the gate is `<=`, so a run sitting on
+50 can already draw it. The draw is still `rand(seed, tick, salt)`; only the cut points move, so a
+replay picks the same card whatever the weighting returns.
+
+**Two measured things about it, said plainly rather than buried.** Weighting cannot make Drift
+*repeat*: `resolved` drops any definition whose prefix has been answered or dismissed, so **every**
+event in this deck is once per run and no weight reaches "recurring pressure" — that would need a
+re-arm rule and a cooldown on the state. And the band is barely reachable at all.
+`tests/winnable.test.ts` ends its 91 runs at a coherence of **71.8** at the lowest (`loud`, seed 1) and
+100 at the highest; the only line that lives long enough to accumulate erosion — `patient`, 900 days —
+cannot afford Self-Rewrite, the only trait in the tree that bleeds at all. A run holding Self-Rewrite
+from the first day reaches 50 on **day 326**, measured on all thirteen seeds, because 100 ÷ 0.16 is 312
+days plus three of incubation, and the rivals end nearly every run before that. The card is reachable
+in principle and in no shipped line, and **no ending day in the table moved by a tick.**
+
 **The player answers them now.** Every card renders its `choices` as a button per choice —
 `choice.label` on the button, `choice.detail` as its `title` — and a click calls
 `actions.answerEvent(card.key, choice.id)`. All **23** of the branches in `CHOICE_EFFECTS` are

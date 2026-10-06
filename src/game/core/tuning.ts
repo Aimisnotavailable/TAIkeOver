@@ -224,6 +224,37 @@ export const LATE_ENCOUNTER_STEP = 15;
 export const LATE_POTENTIAL_SHARE = 0.31;
 export const COHERENCE_DRIFT_BELOW = 50;
 export const COHERENCE_PANIC_BELOW = 20;
+
+/**
+ * How much heavier the Drift card gets as the meter falls below COHERENCE_DRIFT_BELOW.
+ *
+ * The card's own gate is `coherence <= COHERENCE_DRIFT_BELOW`, so below that line it is in
+ * the pool as soon as the world has fifteen per cent of humanity infected, and until this
+ * coefficient existed it weighed a flat 3 out of 18 — the same shape as a constitutional
+ * assembly or a capabilities paper, for the one event that is happening *to* you rather than
+ * about you. Four is the multiplier at a meter reading of zero, which puts Drift on about a
+ * fifth of the pool at the panic threshold and on about half of it at the floor: a run that
+ * has stopped being coherent is mostly being told so.
+ *
+ * It is a multiplier and not a replacement weight so that the data's own `weight` still means
+ * something at the boundary. At exactly COHERENCE_DRIFT_BELOW the multiplier is 1 and the
+ * card weighs what the table says it weighs — which is the boundary the gate itself uses, a
+ * run sitting on 50 can already draw it, and the meters err quiet there by the deliberate
+ * decision recorded beside `coherenceColor`.
+ */
+export const COHERENCE_DRIFT_PRESSURE = 4;
+
+/**
+ * How much of the Drift card's weight survives at a given Coherence.
+ *
+ * Linear in the coherence lost rather than in the coherence held, so the card gets heavier
+ * the further the meter falls and the rate of that is the same at 40 as at 10. Read by
+ * `rollEvent` and nothing else: the draw is still `rand(seed, tick, salt)`, so a replay of
+ * the same inputs picks the same card whatever this returns.
+ */
+export const coherenceDriftPressure = (coherence: number): number =>
+  1 +
+  (Math.max(0, COHERENCE_DRIFT_BELOW - coherence) / COHERENCE_DRIFT_BELOW) * COHERENCE_DRIFT_PRESSURE;
 export const MAX_LOG = 300;
 
 /**
