@@ -156,6 +156,13 @@ button.contain.act { background: #12262e; border-color: var(--warn); color: var(
 .warning { border: 1px solid var(--bad); border-radius: 2px; padding: 10px 12px; margin: 14px 0; }
 .warning b { color: var(--bad); letter-spacing: 0.12em; font-size: 10.5px; }
 .warning p { margin: 6px 0 0; font-size: 11px; line-height: 1.6; }
+
+/* The run this browser already had. Drawn above the content warning rather than in place of
+   it, because it is an offer and not a substitute: the warning is the thing a player has to
+   see before they are in a game again, and the run is only there if they ask for it. */
+.restore { border: 1px solid var(--edge-bright); border-radius: 2px; padding: 10px 12px; margin: 14px 0 0; }
+.restore b { color: var(--cool); letter-spacing: 0.14em; font-size: 10px; }
+.restore p { margin: 6px 0 10px; font-size: 11px; line-height: 1.6; color: var(--ink-dim); }
 .diff-row { display: flex; gap: 6px; margin-bottom: 6px; }
 .diff-note { font-size: 9.5px; color: var(--ink-dim); line-height: 1.6; margin-bottom: 16px; }
 

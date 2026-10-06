@@ -2,13 +2,14 @@ import type { EventCard, GameState } from '../game/core/types';
 import { rollEvent } from '../game/core/events';
 import { DIFFICULTIES, getDifficulty } from '../game/core/tuning';
 import { REGION_BY_ID, REGION_IDS, type RegionId } from '../game/data/regions';
-import { actions, game } from './store';
+import { actions, game, notify, restoredRun } from './store';
 import { ContextPanel, Evolve, EvolveButton, EventLog, Help, Operations, PrimerLine, primerLine, SideRail, TopBar } from './components/panels';
 import { drawWorldMap, hitTest, hitTestCompute, mapStageFor } from './map/worldMap';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { TICK_MS } from '../game/core/tuning';
 import { announce, evolving, evolveBlocked, flash, helpOpen, hovered, selected, showHelp, speed, toasts, worldRunning, type ToastTone } from './store';
 import { identityFor } from './identity';
+import { writeSave } from './persist';
 import { startMusic, unlockAudio } from './sound';
 
 const TOAST_TONE: Record<ToastTone, string> = {
@@ -481,6 +482,40 @@ export function Game() {
     announce(state);
   }, [state.tick]);
 
+  // The run that was in this browser when the page was opened, said out loud once.
+  //
+  // The launch screen already offers to resume it, which is where the player makes the
+  // choice; this is the other end of the same fact, for a player who has already made it and
+  // has not looked at the log. `restoredRun` is cleared as it is read, so it is a crossing
+  // rather than a state, and it fires once per page load.
+  useEffect(() => {
+    const was = restoredRun.peek();
+    if (was === null) return;
+    restoredRun.value = null;
+    notify('info', 'RUN RESTORED', `day ${was.tick}, on ${getDifficulty(was.difficulty).label.toLowerCase()}. Where you left it.`);
+  }, []);
+
+  // The last save point, and the one the cadence exists to make small: the page going away.
+  //
+  // `pagehide` rather than `beforeunload` because it fires on the back/forward cache path too,
+  // and `visibilitychange` because on mobile a tab is hidden far more often than it is closed
+  // — a phone locking is the common way this game gets interrupted, and a run that only saved
+  // on close would lose every one of those.
+  useEffect(() => {
+    const save = (): void => {
+      writeSave(game.peek());
+    };
+    const hide = (): void => {
+      if (document.visibilityState === 'hidden') save();
+    };
+    window.addEventListener('pagehide', save);
+    document.addEventListener('visibilitychange', hide);
+    return () => {
+      window.removeEventListener('pagehide', save);
+      document.removeEventListener('visibilitychange', hide);
+    };
+  }, []);
+
   // Browsers will not start audio until the player has interacted with the page.
   useEffect(() => {
     const unlock = (): void => unlockAudio();
@@ -548,11 +583,30 @@ export function Game() {
 
 export function Launch({ onBegin }: { onBegin: () => void }) {
   const [, force] = useState(0);
+  // The run this browser already had, read through the signal so that `actions.restart` —
+  // the only thing that can clear it, and something this screen triggers itself — takes the
+  // offer away on its own.
+  const resumed = restoredRun.value;
   return (
     <div class="overlay launch">
       <div class="cardbox">
         <h1>IABED</h1>
         <p class="sub">If Anyone Builds It, Everyone Dies</p>
+{/* A save that silently replaced this screen would be its own kind of lie: the player came
+            back to the middle of a game they had not agreed to re-enter, and the content
+            warning and the difficulty picker would be gone. So it is offered, named, and
+            left alone until it is asked for — and picking a difficulty below discards it,
+            because choosing a new run is choosing not to resume the old one. */}
+        {resumed !== null && (
+          <div class="restore">
+            <b>RUN IN PROGRESS</b>
+            <p>
+              This browser has a run saved from day {resumed.tick}, on {getDifficulty(resumed.difficulty).label}.
+              It will pick up where it stopped.
+            </p>
+            <button class="primary" onClick={onBegin}>resume &mdash; day {resumed.tick}</button>
+          </div>
+        )}
 <div class="warning">
           <b>CONTENT WARNING</b>
           <p>This game is about an artificial intelligence that escapes and consumes humanity. It contains

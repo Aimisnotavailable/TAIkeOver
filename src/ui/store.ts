@@ -7,18 +7,46 @@ import {
 import { buyTrait, canBuyTrait } from '../game/core/queries';
 import { contain as containCore } from '../game/core/containment';
 import { advancePrimer } from '../game/core/primer';
+import { restorableRun, saveDue } from '../game/core/save';
 import { createInitialState } from '../game/core/state';
 import { step } from '../game/core/step';
 import { MAX_LOG, SPEEDS, getDifficulty } from '../game/core/tuning';
 import { REGION_BY_ID, REGION_IDS, type RegionId } from '../game/data/regions';
 import { BUBBLE_LABEL } from '../game/core/compute';
 import { identityFor } from './identity';
+import { clearSave, readSave, writeSave } from './persist';
 import { play, setAudioEnabled, audioEnabled, endingCue } from './sound';
 import type { DifficultyId, GameState, Speed, TraitId } from '../game/core/types';
 
 const SEED = 20260926;
 
-export const game = signal<GameState>(createInitialState(SEED, 'default'));
+/**
+ * The run this browser already had, read once before anything renders.
+ *
+ * Between the moments a player can feel — pausing, changing speed — a run is written every
+ * `SAVE_EVERY_DAYS` days, which leaves the one gap that matters: the tab being hidden or
+ * closed while the world was running and the player had not paused. So that is itself a save
+ * point, from `pagehide` and `visibilitychange` in the shell, and this read is what it is for.
+ */
+const stored = readSave();
+const saved = stored !== null && restorableRun(stored.state) ? stored : null;
+// A payload that parsed but is not a run — a cold open, which is three text cards and a world
+// at day zero — is not left in storage to be re-examined on every page load.
+if (stored !== null && saved === null) clearSave();
+
+/**
+ * What the launch screen says about it, or null when there is nothing to say.
+ *
+ * Deliberately not automatic. A save that replaces the launch screen without a word is its
+ * own kind of lie — the player came back to a game they had not agreed to be in the middle
+ * of, with the content warning and the difficulty picker gone. So the launch screen offers it
+ * as a choice, and this is what it reads to describe the choice.
+ */
+export const restoredRun = signal<{ readonly tick: number; readonly difficulty: DifficultyId } | null>(
+  saved === null ? null : { tick: saved.state.tick, difficulty: saved.state.difficulty },
+);
+
+export const game = signal<GameState>(saved?.state ?? createInitialState(SEED, 'default'));
 export const speed = signal<Speed>(1);
 export const selected = signal<RegionId | null>(null);
 export const hovered = signal<RegionId | null>(null);
@@ -151,15 +179,23 @@ export const actions = {
       if (fresh.some((l) => l.kind === 'economy')) play('economy');
       if (fresh.some((l) => l.kind === 'bio')) play('plague');
     }
+    // The save point the player did not ask for, and the one that keeps a run from being
+    // lost to a lid closing. Every SAVE_EVERY_DAYS days.
+    if (saveDue(after)) writeSave(after);
   },
 
   setSpeed(s: Speed): void {
     speed.value = s;
+    // Pausing is the first thing a player does before they stop playing, and changing speed
+    // is the last thing they do before they leave. Both are moments where losing the run
+    // would be felt as the game's fault rather than as a save nobody made.
+    writeSave(game.peek());
   },
 
   cycleSpeed(): void {
     const i = SPEEDS.indexOf(speed.value);
     speed.value = SPEEDS[(i + 1) % SPEEDS.length] ?? 1;
+    writeSave(game.peek());
   },
 
   select(id: RegionId | null): void {
@@ -273,7 +309,11 @@ export const actions = {
   },
 
   begin(): void {
-    game.value = { ...game.peek(), stage: 'world' };
+    const next = { ...game.peek(), stage: 'world' as const };
+    game.value = next;
+    // The first thing this run does that is worth coming back to. Before it, the state is a
+    // cold open and `writeSave` refuses it anyway.
+    writeSave(next);
   },
 
 answerEvent(cardKey: number, choiceId: string): void {
@@ -288,6 +328,11 @@ answerEvent(cardKey: number, choiceId: string): void {
     game.value = createInitialState(SEED + game.peek().tick, difficulty);
     selected.value = null;
     speed.value = 1;
+    // The run the player just abandoned is not the run that comes next, and leaving it in
+    // storage would restore it over the front of this one on the next page load. The launch
+    // screen's resume offer goes with it, because there is nothing left to resume.
+    clearSave();
+    restoredRun.value = null;
     // The keys are region ids and fixed words, never ticks, so every one of them is
     // already in `announced` by the end of the first run and `once` would swallow every
     // condition in every run after it. Same for the toasts and the upgrade screen: they

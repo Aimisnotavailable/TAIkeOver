@@ -273,6 +273,21 @@ export const COHERENCE_GAIN_RATE = 0.05;
 export const coherencePerDay = (magnitude: number): number =>
   magnitude < 0 ? -Math.abs(magnitude) * COHERENCE_DRAIN_RATE : magnitude * COHERENCE_GAIN_RATE;
 
+/**
+ * How many in-game days pass between automatic saves of a run in progress.
+ *
+ * The save is the whole `GameState` as JSON. Measured on real runs: about 20KB at day 240,
+ * and 48KB on a nine-hundred-day run with the log at its `MAX_LOG` cap, of which the log is
+ * four fifths — the other fifth is thirty countries of floats. Writing that on every tick at
+ * 8x is eight serialisations a second of a blob nobody is waiting on.
+ *
+ * Twenty days is about seventeen seconds of wall clock at 8x (875ms a day) and two and a half
+ * minutes at 1x (seven seconds a day), and the gaps it does leave are closed by the three other
+ * moments a run is saved: on pause, on any speed change, and when the page is hidden or closed.
+ * Those are the ones a player would feel the absence of, because they are the ones they caused.
+ */
+export const SAVE_EVERY_DAYS = 20;
+
 export const DIFFICULTIES: Record<DifficultyId, DifficultyProfile> = {
   simulation: { id: 'simulation', label: 'Simulation', hackBonus: 15, suspicionRate: 0.6, cooldownDays: 3 },
   default: { id: 'default', label: 'Default', hackBonus: 0, suspicionRate: 1, cooldownDays: 4 },

@@ -208,4 +208,20 @@ describe('stylesheet', () => {
     expect(help).not.toBeNull();
     expect(help).not.toBe(ruleBody('.sp'));
   });
+
+  it('draws a saved run as an offer and not as the content warning', () => {
+    // Two boxes in one card, and they have to read as different things: one is an offer to
+    // come back and the other is the thing a player has to be told before they are in a game
+    // at all. A `.restore` with no rule of its own renders as a paragraph between them, which
+    // is the same failure the `.sr-only` guard above exists for.
+    const restore = ruleBody('.restore');
+    expect(restore).not.toBeNull();
+    expect(restore).toContain('border:');
+    expect(restore).not.toBe(ruleBody('.warning'));
+    // In a column above it, not below it: the run is what the player came back for and the
+    // warning is what they have to have read before resuming. Three values, bottom zero —
+    // `.warning`, which follows it, is `14px 0` on both sides.
+    expect(restore).toMatch(/margin:\s*[\d.]+px 0 0;/);
+    expect(ruleBody('.warning')).toMatch(/margin:\s*[\d.]+px 0;/);
+  });
 });

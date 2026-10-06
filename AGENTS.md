@@ -674,10 +674,44 @@ map behind the end screen is whatever the run ended on — the heat ramp, tinted
   affordance is worse than none. The two tiers are not the same quantity: `HACK_YIELD` is indexed
   by the **hacking** tier the tree grants, and the **datacenter** tier multiplies that row by
   `1 + 0.6 × (tier − 1)`.
-- **Save:** **not implemented.** There is no persistence of any kind — no IndexedDB, no
-  `localStorage`, nothing. Restarting the page loses the run, and `restart()` reseeds from the old
-  tick count rather than from a stored seed. Recorded here because an earlier revision of this
-  document promised IndexedDB, and nothing read the promise back until now.
+- **Save: `localStorage`, one key, the whole `GameState` as JSON.** It is not IndexedDB, which an
+  earlier revision of this document promised twice; the state is a single JSON blob with nothing
+  to query and nothing to migrate, and IndexedDB would be an async API for a value that fits in
+  one `setItem`. Two modules: `src/game/core/save.ts` is the pure envelope (`SAVE_VERSION`, seed,
+  difficulty, state) and its validation, `src/ui/persist.ts` is the storage and takes it as an
+  argument so the whole thing can be exercised where there is no `localStorage`.
+
+  **It round-trips exactly.** `GameState` is one immutable object of numbers, strings, booleans,
+  arrays and plain objects, so `JSON.parse(JSON.stringify(x))` is `x` and a test says so on a
+  played 240-day run with a log, a breach in flight, a trait incubating and bubbles on the map —
+  and then says the thing that matters, which is that `step(restored) === restored` for a
+  finished run, a **reference** identity rather than a structural one. `isGameState` builds its
+  list of required fields out of `createInitialState` rather than writing them out: a hand-typed
+  list would stop being true the day a field was added, and it would fail by omitting that field
+  from every restored run rather than by throwing.
+
+  **When it writes.** Every `SAVE_EVERY_DAYS` (20) days, on **pause**, on **any speed change**,
+  on **leaving the cold open**, and on **`pagehide`/`visibilitychange`** — the last is the one
+  that matters, because a phone locking is how this game actually gets interrupted and a save
+  that only fired on close would lose every one of those. At 8× the periodic save is two and a
+  half seconds of wall clock; it is a multiple rather than a comparison against a remembered
+  tick so that retuning the cadence cannot leave a run that never saves again. **The payload is
+  about 20KB at day 240 and 48KB on a nine-hundred-day run with the log at its cap**, four fifths
+  of it the log — measured in `tests/save.test.ts`, not remembered. Twenty days is about seventeen
+  seconds of wall clock at 8× and two and a half minutes at 1×.
+
+  **It is never a surprise.** A save that silently replaced the launch screen would be its own
+  kind of lie: the player comes back to the middle of a game they had not agreed to re-enter,
+  with the content warning and the difficulty picker gone. So the launch screen **offers** it,
+  names the day and the difficulty, and leaves it alone until it is asked for; picking a
+  difficulty discards it, because choosing a new run is choosing not to resume the old one; and
+  resuming says so once in a toast. A `stage: 'coldopen'` payload is refused outright — it is
+  three text cards and a world at day zero, not a run. A payload that will not parse is
+  **removed** rather than left to fail again, and every refusal path returns `null` rather than
+  throwing: the input is a string any other tab, any older build or a curious player can put
+  there. `restart()` clears the key, and storage that refuses to be used — a blocked origin,
+  Safari's private mode, a full quota — is a `false` and not an exception, because losing the
+  ability to save is not a reason to lose the run that is playing.
 - **Accessibility:** keyboard navigation (Tab reaches every HUD control, **E** opens the tree,
   **Escape** closes it, **H**/**?** open and close the help screen, **Space** cycles speed,
   **Enter**/**Escape** dismiss a card, arrow keys step a ring of countries on the canvas; **Tab**
