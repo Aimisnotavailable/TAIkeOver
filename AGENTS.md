@@ -494,6 +494,17 @@ Containment's colour distinct from both real wins and all three losses, derives 
 against the reasons the code writes, and checks every token against `styles.css` — a `var(--nothing)`
 is dropped silently and the heading ends up in a colour that means nothing.
 
+**The ending cue is a fourth thing, and it was the loudest of the three.** Containment was playing
+`win` — a rising major arpeggio — because `actions.contain()` hardcoded `play('win')` while
+`actions.tick()` made its own separate `outcome === 'won' ? 'win' : 'lose'` decision, and the two
+disagreed the moment a third ending arrived. Colour, copy and an audible fanfare were all saying
+three different things about the same screen. Both call sites now go through `endingCue(outcome,
+reason)` in `ui/sound.ts`, and `contained` is a cue of its own: one low sine, held, nothing after
+it, quieter than either neighbour. `win` climbs and resolves, `lose` slides away, this does
+neither. `tests/sound.test.ts` asserts the three apart by shape — that the contained cue has one
+note, that it rises nowhere, and that it is quieter than both — so it cannot quietly become a
+fanfare again.
+
 **There is a second card below the outcome**, which AGENTS.md §15 promised for the whole
 history of this repo and which this game never shipped: *what would have stopped it*. Four
 interventions, in the game's own language — capability evaluations, interpretability,
