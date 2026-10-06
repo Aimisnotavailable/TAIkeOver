@@ -5,6 +5,7 @@ import {
   dismissCard as dismissCardCore,
 } from '../game/core/events';
 import { buyTrait, canBuyTrait } from '../game/core/queries';
+import { advancePrimer } from '../game/core/primer';
 import { createInitialState } from '../game/core/state';
 import { step } from '../game/core/step';
 import { MAX_LOG, SPEEDS, getDifficulty } from '../game/core/tuning';
@@ -126,8 +127,11 @@ export const actions = {
     speed.value = SPEEDS[(i + 1) % SPEEDS.length] ?? 1;
   },
 
-  select(id: RegionId | null): void {
+select(id: RegionId | null): void {
     selected.value = id;
+    // Clicking off the map clears the selection, which is not the same thing as having
+    // picked a country to act on.
+    if (id !== null) mutate((s) => advancePrimer(s, { kind: 'select' }));
   },
 
   do(id: RegionId, kind: ActionKind): void {
@@ -141,6 +145,7 @@ export const actions = {
     mutate((s) => doAction(s, id, kind));
     // If the action was rejected the state is untouched; do not claim it happened.
     if (game.peek() === before) return;
+    if (kind === 'hack') mutate((s) => advancePrimer(s, { kind: 'breach' }));
     if (kind === 'release-pathogen') {
       notify('plague', 'PATHOGEN RELEASED', 'it is in the water supply of every country at once');
       return;
@@ -180,7 +185,7 @@ export const actions = {
       play('bubble');
       spike(2);
       const name = REGION_BY_ID[bubble.region]?.name ?? 'the world';
-      return {
+      return advancePrimer({
         ...s,
         compute: s.compute + bubble.value,
         computeBubbles: s.computeBubbles.filter((b) => b.id !== bubbleId),
@@ -188,7 +193,7 @@ export const actions = {
           ...s.log,
           { day: s.tick, kind: 'system' as const, text: `${BUBBLE_LABEL[bubble.kind]} in ${name} +${bubble.value}`, suspicionDelta: null, computeDelta: bubble.value, flagged: false },
         ].slice(-MAX_LOG),
-      };
+      }, { kind: 'bubble' });
     });
   },
 
@@ -203,8 +208,12 @@ export const actions = {
   },
 
 
-  buy(id: TraitId): void {
-    mutate((s) => buyTrait(s, id));
+buy(id: TraitId): void {
+    mutate((s) => {
+      const next = buyTrait(s, id);
+      if (next === s) return s;
+      return advancePrimer(next, { kind: 'buy', trait: id });
+    });
   },
 
   canBuy(id: TraitId): boolean {
