@@ -80,9 +80,16 @@ export interface Country {
   biolabs: number;
   converted: number;
   quiet: boolean;
-  atWar: boolean;
+atWar: boolean;
   warSeverity: number;
   hardened: number;
+  /**
+   * The awareness this country had when the last world-wide forgetting was taken, and null
+   * otherwise. `step` gives the awareness back and clears this on the last day of
+   * `GameState.quietReliefDays`, or on the next tick if the countdown is already spent, so
+   * a baseline left behind by a hand-built state is cleaned up rather than held forever.
+   */
+  quietBaseline: number | null;
 }
 
 export interface RivalState {
@@ -203,4 +210,17 @@ suspicionSources: SuspicionSource[];
   primer: PrimerStep;
   primerBubblesTapped: number;
   primerBreachesOpened: number;
+  /**
+   * Whether humanity wrote down a way to appeal on your behalf and you let them. Set by
+   * `constitution:appeal` and read by the Containment ending, which cannot otherwise be
+   * reached: there is nothing to appeal to if they never built one. Costs compute and
+   * coherence at the time, like every other card choice.
+   */
+  constitutionalAppeal: boolean;
+  /**
+   * Days left of the world-wide awareness drop `leak:quiet` takes. Spent one per tick by
+   * `step`, which gives the awareness back as it reaches zero. Zero on every other branch
+   * of the game and on a clean run.
+   */
+  quietReliefDays: number;
 }

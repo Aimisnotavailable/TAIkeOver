@@ -33,11 +33,29 @@ export const AWARE_THRESHOLD = 50;
 export const AWARENESS_GROWTH = 1.6;
 /**
  * What going quiet buys in the one country that does it, and what saying nothing after a
- * screenshot buys in all of them: the same forgetting, once, in a single number. The two
- * were separate literals of the same size in two files, which is how a retune of one would
- * have left the other quietly out of step with the copy that describes it.
+ * screenshot buys in all of them: the same forgetting, in a single number. The two were
+ * separate literals of the same size in two files, which is how a retune of one would
+ * have left the other quietly out of step with the copy that describes it. It is a
+ * magnitude and nothing else — how long the world-wide one lasts is QUIET_RELIEF_DAYS,
+ * because `leak:quiet` takes the drop once and gives it back, and a per-country "go quiet"
+ * is a toggle the player turns off themselves.
  */
 export const GO_QUIET_AWARENESS = 18;
+/**
+ * How many in-game days the world-wide forgetting from `leak:quiet` lasts, which is the
+ * "for a few days" its data promised and which C(a) shipped as permanent. Five is a few
+ * days and, measured against awareness growth of 0.5 to 1.6 a day for an infected region,
+ * roughly what it takes for a −18 drop to be forgotten rather than merely deferred. It
+ * does not halt the spread, which the detail of the choice now says: spread stops only
+ * where `Country.quiet` is set, and only `step` runs a clock.
+ *
+ * Written without an apostrophe on purpose. `codeOnly` in tests/game.test.ts strips string
+ * literals before it looks for readers, and it pairs quotes by scanning forward, so a lone
+ * apostrophe in prose pairs with the next quote anywhere later in the file and blanks the
+ * code between them. That is how COHERENCE_DRAIN_RATE and COHERENCE_GAIN_RATE came to look
+ * dead for one afternoon.
+ */
+export const QUIET_RELIEF_DAYS = 5;
 export const COUNTER_HACK_DRAIN = 9;
 export const COUNTER_HACK_MAX_COUNTRIES = 6;
 export const COUNTER_HACK_INTERVAL = 3;

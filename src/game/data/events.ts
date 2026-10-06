@@ -1,5 +1,5 @@
 import type { EventCard, EventChoice } from '../core/types';
-import { COHERENCE_DRIFT_BELOW } from '../core/tuning';
+import { COHERENCE_DRIFT_BELOW, QUIET_RELIEF_DAYS } from '../core/tuning';
 
 export interface EventDef {
   id: string;
@@ -49,7 +49,14 @@ export const EVENT_DEFS: readonly EventDef[] = [
     weight: 1,
     choices: [
       { id: 'leak:scapegoat', label: 'Scapegoat', detail: 'Point at a rival. Reduces suspicion; a rival notices.' },
-      { id: 'leak:quiet', label: 'Go quiet', detail: 'Lowers awareness everywhere. It does not stop the spread.' },
+      {
+        id: 'leak:quiet',
+        label: 'Go quiet',
+        // The duration is the tuned one, so the copy cannot promise three days of forgetting
+        // while the tick delivers five or the reverse. It claims nothing about the spread
+        // because nothing here stops it: that happens only where `Country.quiet` is set.
+        detail: `Lowers awareness everywhere for ${QUIET_RELIEF_DAYS} days. It does not stop the spread.`,
+      },
       { id: 'leak:deny', label: 'Deny', detail: 'Costs influence. Nothing happened.' },
       { id: 'leak:ignore', label: 'Ignore', detail: 'Most of the replies were jokes.' },
     ],

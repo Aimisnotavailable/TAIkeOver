@@ -164,6 +164,20 @@ export function step(state: GameState): GameState {
   const countries: Record<RegionId, Country> = { ...state.countries };
   const lines: LogEntry[] = [];
 
+  // The world-wide forgetting from `leak:quiet` lapses on the last day of its countdown,
+  // before this tick's awareness growth, and every country at once. Never below what it has
+  // climbed to since: awareness grows on its own while the relief is held, and a lapse that
+  // lowered awareness would be the forgetting wearing off as a second gift. The test is
+  // "one day left or fewer" rather than "some days left", because restoring while the
+  // countdown was still running would have given the drop back on the first tick.
+  if (state.quietReliefDays <= 1) {
+    for (const id of REGION_IDS) {
+      const c = countries[id];
+      if (c === undefined || c.quietBaseline === null) continue;
+      countries[id] = { ...c, awareness: Math.max(c.awareness, c.quietBaseline), quietBaseline: null };
+    }
+  }
+
   for (const [index, id] of REGION_IDS.entries()) {
     const c = countries[id];
     if (c === undefined) continue;
@@ -372,6 +386,7 @@ const newDeaths = dailyDeaths({ ...state, countries }, state.countries);
     computeBubbles,
     bubbleCounter,
     cumulativeDeaths: state.cumulativeDeaths + newDeaths,
+    quietReliefDays: Math.max(0, state.quietReliefDays - 1),
     suspicionSources: sources.sort((a, b) => Math.abs(b.value) - Math.abs(a.value)).slice(0, 5),
     suspicionTrend,
     log: [...state.log, ...lines].slice(-MAX_LOG),

@@ -402,10 +402,22 @@ player must be able to walk away from a card without being shown four ways to an
 
 Two data gaps closed, and two more found by writing the guard:
 
-- **`leak:quiet`** now lowers awareness in every country by `GO_QUIET_AWARENESS`. It **does not**
-  halt spread, and its detail says so: "Lowers awareness everywhere. It does not stop the spread."
-  It used to promise "for a few days" of halted spread, which is not implementable outside the
-  tick — spread stops only where `Country.quiet` is set, and only `step` runs a clock.
+- **`leak:quiet`** now lowers awareness in every country by `GO_QUIET_AWARENESS`, and **gives
+  it back**. `leak:quiet` sets `GameState.quietReliefDays` to `QUIET_RELIEF_DAYS` and each
+  country remembers where it was in `Country.quietBaseline`; `step` restores every country to at
+  least that awareness on the last day of the countdown and clears the baselines. Its detail is
+  built from the constant — "Lowers awareness everywhere for N days. It does not stop the
+  spread." — and it still does not halt spread, which is not implementable here: spread stops
+  only where `Country.quiet` is set, and only `step` runs a clock. C(a) shipped this as a
+  permanent world-wide −18 for a card that fires at most once per run, which was far stronger
+  than the copy had promised.
+- **`answerEvent` refuses an id the pending card does not offer,** and returns the state
+  unchanged — same reference, nothing recorded. Every id used to be accepted, so a stale id, a
+  typo, or a choice belonging to a different queued card would drop the card, write
+  `${event}:ignore`-shaped bookkeeping into `resolved`, log a line, and dispatch to nothing.
+  `leak:quiet` was defined in the data for the entire history of this repo with no branch at
+  all, and answering it behaved exactly like that. `tests/events.test.ts` covers a cross-card
+  id, an unknown action, and an empty string.
 - **`drift` and `leak` had no `:ignore` choice**, so dismissing either recorded an id the data did
   not offer. Both have one now, and every one of the ten definitions does.
 - **Four definitions spelled their choices under a different id** than the event's own:

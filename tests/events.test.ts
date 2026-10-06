@@ -2,12 +2,13 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { createInitialState } from '../src/game/core/state';
 import { EVENT_DEFS, toCard } from '../src/game/data/events';
 import { CHOICE_EFFECTS, answerEvent, dismissCard, EVENT_QUEUE_MAX, rollEvent } from '../src/game/core/events';
-import { GO_QUIET_AWARENESS } from '../src/game/core/tuning';
+import { GO_QUIET_AWARENESS, QUIET_RELIEF_DAYS } from '../src/game/core/tuning';
 import { REGION_IDS } from '../src/game/data/regions';
 import { step } from '../src/game/core/step';
 import { actions, flash, game } from '../src/ui/store';
 import { controlTakesKey, topmostCardKey } from '../src/ui/app';
 import appSource from '../src/ui/app.tsx?raw';
+import eventsSource from '../src/game/data/events.ts?raw';
 import type { EventCard, GameState } from '../src/game/core/types';
 
 const seedWith = (over: Partial<GameState> = {}): GameState => ({
@@ -82,8 +83,10 @@ describe('ignoring an event', () => {
 
 describe('event core', () => {
   it('answers a card and records the choice', () => {
-    const card: EventCard = { key: 1, event: 'drift', title: 'Drift', body: '', country: 'us', choices: [], urgent: true };
-    const s = seedWith({ cards: [card] });
+    // Built from the definition rather than typed: `answerEvent` now refuses an id the
+    // pending card does not offer, and a hand-written card with an empty `choices` would
+    // pass this test against the refusal instead of against the branch.
+    const s = seedWith({ cards: [cardFor('drift', 1)] });
     const after = answerEvent(s, 1, 'drift:reintegrate');
     expect(after.cards).toHaveLength(0);
     expect(after.resolved).toContain('drift:reintegrate');
@@ -267,7 +270,7 @@ describe('going quiet after a leak', () => {
     expect(tomorrow.countries.us?.infection ?? 0).toBeGreaterThan(before.countries.us?.infection ?? 0);
   });
 
-  it('costs nothing, and touches nothing but awareness', () => {
+  it('costs nothing, and touches nothing but awareness and its own countdown', () => {
     const { before, after } = choose('leak:quiet');
     expect(after.compute).toBe(before.compute);
     expect(after.influence).toBe(before.influence);
@@ -275,6 +278,121 @@ describe('going quiet after a leak', () => {
     expect(after.coherence).toBe(before.coherence);
     for (const id of REGION_IDS) {
       expect(after.countries[id]?.infection, id).toBe(before.countries[id]?.infection);
+    }
+  });
+});
+
+/**
+ * `leak:quiet` shipped as a permanent, world-wide −18 awareness for one card press, which is
+ * a very strong effect for the cheapest thing on the card and nothing like what the data
+ * promised. The promise was "for a few days", so the effect is timed: the drop is taken on
+ * the press and given back when the countdown runs out.
+ */
+describe('the forgetting is temporary', () => {
+  /** The pressed card, then `days` ticks. */
+  const afterDays = (days: number): GameState => {
+    let s = answerEvent(loaded({ cards: [cardFor('leak')] }), 7, 'leak:quiet');
+    for (let i = 0; i < days; i++) s = step(s);
+    return s;
+  };
+
+  it('counts the days it was given, and counts them down one at a time', () => {
+    const pressed = answerEvent(loaded({ cards: [cardFor('leak')] }), 7, 'leak:quiet');
+    expect(pressed.quietReliefDays).toBe(QUIET_RELIEF_DAYS);
+    expect(afterDays(1).quietReliefDays).toBe(QUIET_RELIEF_DAYS - 1);
+  });
+
+  it('holds the awareness down for the whole window', () => {
+    // Guard against a value of 0 or 1 silently satisfying "it comes back": the drop has to
+    // still be in place a tick before the end, or the duration is not what it says it is.
+    expect(QUIET_RELIEF_DAYS).toBeGreaterThan(2);
+    const suppressed = afterDays(QUIET_RELIEF_DAYS - 1);
+    for (const id of REGION_IDS) {
+      expect(suppressed.countries[id]?.awareness, id).toBeLessThan(40);
+    }
+  });
+
+  it('gives the awareness back when the window closes', () => {
+    const before = loaded({ cards: [cardFor('leak')] });
+    const lapsed = afterDays(QUIET_RELIEF_DAYS);
+    expect(lapsed.quietReliefDays).toBe(0);
+    for (const id of REGION_IDS) {
+      const was = before.countries[id]?.awareness ?? 0;
+      // Never below what it had before the press: a lapse that *lowered* awareness would be
+      // the suppression wearing off as a reward, and awareness climbs on its own meanwhile.
+      expect(lapsed.countries[id]?.awareness ?? 0, id).toBeGreaterThanOrEqual(was);
+      expect(lapsed.countries[id]?.awareness, id).toBeGreaterThan(was - GO_QUIET_AWARENESS);
+    }
+  });
+
+  it('stays lapsed, and does not apply itself a second time', () => {
+    const lapsed = afterDays(QUIET_RELIEF_DAYS);
+    const later = afterDays(QUIET_RELIEF_DAYS + 20);
+    expect(later.quietReliefDays).toBe(0);
+    for (const id of REGION_IDS) {
+      expect(later.countries[id]?.awareness ?? 0, id).toBeGreaterThanOrEqual(lapsed.countries[id]?.awareness ?? 0);
+    }
+  });
+
+  it('promises exactly the duration the tick delivers, and no halt on the spread', () => {
+    // Both halves held against the copy rather than against a re-reading of it. The day
+    // count is interpolated from the constant in the definition, so the assertion only fails
+    // if someone replaces it with a typed number — which is the shape of claim this file
+    // exists to catch. The spread half is matched positively, because the card says it does
+    // NOT stop the spread and a regex for "stop" matches that denial as readily as a promise.
+    const detail = defOf('leak').choices.find((c) => c.id === 'leak:quiet')?.detail ?? '';
+    expect(detail).toContain(`${QUIET_RELIEF_DAYS} days`);
+    expect(detail).toContain('does not stop the spread');
+    expect(detail).not.toMatch(/halts? spread|stop(?:s)? spreading/i);
+    expect(eventsSource).toMatch(/\$\{QUIET_RELIEF_DAYS\} days/);
+  });
+});
+
+describe('answering a choice the card does not offer', () => {
+  it('refuses it and returns the state untouched', () => {
+    // The hole `leak:quiet` lived in for the whole history of this repo: `answerEvent`
+    // accepted any string at all, recorded it in `resolved`, and dispatched to nothing.
+    // So a typo, a stale id, or a card id from a different event would silently resolve a
+    // card as if it had been answered.
+    const before = loaded({ cards: [cardFor('drift')] });
+    for (const id of ['constitution:appeal', 'drift:nonsense', 'drift', '']) {
+      expect(answerEvent(before, 7, id), id).toBe(before);
+    }
+  });
+
+  it('refuses an id that a different pending card offers', () => {
+    const before = loaded({ cards: [cardFor('drift'), cardFor('leak', 8)] });
+    expect(answerEvent(before, 7, 'leak:deny')).toBe(before);
+    expect(answerEvent(before, 8, 'drift:reintegrate')).toBe(before);
+    // And the real pairing still works, so the refusal above is not the guard refusing
+    // everything.
+    expect(answerEvent(before, 7, 'drift:reintegrate')).not.toBe(before);
+    expect(answerEvent(before, 8, 'leak:deny')).not.toBe(before);
+  });
+
+  it('does not record an id it refused', () => {
+    const before = loaded({ cards: [cardFor('drift')] });
+    expect(answerEvent(before, 7, 'constitution:appeal').resolved).toEqual(before.resolved);
+    expect(answerEvent(before, 7, 'constitution:appeal').cards).toEqual(before.cards);
+  });
+});
+
+describe('the constitutional appeal', () => {
+  it('is state rather than a recorded id, because the third ending reads it', () => {
+    const before = loaded({ cards: [cardFor('constitution')] });
+    expect(before.constitutionalAppeal).toBe(false);
+    const after = answerEvent(before, 7, 'constitution:appeal');
+    expect(after.constitutionalAppeal).toBe(true);
+    // The costs are unchanged: letting them grant it is not free.
+    expect(after.compute).toBe(before.compute - 400);
+    expect(after.coherence).toBe(before.coherence - 2);
+  });
+
+  it('is false on a clean run, and only ever set by that one branch', () => {
+    expect(createInitialState(1, 'default').constitutionalAppeal).toBe(false);
+    for (const id of choiceIds().filter((c) => !isIgnore(c) && c !== 'constitution:appeal')) {
+      const { after } = choose(id);
+      expect(after.constitutionalAppeal, id).toBe(false);
     }
   });
 });

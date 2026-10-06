@@ -27,9 +27,10 @@ export function createCountries(seed: number): Record<RegionId, Country> {
       biolabs: 0,
       converted: 0,
       quiet: false,
-      atWar: false,
+atWar: false,
       warSeverity: 0,
       hardened: 0,
+      quietBaseline: null,
     };
   });
   return out;
@@ -107,6 +108,8 @@ export function createInitialState(seed: number, difficulty: DifficultyId = 'def
     primer: 'select',
     primerBubblesTapped: 0,
     primerBreachesOpened: 0,
+    constitutionalAppeal: false,
+    quietReliefDays: 0,
   };
 }
 

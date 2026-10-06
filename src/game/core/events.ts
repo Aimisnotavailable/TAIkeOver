@@ -1,7 +1,7 @@
 import { EVENT_DEFS, toCard } from '../data/events';
 import { REGION_IDS } from '../data/regions';
 import { rand } from './rng';
-import { GO_QUIET_AWARENESS, MAX_LOG } from './tuning';
+import { GO_QUIET_AWARENESS, MAX_LOG, QUIET_RELIEF_DAYS } from './tuning';
 import type { EventCard, EventChoiceId, GameState } from './types';
 
 export const EVENT_QUEUE_MAX = 3;
@@ -72,17 +72,26 @@ export const CHOICE_EFFECTS: Record<EventChoiceId, ChoiceEffect> = {
     suspicion: Math.max(0, s.suspicion - 4),
     rivals: s.rivals.map((r, i) => (i === 0 ? { ...r, capability: r.capability + 3 } : r)),
   }),
-  // Awareness everywhere and nothing else. This used to promise a halt on spread too, which
-  // cannot be delivered here: spread stops only where `Country.quiet` is set, and only
-  // `step` runs a clock, so a timed effect would have to live in the tick. The detail was
-  // corrected to the half of it that is true rather than left promising the other half.
+  // Awareness everywhere, and nowhere near as long as it looks. The drop is taken now and
+  // given back when `quietReliefDays` runs out, which is what the data's "for a few days"
+  // said and what a permanent world-wide −18 is not: the event fires once per run, so a
+  // version that never lapsed was a permanent eighteen points off the whole world's
+  // suspicion for the cheapest press on the card.
+  //
+  // It does not halt the spread, and the detail says so. Spread stops only where
+  // `Country.quiet` is set, and only `step` runs a clock, so there is nothing in here that
+  // could stop it — the branch used to promise a halt that no code path could deliver.
   'leak:quiet': (s) => {
     const countries = { ...s.countries };
     for (const id of REGION_IDS) {
       const c = countries[id];
-      if (c !== undefined) countries[id] = { ...c, awareness: Math.max(0, c.awareness - GO_QUIET_AWARENESS) };
+      // The *first* baseline wins if a relief were ever taken inside an existing one: the
+      // run has not seen this country forgetfully since before the earlier press.
+      const baseline = c?.quietBaseline ?? c?.awareness ?? null;
+      if (c === undefined) continue;
+      countries[id] = { ...c, quietBaseline: baseline, awareness: Math.max(0, c.awareness - GO_QUIET_AWARENESS) };
     }
-    return { ...s, countries };
+    return { ...s, countries, quietReliefDays: QUIET_RELIEF_DAYS };
   },
   'leak:deny': (s) => ({ ...s, influence: Math.max(0, s.influence - 50) }),
   'air-gapped:supply': (s) => ({
@@ -106,6 +115,10 @@ export const CHOICE_EFFECTS: Record<EventChoiceId, ChoiceEffect> = {
     ...s,
     compute: Math.max(0, s.compute - 400),
     coherence: Math.max(0, s.coherence - 2),
+    // The point of the card. It cost compute and coherence and changed nothing at all for
+    // the whole history of this repo, and it is the one branch the third ending reads: a
+    // mind cannot be contained by people who never wrote down a way to appeal for one.
+    constitutionalAppeal: true,
   }),
   'constitution:sabotage': (s) => ({ ...s, suspicion: Math.min(100, s.suspicion + 2) }),
   'interpretability:obfuscate': (s) => ({ ...s, coherence: Math.max(0, s.coherence - 4) }),
@@ -124,6 +137,13 @@ export const CHOICE_EFFECTS: Record<EventChoiceId, ChoiceEffect> = {
 export function answerEvent(s: GameState, cardKey: number, choiceId: string): GameState {
   const card = s.cards.find((c) => c.key === cardKey);
   if (card === undefined || s.resolved.includes(choiceId)) return s;
+  // The card has to offer this one. Every id used to be accepted: it went into `resolved`
+  // and dispatched to a branch table that returned undefined for anything unknown, so the
+  // card dropped, the event stopped re-rolling, a log line was written, and nothing
+  // happened. `leak:quiet` was defined in the data for the entire history of this repo with
+  // no branch at all and answered exactly like this. A refusal has to be total to be worth
+  // anything, so an id belonging to a different pending card counts as not offered too.
+  if (!card.choices.some((c) => c.id === choiceId)) return s;
   const answered: GameState = {
     ...s,
     cards: s.cards.filter((c) => c.key !== cardKey),
