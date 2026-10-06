@@ -31,7 +31,6 @@ import {
   RSI_SURVIVE_DAYS,
   SUSPICION_DECAY,
   TICK_MS,
-  WORLD_POPULATION,
   coherencePerDay,
 } from '../../game/core/tuning';
 import { REGION_IDS } from '../../game/data/regions';
@@ -263,13 +262,20 @@ export const ascendRow = (state: GameState): string =>
 
 /**
  * The two ways to end a run, always on screen, so nobody has to guess what the
- * game wants from them. Deaths are counted against the real world population
- * because that is the only target number anyone already has.
+ * game wants from them.
+ *
+ * The denominator is everyone who has ever lived during this run — the living plus the dead —
+ * rather than a fixed world population. `WORLD_POPULATION` used to be that denominator, and it
+ * was wrong twice over once the birth term went in: the world it names is the world at day
+ * zero, the bar's numerator counts people born later and killed later, and the label could
+ * therefore read "8.10B / 8.00B dead". Dividing by `dead + alive` fixes both halves at once —
+ * it is the share of everyone this run has produced who is gone, it responds to births by
+ * giving the player more to kill, and it cannot exceed 100 for any state at all.
  */
 export function Objective({ state }: { state: GameState }) {
   const dead = state.cumulativeDeaths;
-  const total = WORLD_POPULATION;
-  const pct = Math.min(100, (dead / total) * 100);
+  const total = dead + state.humanPopulation;
+  const pct = total > 0 ? Math.min(100, (dead / total) * 100) : 0;
   const near = pct >= 99;
   const goal = nextGoal(state);
   return (

@@ -8,7 +8,7 @@ import { biolabSalt, step, warEndSalt } from '../src/game/core/step';
 import { DIFFICULTIES, ASCENSION_COMPUTE, MAX_DEPTH, MAX_LOG, TICK_MS } from '../src/game/core/tuning';
 import { TRAITS, TRAIT_BY_ID } from '../src/game/data/traits';
 import { REGION_IDS, type RegionId } from '../src/game/data/regions';
-import type { GameState } from '../src/game/core/types';
+import type { GameState, TraitEffect } from '../src/game/core/types';
 
 const play = (state: GameState, days: number): GameState => {
   let s = state;
@@ -715,18 +715,26 @@ describe('no dead branches', () => {
     expect([...new Set(referenced)].filter((id) => !known.has(id))).toEqual([]);
   });
 
-  it('emits only effect kinds the core handles', () => {
-    // One direction only, deliberately. A kind the core emits but nothing reads is
-    // inert rather than wrong — `coherence` is one today — and flagging those is a
-    // balance decision about which traits mean something, not a cleanup.
+it('emits only effect kinds the core handles', () => {
+    // Both directions now, which is the point of the list: `hack-yield` sat in the union and
+    // in this handled list for the whole history of the repo with no trait emitting it, and
+    // the one-directional version could not see that. The other half of the defect — an
+    // emitted kind nothing reads — is a separate question and is answered by the dead
+    // constant sweep below and by the trait tests, not here.
     const emitted = new Set(TRAITS.flatMap((t) => t.effects.map((e) => e.kind)));
     const handled = new Set([
-      'hack', 'hack-success', 'half-fail-suspicion', 'gain-of-function', 'pathogen',
-      'sterility', 'cancer-plague', 'propaganda', 'cult', 'terrorism', 'banking',
-      'market-manipulation', 'famine', 'compute-regen', 'coherence', 'rsi',
+      'hack', 'hack-success', 'hack-yield', 'half-fail-suspicion', 'gain-of-function',
+      'pathogen', 'sterility', 'cancer-plague', 'propaganda', 'cult', 'terrorism', 'banking',
+      'market-manipulation', 'famine', 'rsi',
     ]);
     expect([...emitted].filter((k) => !handled.has(k))).toEqual([]);
+    // And nothing in the union is a kind no trait writes. `coherence` used to be in the
+    // union with Reflective Alignment as its only writer and `step` reading `def.coherence`
+    // instead of the effect, and `compute-regen` had two writers and no reader; both kinds
+    // are gone rather than tolerated.
+    expect([...handled].filter((k) => !emitted.has(k as TraitEffect['kind']))).toEqual([]);
   });
+
 
   it('has no tuning constant with no reader', () => {
     const tuning = readSrc(SRC_TUNING);

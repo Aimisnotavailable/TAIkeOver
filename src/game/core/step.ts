@@ -204,7 +204,6 @@ export function step(state: GameState): GameState {
     if (c === undefined) continue;
     let next = spreadAndAwareness(state, c, id);
     next = economyStep(state, next);
-    next = birthStep(state, next);
     next = pathogenStep(state, next);
     const war = warStep(state, next, index);
     next = war.country;
@@ -248,6 +247,23 @@ export function step(state: GameState): GameState {
     if (hotNeighbour) countries[id] = { ...c, awareness: clamp(c.awareness + 0.8, 0, 100) };
   }
 
+  // Everyone the world has lost today, counted before anyone is born. This is here and not
+  // later in the tick because `dailyDeaths` works by differencing each region's population
+  // against where it started, and it used to run after `birthStep` had already added the
+  // day's newborns — so a person killed in the morning and replaced in the afternoon was
+  // recorded as neither dead nor born, and both `cumulativeDeaths` (the objective bar) and
+  // the dead-population term in `computePassive` quietly shrank by the birth rate the moment
+  // the birth term went in. A death offset by a birth on the same day is still a death.
+  const newDeaths = dailyDeaths({ ...state, countries }, state.countries);
+
+  // And then people are born, which is the only thing in this loop that makes a region
+  // bigger. It is deliberately last: it must not be able to cancel out a death.
+  for (const id of REGION_IDS) {
+    const c = countries[id];
+    if (c === undefined) continue;
+    countries[id] = birthStep(state, c);
+  }
+
 
   // compute has two sources, both from how Plague Inc. paces a run: a slow passive
   // trickle that rides the size of the outbreak, and bubbles on the map you have
@@ -284,7 +300,20 @@ export function step(state: GameState): GameState {
   // fortnight, which is not influence, that is invulnerability.
   // Base growth is deliberately meagre. Almost all real influence should come from
   // buying the Influence branch, otherwise that whole side of the tree is skippable.
-  influence += (0.8 + countries.us.infection * 0.03) * Math.max(0, 1 - influence / INFLUENCE_MAX);
+  //
+  // The multiplier alone was a ceiling on the *rate* and not on the number: `INFLUENCE_MAX`
+  // divided how fast influence arrived, so a run that sat on the branch long enough walked
+  // straight past the documented thousand — measured at 2,210 on the quiet line in
+  // `tests/winnable.test.ts` — and `quietFactor` was being asked about a value the design
+  // says cannot exist. The ceiling is now on the value, which is what the comment above and
+  // AGENTS.md §6.1 both promised. It costs nothing in play: `quietFactor` has been sitting on
+  // its `INFLUENCE_QUIET_FLOOR` since about influence 458, so clamping at a thousand changes
+  // no run and only stops the counter reporting a fiction.
+  influence = clamp(
+    influence + (0.8 + countries.us.infection * 0.03) * Math.max(0, 1 - influence / INFLUENCE_MAX),
+    0,
+    INFLUENCE_MAX,
+  );
   for (const id of REGION_IDS) bio += (countries[id]?.biolabs ?? 0) * 1.4;
 
   // Awareness-driven detection. Decay is applied first and the total is clamped once,
@@ -389,7 +418,6 @@ export function step(state: GameState): GameState {
   }
   const globalInfection = popTotal > 0 ? (popInfected / popTotal) * 100 : 0;
   const humanPopulation = popTotal;
-const newDeaths = dailyDeaths({ ...state, countries }, state.countries);
 
   let next: GameState = {
     ...incubated,

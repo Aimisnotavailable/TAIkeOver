@@ -39,7 +39,6 @@ export type TraitEffect =
   | { kind: 'banking'; tier: number; damage: number }
   | { kind: 'market-manipulation' }
   | { kind: 'famine' }
-  | { kind: 'compute-regen'; multiplier: number }
   | { kind: 'coherence'; amount: number }
   | { kind: 'rsi' };
 

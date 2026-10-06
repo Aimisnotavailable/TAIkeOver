@@ -1,17 +1,19 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { createInitialState } from '../src/game/core/state';
+import { doAction } from '../src/game/core/actions';
+import { step } from '../src/game/core/step';
 import { computePassive, infectedPopulation, spawnComputeBubble, SALT_KIND_BLUE, SALT_KIND_ORANGE, SALT_KIND_RED, SALT_PHASE, SALT_VALUE, SALT_WHERE } from '../src/game/core/compute';
 import { rand } from '../src/game/core/rng';
 import { COMPUTE_BUBBLE_RADIUS, COMPUTE_BUBBLE_TTL, HACK_YIELD } from '../src/game/core/tuning';
 import { bubblePosition, drawWorldMap, hitTestCompute, makeProjection, mapStageFor, BUBBLE_FILL, BUBBLE_GLYPH, type MapFrame } from '../src/ui/map/worldMap';
-import { TRAIT_BY_ID } from '../src/game/data/traits';
-import computeSource from '../src/game/core/compute.ts?raw';
+import { TRAITS, TRAIT_BY_ID } from '../src/game/data/traits';
+import traitSource from '../src/game/data/traits.ts?raw';
 import { actions, game, selected } from '../src/ui/store';
 import appSource from '../src/ui/app.tsx?raw';
 import mapSource from '../src/ui/map/worldMap.ts?raw';
 import panelSource from '../src/ui/components/panels.tsx?raw';
-import type { ComputeBubble, GameState } from '../src/game/core/types';
+import type { ComputeBubble, GameState, TraitEffect } from '../src/game/core/types';
 
 /** The spec this build was written from. Read, because two of its claims were copied. */
 const specSource = readFileSync(
@@ -134,11 +136,12 @@ it('counts the people actually infected, not the average', () => {
   });
 });
 
-describe('compute-regen has a reader', () => {
-  // Two traits have emitted `compute-regen` since the seventeen-trait cut and nothing in the
-  // game read it, which made the whole of Self-Modification a coherence tax and nothing else.
-  // It scales this trickle and nothing else: hack yields and bubble values are `hack-yield`
-  // and `COMPUTE_BUBBLE_TTL`'s neighbours, and neither reads a trait.
+describe('the Self-Modification branch buys something', () => {
+  // `compute-regen` was emitted by two traits and read by nothing for the whole history of
+  // the repo, so the entire branch bought nothing but its coherence cost. It was wired first
+  // onto the passive trickle, and that moved not one cell of a 65-run measurement, because
+  // the trickle is a twentieth of a run's income and both winning lines are already on the
+  // compute ceiling. It now multiplies `hack-yield`, which is where breaches actually pay.
   const withTraits = (...traits: string[]): GameState => {
     const base = start({ cumulativeDeaths: 400, traits });
     return {
@@ -149,56 +152,75 @@ describe('compute-regen has a reader', () => {
     };
   };
 
-  it('scales the passive share by what the traits declare', () => {
-    const plain = computePassive(withTraits());
-    const rewritten = computePassive(withTraits('self-rewrite'));
-    const recursing = computePassive(withTraits('rsi'));
-    expect(rewritten).toBeGreaterThan(plain);
-    expect(recursing).toBeGreaterThan(rewritten);
+  /** What a breach pays, taken out of the state the real resolve path built. */
+  const oneBreach = (s: GameState): number => {
+    let n = s;
+    for (let i = 0; i < 12 && n.activeHacks.length === 0; i++) n = doAction(step(n), 'us', 'hack');
+    const target = n.activeHacks[0];
+    expect(target).toBeDefined();
+    // Bounded on the *first* resolve of this breach and not on the hack key: a resolved
+    // breach re-arms itself for another `HACK_CYCLE_DAYS`, so waiting on the key never ends.
+    let resolve = n;
+    let guard = 0;
+    while (resolve.tick < target!.resolveTick && guard++ < 20) resolve = step(resolve);
+    return resolve.log.find((l) => l.text.startsWith('us yielded'))?.computeDelta ?? 0;
+  };
+
+  const yieldOf = (...traits: string[]): number =>
+    oneBreach(withTraits('hack-1', 'hack-2', 'hack-3', ...traits));
+
+  it('multiplies what a breach pays', () => {
+    const plain = yieldOf();
+    expect(yieldOf('self-rewrite')).toBeGreaterThan(plain);
+    expect(yieldOf('rsi')).toBeGreaterThan(plain);
   });
 
   it('multiplies rather than adds, and both writers compound', () => {
-    const plain = computePassive(withTraits());
-    const both = computePassive(withTraits('self-rewrite', 'rsi'));
-    // 1.5 x 2, read off the trait table rather than retyped, so a retune of either writer
-    // cannot leave this asserting a number the game no longer produces. The tolerance is a
-    // whole point because the per-day figure is rounded and rounding is not multiplicative.
+    const plain = yieldOf();
+    const both = yieldOf('self-rewrite', 'rsi');
+    // 1.5 x 2, read off the trait table rather than retyped. The tolerance is a whole
+    // breach's worth of rounding, because the yield roll is a separate random draw per run.
     const mult =
-      TRAIT_BY_ID['self-rewrite']!.effects.find((e) => e.kind === 'compute-regen')!.multiplier *
-      TRAIT_BY_ID['rsi']!.effects.find((e) => e.kind === 'compute-regen')!.multiplier;
-    expect(Math.abs(both - plain * mult)).toBeLessThanOrEqual(1);
-    expect(both).toBeGreaterThan(plain * 2);
+      TRAIT_BY_ID['self-rewrite']!.effects.find((e) => e.kind === 'hack-yield')!.multiplier *
+      TRAIT_BY_ID['rsi']!.effects.find((e) => e.kind === 'hack-yield')!.multiplier;
+    expect(both / plain).toBeGreaterThan(mult - 0.2);
+    expect(both / plain).toBeLessThan(mult + 0.2);
   });
 
-  it('is read from the trait table and not from a literal beside it', () => {
-    // The multiplier lives in `traits.ts` and this is the only reader. A copy of 1.5 in
-    // compute.ts would be a fourth place to change it.
-    const def = TRAIT_BY_ID['self-rewrite']!;
-    expect(def.effects.filter((e) => e.kind === 'compute-regen')).toHaveLength(1);
-    expect(computeSource).toContain("sumMultiplier(state, 'compute-regen')");
+  it('leaves the passive trickle alone, and says so', () => {
+    expect(computePassive(withTraits('self-rewrite'))).toBe(computePassive(withTraits()));
+    expect(computePassive(withTraits('hack-1', 'hack-2', 'hack-3', 'self-rewrite'))).toBe(
+      computePassive(withTraits('hack-1', 'hack-2', 'hack-3')),
+    );
   });
 
-  it('leaves the map bubbles alone, which are the faster way to get rich', () => {
-    const base = withTraits('self-rewrite');
-    expect(spawnComputeBubble(base)).toEqual(spawnComputeBubble(withTraits()));
+  it('no longer emits an effect kind nothing reads', () => {
+    // `compute-regen` is deleted from the union rather than kept as a second way to spell
+    // "breach yield". A test that has to be edited to accept a deleted kind is the guard
+    // working: the kind is gone, so the assertion is that no trait mentions it.
+    const kinds = new Set(TRAITS.flatMap((t) => t.effects.map((e) => e.kind)));
+    expect(kinds.has('compute-regen' as TraitEffect['kind'])).toBe(false);
+    expect(TRAITS.flatMap((t) => t.effects).filter((e) => e.kind === 'hack-yield')).toHaveLength(2);
+    expect(traitSource).not.toContain("kind: 'compute-regen'");
+  });
+  it('carries no inert duplicate of a number that already has a home', () => {
+    // Reflective Alignment declared `{kind:'coherence', amount: 8}` and `step` never read it —
+    // it reads `def.coherence`, which is the single magnitude all three Self-Modification
+    // numbers live in and the one the trait card prints its per-day figure from.
+    const def = TRAIT_BY_ID['reflective-alignment']!;
+    expect(def.effects).toEqual([]);
+    expect(def.coherence).toBeGreaterThan(0);
+    expect(def.description).toContain(`${def.coherence} points`);
   });
 
-  it('is worth less than it costs, which is the finding and not the intent', () => {
-    // 1.5x on the trickle only, and the trickle is small. Measured on a world with 60% of
-    // humanity infected and four hundred million dead — most of what any line in this repo
-    // reaches — a half again buys about eight compute a day, so about twelve hundred across
-    // a hundred and fifty days, against a trait that costs 1800 and bleeds coherence every
-    // day it is held. `tests/winnable.test.ts` is what says the same thing end to end; this
-    // is the arithmetic with the run removed.
-    const cost = TRAIT_BY_ID['self-rewrite']!.cost;
-    const days = 150;
-    const perDay = computePassive(withTraits('self-rewrite')) - computePassive(withTraits());
-    const recovered = perDay * days;
-    expect(perDay).toBeGreaterThan(0);
-    expect(recovered).toBeLessThan(cost);
+  it('is worth having now, which is the finding and was not the intent', () => {
+    // Half again on breach yield across a loud run is on the order of ten thousand compute,
+    // against 1,800 and a daily coherence bleed. Before this it was 1,200 against 1,800.
+    const mult = TRAIT_BY_ID['self-rewrite']!.effects.find((e) => e.kind === 'hack-yield')!.multiplier;
+    expect(mult).toBeGreaterThan(1.2);
+    expect(mult).toBeLessThan(2);
     console.log(
-      `\nself-rewrite: +${perDay} compute a day on a 60% world, ` +
-        `${recovered} over ${days} days, against ${cost} cost and -8 coherence held\n`,
+      `\nself-rewrite: breach yield x${mult}, which is where a run's compute comes from\n`,
     );
   });
 });

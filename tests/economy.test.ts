@@ -251,30 +251,41 @@ describe('humans have children', () => {
   });
 
   it('keeps world population a fact rather than a constant', () => {
-    // `WORLD_POPULATION` is the denominator the objective bar shows and nothing reads the
-    // live total, so a growing world drifts away from it. This says how far in a run.
+    // The objective bar's denominator used to be a fixed `WORLD_POPULATION` naming the
+    // world at day zero, which went stale the moment births existed: the numerator counts
+    // people born later and killed later, so the label could read over 100%. It is now
+    // everyone this run has ever produced, and this says how far the world drifts.
     const start0 = population(flat(0));
     const after = population(play(flat(0), 350));
     expect(after / start0).toBeGreaterThan(1.1);
     expect(after / start0).toBeLessThan(1.5);
   });
 
-  it('makes the death counter net of births, which is a change to what it feeds', () => {
-    // `dailyDeaths` compares each region's population at the end of the tick against the
-    // start of it, and the birth term now runs inside the same tick, so what it counts is
-    // the net loss rather than everything the pathogen killed. It is the honest number for
-    // "how much smaller is the world", and it is no longer the number the passive compute
-    // scale was written against. Measured rather than asserted from reading the loop: the
-    // gross loss and the net loss differ by exactly what was born.
+  it('counts a death that a birth the same day would otherwise have hidden', () => {
+    // `dailyDeaths` works by differencing each region's population against where it started,
+    // and it used to run after `birthStep` had already added the day's newborns, so a person
+    // killed in the morning and replaced in the afternoon was recorded as neither dead nor
+    // born. Both `cumulativeDeaths` (the objective bar) and the dead-population term in
+    // `computePassive` shrank by the birth rate the moment the birth term went in.
+    //
+    // One day makes it exact: the Custom Pathogen removes exactly `killsPerDay` of everyone,
+    // so the day's deaths are exactly that share of the world — whatever was born that day
+    // is not allowed to reduce it.
     const base = flat(0);
     const released = doAction(withTrait(base, 'pathogen-1'), 'us', 'release-pathogen');
-    const days = 40;
-    const after = play(released, days);
     const start0 = population(released);
-    const gross = start0 * (1 - Math.pow(1 - released.pathogen.killsPerDay, days));
-    const net = start0 - population(after);
-    expect(after.cumulativeDeaths).toBeGreaterThan(net * 0.99);
-    expect(after.cumulativeDeaths).toBeLessThan(gross);
+    expect(released.pathogen.killsPerDay).toBeGreaterThan(0);
+
+    const after = step(released);
+    expect(after.cumulativeDeaths / start0).toBeCloseTo(released.pathogen.killsPerDay, 9);
+    // The world did not shrink by the kill rate alone: newborns arrived first and then
+    // died with everyone else, so the day's deaths exceed what a day-zero world would give.
+    expect(population(after)).toBeGreaterThan(start0 * (1 - released.pathogen.killsPerDay));
+
+    // Over a long run the gap compounds: cumulative deaths exceed the naive figure because
+    // every day's removals are taken from a population the previous days grew.
+    const later = play(released, 40);
+    expect(later.cumulativeDeaths).toBeGreaterThan(start0 * (1 - Math.pow(1 - released.pathogen.killsPerDay, 40)));
   });
 
   it('has a card that says what it does, built from the rate', () => {

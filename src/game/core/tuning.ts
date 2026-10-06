@@ -71,6 +71,32 @@ export const FAMINE_RATE = 0.005;
 export const ECONOMY_RECOVER = 0.25;
 
 /**
+ * Cancer Plague costs this much Suspicion, once, on the day it is released — and nothing
+ * afterwards.
+ *
+ * It used to cost 30 a day, forever, which is a number with no meaning: the run that the
+ * fastest kill in the tree is *for* lasts about 130 in-game days, so thirty a day means the
+ * world ends up three thousand nine hundred points more suspicious than when you opened the
+ * flask, and `suspicionPerDay` is added to a meter that decays by `SUSPICION_DECAY` every
+ * single tick. A per-day toll can only ever be survived if it is smaller than the decay, so
+ * a per-day toll of thirty was not a balance decision, it was a cancellation: every run that
+ * released Cancer Plague was deleted between one and four days later, having killed a third
+ * of humanity on the way out. `tests/winnable.test.ts` measures both of those numbers.
+ *
+ * The charge is the whole event, and that is also the honest reading of it. A pathogen is not
+ * discovered again on the second hundredth day; by then everyone already knows, which is
+ * exactly why the endgame is survivable and the release is not. It is charged through
+ * `quietFactor` like every other Suspicion gain in the tick, so Influence buys a quieter
+ * release and nothing else.
+ *
+ * Measured at the floor of what Influence can buy (`INFLUENCE_QUIET_FLOOR`), a Cancer release
+ * costs about 21 of the 100 available and then decays away inside a month. The Custom
+ * Pathogen's own 0.5 a day is below the decay on its own, so it is free to live with and
+ * entirely impractical: it needs about 3,400 days, against a run the rivals cap near 350.
+ */
+export const CANCER_DISCOVERY_SUSPICION = 30;
+
+/**
  * Humans have children. This is the term that makes the bioweapons branch a grind rather than
  * arithmetic: without it a pathogen that removes a fixed share of everyone every day needs no
  * maintaining, and a world with nobody left in it stays that way for nothing.
@@ -241,9 +267,6 @@ export const COMPUTE_PASSIVE_PER_BILLED = 6;
 // in a hole somewhere is not a species, and waiting for the literal last human
 // just means the run limps on for months.
 export const EXTINCTION_POPULATION = 0.01;
-// The world population the map is modelled on. Used as the denominator for the
-// objective readout, so the target is a number the player already has.
-export const WORLD_POPULATION = 8.0e3;
 // Insurgency. Once a country is at war it stays at war: the war escalates while you
 // hold the country, kills people on its own, and only calms down if you let go.
 export const WAR_ESCALATION = 0.9;

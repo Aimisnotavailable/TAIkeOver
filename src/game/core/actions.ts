@@ -1,9 +1,11 @@
 import type { RegionId } from '../data/regions';
 import { chance, rand } from './rng';
+import { quietFactor } from './compute';
 import {
   AIR_GAP_PENALTY,
   BANK_DAMAGE_AWARENESS,
   BASE_HACK_SUCCESS,
+  CANCER_DISCOVERY_SUSPICION,
   COUNTER_HACK_INTERVAL,
   COUNTER_HACK_DRAIN,
   CRASH_AWARENESS,
@@ -191,21 +193,39 @@ export function doAction(state: GameState, id: RegionId, kind: ActionKind): Game
       const path = effectsOf(next, 'pathogen');
       const cancer = owned(next, 'cancer-plague');
       const kills = cancer ? 0.1 : path.reduce((a, e) => a + ('kills' in e ? Math.max(e.kills, 0) : 0), 0);
-      const susp = path.reduce((a, e) => a + ('suspicion' in e ? e.suspicion : 0), 0) + (cancer ? 30 : 0);
+      // Two costs, and they are not the same thing. What the pathogen costs you *every day*
+      // after this is only the standing toll the Custom Pathogen declares, which the world's
+      // decay outlasts. What it costs you to *be seen releasing it* is the whole of the
+      // difference: a pathogen is not discovered again on the second hundredth day.
+      const standing = path.reduce((a, e) => a + ('suspicion' in e ? e.suspicion : 0), 0);
+      const discovery = standing + (cancer ? CANCER_DISCOVERY_SUSPICION : 0);
+      const charge = discovery * 2 * diff.suspicionRate * quietFactor(next.influence);
       next = {
         ...next,
         pathogen: {
-          released: true, killsPerDay: kills, suspicionPerDay: susp,
+          released: true, killsPerDay: kills, suspicionPerDay: standing,
           sterility: owned(next, 'sterility'), targeted: false, cancer,
         },
-        suspicion: clamp(next.suspicion + susp * 2 * diff.suspicionRate, 0, 100),
+        // Routed through `quietFactor` like every other Suspicion gain in the tick. It used
+        // to be applied raw, which meant the one irreversible action in the game was the one
+        // action the whole Influence branch could not soften — and it cost 61 on the spot, so
+        // the fastest weapon in the tree deleted its own owner the day it was picked up.
+        suspicion: clamp(next.suspicion + charge, 0, 100),
       };
-      lines.push({ day: next.tick, kind: 'bio', text: 'the pathogen is in the water supply', suspicionDelta: susp, computeDelta: null, flagged: true });
+      lines.push({ day: next.tick, kind: 'bio', text: 'the pathogen is in the water supply', suspicionDelta: Math.round(charge * 10) / 10, computeDelta: null, flagged: true });
       break;
     }
     case 'sabotage-rival': {
+      // The caller hands us a region — `store.sabotage` resolves the rival to its home,
+      // because `canDo` only answers for a region that exists — so the match has to be on
+      // `home`. It used to be on `r.id` alone, which no region ever equals: every sabotage in
+      // the entire history of this repo deducted 300 compute, wrote a log line, showed a
+      // toast, and changed nothing at all. `r.id` is still accepted so a caller holding a
+      // rival id directly works too.
+      const target = next.rivals.find((r) => r.id === id) ?? next.rivals.find((r) => r.home === id);
+      if (target === undefined) break;
       const rivals = next.rivals.map((r) =>
-        r.id === id ? { ...r, capability: Math.max(0, r.capability - 16), sabotage: r.sabotage + 1 } : r,
+        r.id === target.id ? { ...r, capability: Math.max(0, r.capability - 16), sabotage: r.sabotage + 1 } : r,
       );
       next = { ...next, rivals, compute: next.compute - 300 };
       lines.push({ day: next.tick, kind: 'rival', text: `sabotaged ${id}`, suspicionDelta: 3, computeDelta: -300, flagged: false });

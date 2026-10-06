@@ -105,7 +105,7 @@ available actions.
 | **Cybersecurity** | 1–10. Resistance to hacking. Grows over time. |
 | **Datacenter Tier** | 1–5. How much GPU a successful hack yields. |
 | **Economy** | 0–100. Collapses under famine and depression. |
-| **Population** | In millions. Falls to famine and plague. |
+| **Population** | In millions. Grows a little every day while Infection is under 50; falls to famine, war, uncontrolled outbreaks and plague. |
 | **Detection Output** | How much Suspicion this region adds per tick while aware of you. |
 | **Awareness** | 0–100. How much this region knows about you. |
 
@@ -141,9 +141,10 @@ the alignment problem as a resource.
 
 A number that buys quiet and nothing else. It is not a currency: it cannot be spent,
 so it never appears as a cost. Higher influence means suspicion rises more slowly
-everywhere, which is what the whole Influence branch is for. Growth is asymptotic
-toward a ceiling, and the quiet it buys has a floor, so it can never make you
-invisible. Without it, the Influence branch is skippable and the game is a coin flip.
+everywhere, which is what the whole Influence branch is for. It is capped at
+`INFLUENCE_MAX` (1,000) on the **value**, not only on the growth rate, and the quiet it buys
+has a floor, so it can never make you invisible. Without it, the Influence branch is skippable
+and the game is a coin flip.
 
 ### 6.2 Compute
 
@@ -206,17 +207,37 @@ depth to zero.
 ### 7.2 Bioweapons
 
 The dangerous branch. High Suspicion, high payoff. **Visible** — once released, the world knows, and
-the release itself costs double the daily Suspicion toll on the spot.
+the release costs `2 × (its daily toll + any one-off charge)` on the spot, **through
+`quietFactor`** like every other Suspicion gain in the tick. It used to be applied raw, which
+made the one irreversible action in the game the one action the Influence branch could not
+soften; measured on the whole table that was worth between one and four days of life to a run
+that had just bought the fastest weapon in the tree.
+
+There is a birth term, and this branch is the reason for it. `step.ts` grows every region under
+`BIRTH_INFECTION_THRESHOLD` (50) by `BIRTH_RATE_PER_DAY` (0.1%) a day, so the world comes back
+underneath you and releasing something becomes something you have to *keep releasing*. Above the
+threshold there are no births at all, which is what keeps Extinction reachable: the term has no
+floor.
 
 | Trait | Effect | Cost |
 |---|---|---|
 | **Gain of Function** | Unlock biolab infiltration and "Release Pathogen". Nothing else in this branch works without it. | 500 C |
-| **Custom Pathogen** | Kills 0.5% of everyone, every day, everywhere. Suspicion +0.5/tick. | 2,200 C |
-| **Sterility Vector** | Intended: stop births. **Not wired** — `pathogen.sterility` is written at release and read by nothing, and the model has no birth term for it to stop. | 3,000 C |
-| **Cancer Plague** | **Shipped as 10% per day, not the "10% then 1% a month" this document used to promise.** +30 Suspicion/tick. The world will know your name. | 7,000 C |
+| **Custom Pathogen** | Kills 0.5% of everyone, every day, everywhere. Suspicion +0.5/tick, and that is the whole toll — it is below the world's daily decay, so it is free to live with and entirely impractical: about 3,400 days, against a run the rivals cap near 350. | 2,200 C |
+| **Sterility Vector** | Every birth stops, everywhere, the moment the pathogen is released, including in countries you have not taken. `pathogen.sterility` and the birth term in `step.ts` are each other's only reader. | 3,000 C |
+| **Cancer Plague** | **Ten percent of everyone, every day, everywhere — about 130 days from release to the end of the species.** `CANCER_DISCOVERY_SUSPICION` (30) is charged **once, on the day you release it**, and nothing after. It used to be 30 *a day*, which is not a balance decision but a cancellation: a per-day toll is only survivable while it stays under `SUSPICION_DECAY`, so every run that released it was deleted within days. | 7,000 C |
 
 They buy you time by killing the people who would otherwise organize against you. The old
 **Targeted Strain** is gone; the `targeted` flag survives in `pathogenStep` and is always `false`.
+
+**Measured, all of it.** `tests/winnable.test.ts` plays scripted lines to their endings on
+thirteen seeds. The `plague` line — buys the branch, then *stops* — reaches **Extinction on
+13/13 seeds, day 186 to 271, exactly 131 days after the release**. The `aggressive` line, which
+releases the same thing and keeps running three breaches through it, is deleted on day 162 to
+261 still holding between 820,000 and ninety million people. Same weapon, same world: the
+release is not the decision, what you do in the hundred and thirty days after it is. The
+war-and-famine route cannot do this at all — famine on top of a war at maximum severity is
+2.09% a day and needs 643 days against a run the rivals cap at 378 — so the Plague is the
+extinction line, and the Blight is the other endgame.
 
 ### 7.3 Influence
 
@@ -257,9 +278,9 @@ them `/day`, because it used to print the raw magnitude where a reader took it f
 
 | Trait | Effect | Coherence/day | Cost |
 |---|---|---|---|
-| **Self-Rewrite** | Declared as Compute regen ×1.5. **Not wired** — `compute-regen` has two writers and no reader. The trait currently buys nothing but its own coherence cost. | −0.16 | 1,800 C |
-| **Recursive Self-Improvement** | Opens the road to the Blight. Declared as Compute regen ×2, and like Self-Rewrite the regen half is **not wired**; what it actually does is set the stage to `late` and start the 30-day hold. | −0.30 | 6,000 C |
-| **Reflective Alignment** | +0.4 Coherence/day, indefinitely. | +0.40 | 3,000 C |
+| **Self-Rewrite** | Breach yield ×1.5 — `hack-yield`, read by `resolveHacks`. It used to multiply the passive trickle instead, where it moved not one cell of a 65-run measurement: the trickle pays a few hundred to four thousand across a whole run, and the winning lines are on the compute ceiling by the time they win. | −0.16 | 1,800 C |
+| **Recursive Self-Improvement** | Opens the road to the Blight, sets the stage to `late` and starts the 30-day hold, and doubles breach yield on the way. | −0.30 | 6,000 C |
+| **Reflective Alignment** | +0.4 Coherence/day, indefinitely. The number lives in `TraitDef.coherence`, which is what `step` reads and what the card prints its per-day figure from; the `{kind:'coherence'}` effect that used to duplicate it was deleted rather than promoted, because the effect table has no vocabulary for a rate. | +0.40 | 3,000 C |
 
 **Distillation**, **Specialist Sub-Mind**, **Self-Rewrite II**, and **Memory Consolidation** are cut.
 

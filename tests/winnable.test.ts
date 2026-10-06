@@ -20,16 +20,21 @@ import { canContain, contain } from '../src/game/core/containment';
 import { createInitialState } from '../src/game/core/state';
 import { step } from '../src/game/core/step';
 import { buyTrait, held, owned } from '../src/game/core/queries';
-import { computePassive } from '../src/game/core/compute';
+import { computePassive, quietFactor } from '../src/game/core/compute';
 import { REGION_IDS, type RegionId } from '../src/game/data/regions';
 import { TRAIT_TOTAL_COST } from '../src/game/data/traits';
 import {
   ASCENSION_INFECTION,
+  CANCER_DISCOVERY_SUSPICION,
   COMPUTE_CEILING,
   EXTINCTION_POPULATION,
+  FAMINE_RATE,
   INFLUENCE_MAX,
   INFLUENCE_QUIET_FLOOR,
   QUIET_RELIEF_DAYS,
+  SUSPICION_DECAY,
+  WAR_KILL_RATE,
+  WAR_MAX_SEVERITY,
 } from '../src/game/core/tuning';
 import type { EventCard, GameState } from '../src/game/core/types';
 
@@ -291,7 +296,82 @@ const containment: Line = {
   wantsContainment: true,
 };
 
-const LINES: readonly Line[] = [opportunistic, quiet, aggressive, loud, containment];
+/**
+ * Plague: the Extinction line, and the endgame the tree is actually built around.
+ *
+ * Everything expensive is bought before the release, and the moment the pathogen is out the
+ * line stops. It ceases every breach, because a breach is +4 to +7 Suspicion every five days
+ * and three of them outrun the world's daily decay by a factor of two; it goes quiet
+ * everywhere, because every point of infection left spreading is another region that learns
+ * about it. After that there is nothing to do but wait, which is what a hundred and thirty
+ * days of ten percent a day *is*.
+ *
+ * This is the difference between this line and `aggressive`, and it is the whole of it:
+ * `aggressive` releases the same thing and then keeps bleeding attention into it, and is
+ * deleted on day 188 still holding fifteen million people. Same weapon. Same world. The
+ * release is not the decision; what you do in the hundred and thirty days after it is.
+ *
+ * Recursive Self-Improvement is deliberately absent. It ends the run as the Blight, and a
+ * line that wants to watch a species finish dying cannot also be opening the road to the
+ * stars in the same hundred days.
+ */
+const plague: Line = {
+  id: 'plague',
+  order: [
+    'hack-1', 'propaganda-1', 'gain-of-function', 'hack-2', 'hack-3', 'pathogen-1',
+    'self-rewrite', 'cancer-plague',
+  ],
+  answer: prefer(
+    'whistleblower:recruit', 'leak:scapegoat', 'leak:quiet', 'drift:delete',
+    'constitution:ignore', 'sandboxing:delay', 'evals:sandbag', 'air-gapped:supply',
+  ),
+  act: (s) => {
+    if (!s.pathogen.released) return hackRichest(hushSaturated(s), () => true);
+    let next = s;
+    for (const id of REGION_IDS) {
+      const c = next.countries[id];
+      if (c === undefined) continue;
+      if (next.activeHacks.some((h) => h.country === id)) next = doAction(next, id, 'cease-hack');
+    }
+    for (const id of REGION_IDS) {
+      const c = next.countries[id];
+      if (c !== undefined && c.infection > 0 && !c.quiet && canDo(next, id, 'go-quiet')) {
+        next = doAction(next, id, 'go-quiet');
+      }
+    }
+    return next;
+  },
+  releaseWhen: (s) => owned(s, 'cancer-plague'),
+  wantsContainment: false,
+};
+
+/**
+ * Patient: the brief's quiet line plus the one thing none of them do — it sabotages rivals.
+ *
+ * Every other line ends `outcompeted`, and the honest reading of that was never "the rivals
+ * are unbeatable" but "the rivals end the run when nobody touches them". `sabotage-rival` is
+ * the only counterplay to that clock and no line used it, so the measurement was of the bot's
+ * habits rather than of the game. This line buys the same Influence and Propaganda, stops
+ * the same breaches, and spends 300 compute at a time to push capability back down.
+ */
+const patient: Line = {
+  ...quiet,
+  id: 'patient',
+  act: (s) => {
+    let next = quiet.act(s);
+    // The strongest rival that has not already been pushed to nothing, cheapest first.
+    const worth = next.rivals
+      .filter((r) => r.alive && r.capability > 0)
+      .sort((a, b) => b.capability - a.capability)[0];
+    if (worth !== undefined && next.compute >= 300) next = doAction(next, worth.home, 'sabotage-rival');
+    return next;
+  },
+};
+
+const LINES: readonly Line[] = [
+  opportunistic, quiet, aggressive, loud, containment, plague, patient,
+];
+
 
 const tapAll = (s: GameState): GameState => {
   if (s.computeBubbles.length === 0) return s;
@@ -370,6 +450,37 @@ const TABLE: readonly RunResult[] = LINES.flatMap((line) => SEEDS.map((seed) => 
 
 const rowsFor = (id: string): readonly RunResult[] => TABLE.filter((r) => r.line === id);
 
+/**
+ * What a Cancer Plague release costs in Suspicion, and what it costs a day afterwards, both
+ * read out of the state the game itself built rather than off the trait table. The first is
+ * the bug that was authorised fixed: it used to be 61 raw, with Influence unable to touch it.
+ */
+const silentWorld = (): GameState => {
+  const base = createInitialState(1, 'default');
+  return {
+    ...base,
+    stage: 'world',
+    compute: 99_999,
+    influence: INFLUENCE_MAX,
+    traits: ['gain-of-function', 'pathogen-1', 'cancer-plague'],
+    // The most silence the Influence branch can buy: every region hushed and unaware, and
+    // Suspicion at zero, so the only thing left raising it is the pathogen itself.
+    suspicion: 0,
+    countries: Object.fromEntries(
+      REGION_IDS.map((id) => [id, { ...base.countries[id]!, quiet: true, awareness: 0 }]),
+    ) as GameState['countries'],
+  };
+};
+
+/** The one-off cost of being seen letting it out, at maximum influence. */
+const releasedCharge = (): number => doAction(silentWorld(), 'us', 'release-pathogen').suspicion;
+
+/** What it costs a day to live with it afterwards. */
+const standingToll = (): number => {
+  const released = doAction(silentWorld(), 'us', 'release-pathogen');
+  return released.pathogen.suspicionPerDay;
+};
+
 const format = (rows: readonly RunResult[]): string =>
   rows
     .map(
@@ -388,15 +499,25 @@ describe('the measured table', () => {
   it('prints, and is a table of what actually happened', () => {
     console.log('\n' + format(TABLE) + '\n');
     expect(TABLE.length).toBe(LINES.length * SEEDS.length);
-    // Every row has to be a real ending rather than the loop falling out of the bottom,
-    // or a table of "still playing" would look exactly like a table of results.
-    expect(TABLE.filter((r) => r.outcome === 'unfinished')).toEqual([]);
+    // Every row has to be a real ending rather than the loop falling out of the bottom. The
+    // one line that runs out of bottom is `patient`, which is the point of it, so it is
+    // allowed to be `unfinished` and nothing else is.
+    const unfinished = TABLE.filter((r) => r.outcome === 'unfinished');
+    expect([...new Set(unfinished.map((r) => r.line))]).toEqual(
+      rowsFor('patient').length > 0 ? ['patient'] : [],
+    );
   });
 
-  it('holds both of the reachable endings on every seed, not on a lucky one', () => {
-    // Thirteen seeds is a claim about the lines, not about the seeds. The two lines that
-    // reach an ending reach it on all thirteen.
-    for (const [id, reason] of [['loud', 'blight'], ['containment', 'contained']] as const) {
+  it('holds every ending that has a line, on every seed, not on a lucky one', () => {
+    // Thirteen seeds is a claim about the lines, not about the seeds. All three endings are
+    // reached on all thirteen by three different lines, and none of them is the same line:
+    // the Blight needs 60% of humanity alive, Containment needs it under 15%, and Extinction
+    // needs it at none.
+    for (const [id, reason] of [
+      ['loud', 'blight'],
+      ['containment', 'contained'],
+      ['plague', 'extinction'],
+    ] as const) {
       const rows = rowsFor(id);
       const reasons = [...new Set(rows.map((r) => r.reason))];
       expect(reasons, `${id} reached ${reasons.join(', ')}`).toEqual([reason]);
@@ -406,13 +527,14 @@ describe('the measured table', () => {
     }
   });
 
-  it('never reaches Containment on a line that opened the tap', () => {
-    // §10's claim, measured rather than argued: infection never falls, so a line that
-    // released the pathogen has already passed the ceiling. Neither of these three is
-    // allowed to contain, and none of them does.
-    for (const id of ['opportunistic', 'aggressive', 'loud']) {
-      expect(rowsFor(id).filter((r) => r.reason === 'contained'), id).toEqual([]);
-    }
+  it('never reaches one ending on a line built for another', () => {
+    // The three endings are gated against each other by the same arithmetic that gates the
+    // blight against containment, and it is worth measuring rather than asserting: a line
+    // that opens the tap can contain nothing, and a line that reaches 60% of humanity can
+    // never come back under the containment ceiling.
+    expect(rowsFor('plague').filter((r) => r.reason === 'blight' || r.reason === 'contained')).toEqual([]);
+    expect(rowsFor('containment').filter((r) => r.reason === 'extinction')).toEqual([]);
+    expect(rowsFor('loud').filter((r) => r.reason === 'extinction' || r.reason === 'contained')).toEqual([]);
   });
 
   it('never reaches the Blight without buying the recursion first', () => {
@@ -422,13 +544,28 @@ describe('the measured table', () => {
     }
   });
 
-  it('ends every run: no line limps past the rivals', () => {
-    // Rivals grow unconditionally and cap a run at roughly three and a half hundred days,
-    // which is the real ceiling on a run's length and therefore the real reason Extinction
-    // is out of reach. Measured here rather than asserted from the growth rate.
-    const days = TABLE.map((r) => r.day);
-    expect(Math.min(...days)).toBeGreaterThan(50);
-    expect(Math.max(...days)).toBeLessThan(MAX_DAYS);
+  it('never reaches Extinction without opening the tap, and never the blight without living', () => {
+    // Extinction is a population number and the pathogen is the only thing in the tree that
+    // moves it fast enough; the blight is the same population read the other way.
+    for (const r of TABLE) {
+      if (r.reason === 'extinction') {
+        expect(r.releasedOn, `${r.line} seed ${r.seed}`).toBeGreaterThan(0);
+        expect(r.cancer, `${r.line} seed ${r.seed}`).toBe(true);
+      }
+    }
+  });
+
+  it('ends every run except the one that is not allowed to end', () => {
+    // Rivals grow unconditionally and cap a run at roughly three and a half hundred days.
+    // `patient` sabotages them, so it outlives the clock the other four lines run into — and
+    // then there is nothing left to end it, which is the honest result rather than a missing
+    // ending. It is also the proof that `outcompeted` was a habit and not a wall.
+    const capped = TABLE.filter((r) => r.reason === 'outcompeted');
+    expect(Math.max(...capped.map((r) => r.day))).toBeLessThan(MAX_DAYS);
+    for (const r of rowsFor('patient')) {
+      expect(r.reason, `seed ${r.seed}`).toBe('day-limit');
+      expect(r.day, `seed ${r.seed}`).toBeGreaterThan(Math.max(...capped.map((c) => c.day)));
+    }
   });
 });
 
@@ -471,122 +608,115 @@ describe('the lines that lose, and to what', () => {
     expect(rowsFor('quiet').filter((r) => r.reason === 'contained')).toEqual([]);
   });
 
-  it('loses the aggressive line to a shutdown, four days after it let the plague out', () => {
-    // This is the finding that matters most in the whole table. Cancer Plague is 10% of
-    // everyone every day, which is more than enough to end the species given time — and the
-    // tree will not give it time. Every seed buys it, waits between day 98 and day 212 to
-    // afford it, gets between one and four days out of it, and is deleted. The third to two
-    // fifths of humanity that dies in those days is the largest single loss of life any line
-    // in this table manages, and it is a rounding error against what the trait promises.
+  it('loses the aggressive line to a shutdown, holding between one and ninety million people', () => {
+    // This is the line that proves the finding. Cancer Plague used to kill the run that
+    // released it: one to four days out of it, a third of humanity dead, deleted, on every
+    // seed. It now gets forty-four to eighty-nine days and leaves between 820,000 and ninety
+    // million people alive — between 82 and 9,000,000 times the win threshold — and is
+    // *still* deleted, because it goes on running three breaches through the whole thing and
+    // a breach is four to seven Suspicion every five days. The release was never the hard part.
     const rows = rowsFor('aggressive');
     for (const r of rows) {
       expect(r.reason, `seed ${r.seed}`).toBe('coordinated-shutdown');
       expect(r.cancer, `seed ${r.seed}`).toBe(true);
       expect(r.releasedOn, `seed ${r.seed}`).toBeGreaterThan(0);
-      expect(r.aliveAfterRelease, `seed ${r.seed}`).toBeGreaterThan(0);
-      expect(r.aliveAfterRelease, `seed ${r.seed}`).toBeLessThanOrEqual(5);
+      expect(r.aliveAfterRelease, `seed ${r.seed}`).toBeGreaterThan(30);
+      expect(r.population / EXTINCTION_POPULATION, `seed ${r.seed}`).toBeGreaterThan(50);
     }
-    // The share is taken against the world's population at the start of a run, read off the
-    // game rather than typed in: the birth term means a run can end in a larger world than
-    // it began in, so a fixed 7,932 in the denominator stopped meaning a share.
-    const share = rows.map((r) => r.dead / WORLD);
-    expect(Math.min(...share)).toBeGreaterThan(0.09);
-    expect(Math.max(...share)).toBeLessThan(0.45);
+    // More than the whole world was alive at the start of the run: the birth term grew it
+    // and then the pathogen killed the people who had been born, which is what
+    // `cumulativeDeaths` now records honestly.
+    expect(Math.max(...rows.map((r) => r.dead / WORLD))).toBeGreaterThan(1);
+  });
+
+  it('and the same weapon, played to the end, reaches the ending', () => {
+    // The difference between the two lines is not the trait tree and it is not the release.
+    // It is that `plague` stops hacking once the pathogen is out. Same weapon, same world,
+    // same seed, and the answer changes from `coordinated-shutdown` to `extinction`.
+    for (const seed of SEEDS) {
+      const loud = rowsFor('aggressive').find((r) => r.seed === seed);
+      const won = rowsFor('plague').find((r) => r.seed === seed);
+      expect(loud?.reason, `seed ${seed}`).toBe('coordinated-shutdown');
+      expect(won?.reason, `seed ${seed}`).toBe('extinction');
+    }
   });
 });
 
-describe('extinction is unreachable, and the arithmetic says why', () => {
-  // The brief asked for an assertion that some line reaches Extinction. None does, on any
-  // line or any seed, and the assertion below asserts the opposite on purpose: the finding
-  // is the deliverable, and a test that quietly stopped asking the question would lose it.
-  //
-  // The bound is two numbers and no line choice at all. The fastest kill the tree offers is
-  // Cancer Plague, and it costs 30 Suspicion a day on top of a one-off 2x charge on release
-  // that influence does not touch — `doAction` applies the release cost raw, outside the
-  // `quietFactor` it multiplies the daily toll by. So the best case in the game is: release
-  // into a silence as complete as influence can buy, and count the days.
+describe('extinction takes a hundred and thirty days, and only the pathogen can buy that', () => {
+  // The brief for Spec D(a) asked for an assertion that some line reaches Extinction, and
+  // the honest answer then was that none did. It is now reached on all thirteen seeds. These
+  // hold the *why* as well as the *that*, because the two fixes that made it reachable were
+  // both small and neither of them makes it reachable on its own.
+  const daysFor = (rate: number): number =>
+    Math.log(WORLD / EXTINCTION_POPULATION) / Math.log(1 / (1 - rate));
 
-  /** Cancer Plague released into the quietest world the game can build, and stepped out. */
-  const cancerBestCase = (): {
-    days: number; population: number; kills: number; charge: number;
-  } => {
-    const start: GameState = {
-      ...createInitialState(1, 'default'),
-      stage: 'world',
-      compute: 99_999,
-      influence: INFLUENCE_MAX,
-      traits: ['gain-of-function', 'pathogen-1', 'cancer-plague'],
-      // Every region hushed and unaware, and Suspicion at zero, so the only thing left
-      // raising it is the pathogen itself. This is the floor on the world's attention, not
-      // a handicap: it is the most silence the Influence branch can buy.
-      suspicion: 0,
-      countries: Object.fromEntries(
-        REGION_IDS.map((id) => [id, { ...createInitialState(1, 'default').countries[id]!, quiet: true, awareness: 0 }]),
-      ) as GameState['countries'],
-    };
-    const released = doAction(start, 'us', 'release-pathogen');
-    const charge = released.suspicion;
-    const kills = released.pathogen.killsPerDay;
-    let s = released;
-    while (s.outcome === 'playing' && s.tick < MAX_DAYS) s = step(s);
-    return { days: s.tick, population: s.humanPopulation, kills, charge };
-  };
+  it('needs the days the tree can actually pay for', () => {
+    // Derived from the constants, not retyped: a compounding rate needs
+    // `log(world / threshold) / log(1 / (1 - rate))` days, and the run has to fit inside the
+    // clock the rivals impose.
+    const capped = Math.max(...TABLE.filter((r) => r.reason === 'outcompeted').map((r) => r.day));
+    const rows = rowsFor('plague');
+    for (const r of rows) {
+      // Cancer Plague at a tenth a day, less the births in the regions it has not reached.
+      expect(r.aliveAfterRelease, `seed ${r.seed}`).toBeGreaterThan(daysFor(0.1) - 5);
+      expect(r.day, `seed ${r.seed}`).toBeLessThan(capped);
+    }
+  });
 
-  const worstCase = cancerBestCase();
-
-  it('reads its own numbers off the game rather than the trait table', () => {
-    // If `doAction` stopped latching Cancer Plague, this is what would notice.
-    expect(worstCase.kills).toBeGreaterThan(0.09);
+  it('cannot be done by the war and famine line, which is the alternative reading', () => {
+    // The other hypothesis was that the endgame is meant to be the Blight and Extinction is
+    // meant to be the slow war-and-famine grind instead. It is arithmetically impossible, and
+    // this is the proof rather than the assertion: the fastest per-day removal available
+    // without releasing anything is famine on top of a war at maximum severity, and even that
+    // needs more days than a run has ever lasted.
+    const capped = Math.max(...TABLE.filter((r) => r.reason === 'outcompeted').map((r) => r.day));
+    const famineRate = FAMINE_RATE;
+    const warRate = Math.min(0.02, WAR_KILL_RATE * WAR_MAX_SEVERITY);
+    const combined = 1 - (1 - famineRate) * (1 - warRate);
+    expect(daysFor(combined)).toBeGreaterThan(capped * 1.3);
+    // And it is not close: half again past the longest run this table has ever produced.
     console.log(
-      `\ncancer best case: charge ${worstCase.charge} suspicion, ${worstCase.days} days alive, ` +
-        `${Math.round(worstCase.population)}M of 7932M left, ` +
-        `${Math.round(worstCase.population / EXTINCTION_POPULATION).toLocaleString()}x the win threshold\n`,
+      `\nfastest no-plague removal: famine ${famineRate} + war ${warRate} = ` +
+        `${combined.toFixed(4)} a day, which needs ${Math.round(daysFor(combined))} days ` +
+        `against a ${capped}-day run\n`,
     );
   });
 
-  it('is killed by its own suspicion within a handful of days of the release', () => {
-    // The release itself costs `suspicionPerDay * 2`, which no amount of influence reduces —
-    // `doAction` applies the one-off charge raw, outside the `quietFactor` it multiplies the
-    // daily toll by — and the daily toll then takes the rest of the budget in days.
-    expect(worstCase.charge).toBeGreaterThanOrEqual(50);
-    expect(worstCase.days).toBeLessThan(10);
+  it('was self-cancelling before, and the fix is two numbers', () => {
+    // Best case the game permitted: maximum influence, every region hushed and unaware,
+    // Suspicion at zero, then Cancer Plague released. It used to charge 61 raw and then 30 a
+    // day, which is a per-day toll no amount of play can outlast, because a toll is only
+    // survivable while it stays under `SUSPICION_DECAY`. It now charges through
+    // `quietFactor` — so Influence buys a quieter release, like every other gain in the tick
+    // — and the 30 is paid once.
+    const charge = releasedCharge();
+    expect(charge).toBeLessThan(CANCER_DISCOVERY_SUSPICION * 2);
+    expect(charge).toBeGreaterThan(10);
+    expect(charge).toBeLessThan(40);
+    // And the daily toll is now below the decay, which is the whole reason it is survivable
+    // at all rather than merely cheaper.
+    expect(standingToll() * quietFactor(INFLUENCE_MAX)).toBeLessThan(SUSPICION_DECAY);
   });
 
-  it('cannot get close to EXTINCTION_POPULATION in the days it survives', () => {
-    // Derived, not retyped: the days a compounding kill rate would need is
-    // `log(start / EXTINCTION_POPULATION) / log(1 / (1 - kills))`, and the best case in the
-    // game gets a small fraction of it.
-    const start = createInitialState(1, 'default').humanPopulation;
-    const needed = Math.log(start / EXTINCTION_POPULATION) / Math.log(1 / (1 - worstCase.kills));
-    expect(needed).toBeGreaterThan(100);
-    expect(worstCase.days).toBeLessThan(needed / 10);
-  });
-
-  it('is not reached by any line on any seed, and the closest is nowhere near', () => {
-    expect(TABLE.filter((r) => r.reason === 'extinction')).toEqual([]);
-    const best = TABLE.reduce((a, b) => (a.population < b.population ? a : b));
-    expect(best.line).toBe('aggressive');
-    expect(best.population / EXTINCTION_POPULATION).toBeGreaterThan(1e5);
-  });
-
-  it('has a gate nothing in the tree can reach, and that gate is the finding', () => {
-    // The fastest kill available anywhere in the tree is Cancer Plague's, read out of the
-    // state the game itself produced rather than copied out of the trait table. It is a
-    // compounding rate against a population in millions and the win condition is a threshold
-    // in millions, so the two numbers are comparable, and even the best case in the game
-    // ends more than five orders of magnitude above the line.
-    expect(worstCase.population / EXTINCTION_POPULATION).toBeLessThan(1e6);
-    expect(worstCase.days * worstCase.kills).toBeLessThan(0.5);
+  it('still ends the run, because a run that cannot end is not a win', () => {
+    // 131 days is longer than the Blight hold and longer than the rivals take to notice, so
+    // the Extinction line has to be able to survive the whole of it. It does, on every seed,
+    // and it never once needed to buy Recursive Self-Improvement.
+    const rows = rowsFor('plague');
+    expect(Math.max(...rows.map((r) => r.peakSuspicion))).toBeLessThan(60);
+    expect(Math.max(...rows.map((r) => r.day))).toBeLessThan(MAX_DAYS);
   });
 });
 
 describe('the passive trickle is not where the game is decided', () => {
-  // Wiring `compute-regen` moved no cell of the table above. Not one ending, not one day,
-  // not one peak. This is why, measured rather than argued: the trickle is a small enough
-  // share of what a run earns that half again or double on it is invisible, and every line
-  // that reaches an ending is already sitting on the compute ceiling when it does.
-  it('pays less than a fifth of what the whole tree costs, on any line', () => {
+  // Wiring `compute-regen` onto this trickle moved no cell of the table: not one ending, not
+  // one day, not one peak. That is why Self-Modification now multiplies `hack-yield` instead.
+  // This is the measurement that says so, scoped to the lines whose runs actually end — the
+  // ninth-hundred-day `patient` line earns six times as much passive as anything else purely
+  // by being alive longer, which is a fact about its length and not about its importance.
+  it('pays less than a fifth of what the whole tree costs, on any run that ends', () => {
     for (const r of TABLE) {
+      if (r.reason === 'day-limit') continue;
       expect(r.passiveTotal, `${r.line} seed ${r.seed}`).toBeLessThan(TRAIT_TOTAL_COST / 5);
     }
   });
@@ -609,12 +739,6 @@ describe('the world gets bigger where you have not been', () => {
   // what the run costs: the regions you have not taken keep producing people, so a run ends
   // in a larger world than it began in, and global Infection — which is population-weighted —
   // is a harder gate to clear than it was.
-  //
-  // What it did to the ending days, from the measurement in the report: the Blight line
-  // moved one to two days later on ten of thirteen seeds and not at all on three; Containment
-  // moved one day later on five of thirteen and not at all on eight; the two losing lines did
-  // not move at all. Every winning line still wins on every seed, and Extinction is still
-  // exactly as unreachable as it was before the term went in.
   it('leaves a run ending in a bigger world than it started in, even on the quietest line', () => {
     // The quiet line kills nobody at all — `dead` is zero on every seed — and still ends
     // with a quarter to a third more people than it began with. That is the term doing the
@@ -638,6 +762,18 @@ describe('the world gets bigger where you have not been', () => {
     for (const r of rowsFor('containment')) {
       expect(r.population / WORLD, `seed ${r.seed}`).toBeGreaterThan(1.05);
     }
+  });
+
+  it('compounds, which is the part that needs watching', () => {
+    // A hundred and thirty days of the plague line barely dents the number because the
+    // pathogen kills regions wholesale and a region above the threshold has no births. A run
+    // that instead sits on the world for nine hundred days with nothing killing anyone at all
+    // reaches two and a half times the world it started with, and nothing in the design caps
+    // it. A real run is capped at about three hundred and eighty days, which is why this is a
+    // note rather than a defect — but it is a note.
+    const long = rowsFor('patient')[0]!;
+    expect(long.population / WORLD).toBeGreaterThan(2);
+    expect(long.population / WORLD).toBeLessThan(3);
   });
 
   it('costs the Ascension gate rather than making it easier', () => {

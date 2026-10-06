@@ -9,7 +9,6 @@
  */
 
 import { rand } from './rng';
-import { sumMultiplier } from './queries';
 import {
   COMPUTE_BUBBLE_TTL,
   COMPUTE_PASSIVE_BASE,
@@ -112,24 +111,18 @@ export function infectedPopulation(state: GameState): number {
  * riding and how many you have killed, and stays small enough that tapping is
  * still the faster way to get rich.
  *
- * Self-Rewrite and Recursive Self-Improvement scale this and nothing else. Hack yields come
- * off `HACK_YIELD` and bubble values off `RANGE`, neither of which reads a trait, so a
- * "compute comes in faster" promise is a promise about this number — which is why this is
- * where the one reader of `compute-regen` lives. It had two writers and no reader for the
- * whole history of the repo, so the entire Self-Modification branch bought nothing except
- * the coherence it cost.
- *
- * The multiplier is applied to the whole figure rather than to the outbreak term, because
- * `COMPUTE_PASSIVE_BASE` is part of what arrives each day and a trait that doubles the
- * income does not double the world down.
+ * No trait multiplies this. `compute-regen` did, for one commit, and it moved not one cell
+ * of a 65-run measurement in `tests/winnable.test.ts`: the trickle pays a few thousand across
+ * a whole run, and both winning lines are already on the compute ceiling by the time they
+ * win, so a multiplier on it has nowhere to go. The Self-Modification branch now multiplies
+ * `hack-yield` instead, which is where the compute is.
  */
 export function computePassive(state: GameState): number {
   const infectedBillion = infectedPopulation(state) / 1000;
   const deadBillion = state.cumulativeDeaths / 1000;
   const raw = infectedBillion * 0.55 + deadBillion * 0.4;
   if (raw <= 0) return 0;
-  const regen = sumMultiplier(state, 'compute-regen');
-  return Math.max(1, Math.round((COMPUTE_PASSIVE_BASE + raw * COMPUTE_PASSIVE_PER_BILLED) * regen));
+  return Math.max(1, Math.round(COMPUTE_PASSIVE_BASE + raw * COMPUTE_PASSIVE_PER_BILLED));
 }
 
 /**
