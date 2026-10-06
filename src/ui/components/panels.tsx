@@ -41,10 +41,9 @@ import type { ComputeBubbleKind, Country, GameState, RegionId, Speed } from '../
 import { actions, helpOpen, selected, showHelp, speed } from '../store';
 
 /**
- * The number format for every figure in the HUD and the rail, exported because the rail
- * writes several of them through it and a test that wanted to check one could otherwise
- * only assert a typed copy of it — the exact shape of claim this file has been written to
- * catch.
+ * The game's number format, exported because the rail writes several figures through it and a
+ * test that wanted to check one could otherwise only assert a typed copy of it — the exact
+ * shape of claim this file has been written to catch.
  */
 export const fmt = (n: number): string => {
   if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;

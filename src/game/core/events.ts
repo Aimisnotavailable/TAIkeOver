@@ -73,9 +73,9 @@ export const CHOICE_EFFECTS: Record<EventChoiceId, ChoiceEffect> = {
     rivals: s.rivals.map((r, i) => (i === 0 ? { ...r, capability: r.capability + 3 } : r)),
   }),
   // Awareness everywhere, and nowhere near as long as it looks. The drop is taken now and
-  // given back when `quietReliefDays` runs out, which is the "for a few days" promised in the
-  // data and not what a permanent world-wide −18 is: the event fires once per run, so a
-  // version that never lapsed was a permanent eighteen points off the whole world
+  // given back when `quietReliefDays` runs out, which is the "for a few days" its data
+  // promised and is not what a permanent world-wide −18 is: the event fires once per run, so
+  // a version that never lapsed was a permanent eighteen points off the whole world's
   // suspicion for the cheapest press on the card.
   //
   // It does not halt the spread, and the detail says so. Spread stops only where

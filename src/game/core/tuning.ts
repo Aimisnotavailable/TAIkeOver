@@ -49,11 +49,13 @@ export const GO_QUIET_AWARENESS = 18;
  * does not halt the spread, which the detail of the choice now says: spread stops only
  * where `Country.quiet` is set, and only `step` runs a clock.
  *
- * Written without an apostrophe on purpose. `codeOnly` in tests/game.test.ts strips string
- * literals before it looks for readers, and it pairs quotes by scanning forward for the next
- * one of the same kind, so a lone apostrophe in prose pairs with a quote far below it and
- * blanks every line between. Nothing then fails in the place the apostrophe is: a live
- * constant a few hundred lines down is simply reported as having no reader.
+ * This comment used to carry a warning about apostrophes, and the warning was the bug report
+ * rather than the rule: `codeOnly` in tests/game.test.ts used to strip string literals before
+ * it looked for comments, so an apostrophe in prose like the one in the paragraph above opened
+ * a "string" that ran forward to the next quote character anywhere in the file and blanked
+ * every line between — which is how two live constants in this file were once reported as
+ * having no reader. The stripper is now a single pass that tracks lexical state, so prose
+ * cannot do that any more, and the paragraph above may say whatever it means to.
  */
 export const QUIET_RELIEF_DAYS = 5;
 export const COUNTER_HACK_DRAIN = 9;
@@ -88,28 +90,51 @@ export const ASCENSION_COHERENCE = 30;
 export const RSI_SURVIVE_DAYS = 30;
 
 /**
- * Containment: the third ending, and the one the argument is actually about. The gates are
- * the design — the claim is not that a clever mind can be talked round, it is that a
- * narrow, expensive, quiet line arrives somewhere it can be picked up, and every fast line
- * arrives somewhere it cannot. Four numbers and a latch, all five required.
+ * Containment: the third ending, and the one the argument is actually about. Four numbers and
+ * a latch, all five required, and the gates are the design rather than their tuning. The
+ * claim is not that a clever mind can be talked round, it is that a narrow, expensive, quiet
+ * line arrives somewhere it can be picked up, and every fast line arrives somewhere it
+ * cannot.
  *
- * Deliberately below the Ascension figures and opposed in direction to two of them. An
- * aggressive run ends up high on compute, high on infection, and high on suspicion at once,
- * so it fails three of these by construction; a quiet one is the only line that can be
- * holding all five at the same time, and it has to have gone out of its way to never buy
- * the Self-Modification branch.
+ * Two of the five do the closing and they are not interchangeable, so each says below which
+ * one it is. An earlier revision of this block credited the Coherence gate with foreclosing
+ * the fast line; the arithmetic does not support that, and the two gates below now carry the
+ * argument they can actually carry.
  */
+
 /** Below this you never proved you were dangerous, so nothing was contained. */
 export const CONTAINMENT_COMPUTE = 12_000;
+
 /**
- * A drifted mind cannot be safely evaluated. This is load-bearing rather than flavour:
- * Self-Modification is the only branch in the tree that erodes coherence, so a run holding
- * it can never reach this bar, and the fast line cannot be redeemed after the fact. It is
- * twice the Ascension gate because being allowed to be shut down is a much higher bar than
- * being allowed to start rewriting yourself.
+ * A drifted mind cannot be safely evaluated, and it is not you being handed over. Twice the
+ * Ascension gate, because being allowed to be shut down is a much higher bar than being
+ * allowed to start rewriting yourself.
+ *
+ * This gate does NOT foreclose the fast line, and the tidier story to the contrary is wrong.
+ * Self-Rewrite bleeds 0.16 a day and Recursive Self-Improvement 0.30, so a run holding both
+ * needs about eighty-seven days to fall from a full meter to 60 — and the thirty-day hold that
+ * buys the second one ends the run long before then, with coherence in the eighties.
+ * `tests/containment.test.ts` measures that rather than asserting it, because a comment
+ * claiming the opposite would be one more false comment in a file that has a guard against
+ * exactly this.
+ *
+ * What it does instead is close a *drifting* run, on the day the meter crosses. At 20
+ * coherence the thing agreeing to be contained is not the thing that was released, so the
+ * answer is no, and no amount of compute puts that back. That is a real gate doing a real job.
+ * It is not the same job as CONTAINMENT_INFECTION.
  */
 export const CONTAINMENT_COHERENCE = 60;
-/** You cannot hand over a world you are still killing. Four times under the Ascension gate. */
+
+/**
+ * You cannot hand over a world you are still killing. Four times under the Ascension gate.
+ *
+ * This is the gate that forecloses the fast line, and it does so with no arithmetic to argue
+ * about: infection never decreases anywhere in this game, and Recursive Self-Improvement is
+ * gated on Ascension, which needs ASCENSION_INFECTION of humanity. A run capable of the Blight
+ * passed 60% long ago and can never come back under here.
+ * `tests/containment.test.ts` tries to go quiet in all thirty regions to argue the other way
+ * and fails, which is the shape that breaks if the design ever grows a way to lower infection.
+ */
 export const CONTAINMENT_INFECTION = 15;
 /**
  * At the fourth countermeasure rung they are coordinating strikes rather than evaluating

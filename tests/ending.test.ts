@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import {
+  ENDING_COLOURS,
   ENDING_HEADINGS,
   ENDING_TEXT,
   INTERVENTIONS,
@@ -52,6 +54,52 @@ describe('the end screen', () => {
     expect(ENDING_HEADINGS.contained).toBe('Contained');
     expect(ENDING_HEADINGS.contained).not.toBe(ENDING_HEADINGS.blight);
     expect(ENDING_TEXT.contained).not.toBe(ENDING_TEXT.blight);
+  });
+
+  it('does not colour containment like a win, because it is not one', () => {
+    // `outcome: 'won'` is the design — the game counts Containment as a way out, not a
+    // failure — and that flag is also what used to paint its heading in the same green as
+    // Extinction and the Blight. Green is a celebration colour and this ending is not a
+    // celebration; it is an escape that cost the player the game. So it gets its own colour
+    // and this holds it distinct from both genuine victories.
+    expect(ENDING_COLOURS.contained).toBeTruthy();
+    expect(ENDING_COLOURS.contained).not.toBe(ENDING_COLOURS.extinction);
+    expect(ENDING_COLOURS.contained).not.toBe(ENDING_COLOURS.blight);
+    // Not a loss colour either: that would tell the player the run failed, which is a
+    // different lie, and the counter under it reads zero civilizations either way.
+    expect(ENDING_COLOURS.contained).not.toBe(ENDING_COLOURS['coordinated-shutdown']);
+    expect(ENDING_COLOURS.contained).not.toBe(ENDING_COLOURS['coherence-lost']);
+    expect(ENDING_COLOURS.contained).not.toBe(ENDING_COLOURS.outcompeted);
+  });
+
+  it('colours every ending, and gives the two real wins the win colour', () => {
+    // Derived both directions: an ending with no colour falls back to ink and renders as a
+    // heading in a colour that means nothing, and that fallback is invisible until someone
+    // is looking for it.
+    const reasons = reasonsTheCodeWrites();
+    for (const r of reasons) expect(ENDING_COLOURS[r], r).toBeTruthy();
+    expect(Object.keys(ENDING_COLOURS).sort()).toEqual(reasons.sort());
+    const wins = reasons.filter((r) => r === 'extinction' || r === 'blight');
+    expect(wins.length).toBeGreaterThan(1);
+    for (const r of wins) expect(ENDING_COLOURS[r], r).toBe(ENDING_COLOURS.extinction);
+  });
+
+  it('takes the colours from the stylesheet, not from a literal in the component', () => {
+    // Every token has to exist or the declaration is dropped and the heading renders in
+    // whatever the cascade left behind, which is the failure
+    // tests/styles.test.ts exists to catch and which has already happened six times in this
+    // stylesheet.
+    const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    const tokens = [...new Set(Object.values(ENDING_COLOURS))].map((c) => /^var\((--[\w-]+)\)$/.exec(c)?.[1] ?? '');
+    expect(tokens.every((t) => t !== '')).toBe(true);
+    for (const token of tokens) expect(css, token).toMatch(new RegExp(`^\\s*${token}\\s*:`, 'm'));
+  });
+
+  it('renders the heading with the colour table rather than a won/lost ternary', () => {
+    const end = appSource.match(/function EndScreen[\s\S]*?\r?\n}\r?\n/);
+    if (end === null) throw new Error('no EndScreen component in app.tsx');
+    expect(end[0]).toContain('ENDING_COLOURS[reason]');
+    expect(end[0]).not.toMatch(/won\s*\?\s*['"]var\(/);
   });
 
   it('does not congratulate the player on any ending, including the win', () => {

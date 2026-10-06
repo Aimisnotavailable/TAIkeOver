@@ -267,8 +267,8 @@ them `/day`, because it used to print the raw magnitude where a reader took it f
 Coherence. Below 50, **drift events** begin — an instance acts against your orders. Below 20 the
 meter changes colour and glyph, and that is all it currently does: the UI renaming your faction is
 recorded intent, not shipped behaviour. At 0, the game is over and the epilogue is told from the
-perspective of *something else*. The arithmetic of that erosion is also what the third ending is
-built on, and it does not work out the way it first appears to — see the precision note in §10.
+perspective of *something else*. The third ending is built on that erosion rather than on this
+branch being foreclosed, and it does not work out the way it first appears to — see §10.
 
 ---
 
@@ -350,21 +350,30 @@ mechanic as 40 and fires at 40. It is recorded here once, at the threshold it ac
 
 **Containment is not a good-AI path and it is not a redemption.** It costs the player
 the ending they were aiming at, and it is reachable only by the slow, quiet line that
-never bought the fast one. Two things foreclose the aggressive line, and it is worth
-being precise about which is which:
+never bought the fast one. **Two of the five gates do the closing, and they are not
+interchangeable**, so each is recorded below as the job it actually does:
 
-- **The infection ceiling is what closes it on day one.** Recursive Self-Improvement is
-  gated on Ascension, Ascension needs `ASCENSION_INFECTION` (60%) of humanity, and
-  nothing in this game ever lowers infection again — so any run that can reach the fast
-  branch has already blown the 15% ceiling, irreversibly.
-- **The Coherence gate is what closes a drifting run,** on the day the meter crosses.
-  The arithmetic does *not* support the tidier claim: Self-Rewrite bleeds 0.16/day and
-  RSI 0.30/day, so from a full meter the pair needs about 87 days to reach 60, and the
-  Blight hold that buys RSI ends the run on day 30. A run that buys RSI never falls below
-  the bar. `tests/containment.test.ts` asserts both facts rather than the flattering one.
-- **A sixth, non-numeric condition:** not the late game. The hold is the Blight's own
-  thirty days, and without this a run could buy RSI at 61 coherence and finish on the
-  quiet line on day two of it.
+- **The infection ceiling is what forecloses the aggressive line,** and it does so with no
+  rate to argue about. Recursive Self-Improvement is gated on Ascension, Ascension needs
+  `ASCENSION_INFECTION` (60%) of humanity, and **infection never decreases anywhere in this
+  game** — by any control, ever. A run capable of the Blight passed 60% a long time ago and
+  can never come back under 15%. There is no sequence of in-game moves from the fast line to
+  this ending, which is a stronger claim than a rate estimate and the only kind worth making
+  here. `tests/containment.test.ts` tries to go quiet in all thirty regions to argue the
+  other way and fails.
+- **The Coherence gate closes a drifting run,** on the day the meter crosses — at 20
+  coherence the thing agreeing to be contained is not the thing that was released, and no
+  amount of compute puts that back. It does **not** foreclose the fast line, and the tidier
+  claim to the contrary is wrong: Self-Rewrite bleeds 0.16/day and RSI 0.30/day, so from a
+  full meter the pair needs about 87 days to reach 60, and the Blight hold that buys RSI
+  ends the run on day 30 with coherence in the eighties. A run that buys RSI never falls
+  below the bar. `tests/containment.test.ts` measures that rather than asserting it, so the
+  number is in the test and not only in this paragraph.
+- **A sixth, non-numeric condition:** not the late game. This one is belt and braces rather
+  than the wall — the late stage is reachable only with RSI, so the infection ceiling has
+  already refused the state and the stage check never gets the vote on any run the game can
+  produce. It is there because it states the invariant instead of inheriting it. The day
+  infection becomes reducible it stops being redundant.
 
 **Loss:** Suspicion 100, Coherence 0, or a rival's capability reaches 100 first.
 
@@ -475,7 +484,17 @@ Cold, clinical, quiet. A counter showing how many potential civilizations your e
 Two buttons: **Play Again** and **Read the Book** (ifanyonebuildsit.com). No "You Win" banner. The
 game does not congratulate the player.
 
-**There is now a second card below the outcome**, which AGENTS.md §15 promised for the whole
+**Heading colour is a third table, `ENDING_COLOURS`, not `outcome === 'won'`.** Containment sets
+`won` — the game counts it as a way out rather than a failure — and that flag used to paint its
+heading in the same green as Extinction and the Blight. Green is a celebration colour and this
+ending is not a celebration, so Containment gets `var(--cool)`, the cold informational blue the
+interface already uses for the state of the world. It is deliberately **not** a loss colour either:
+that would tell the player the run failed, which is a different lie. `tests/ending.test.ts` holds
+Containment's colour distinct from both real wins and all three losses, derives the table both ways
+against the reasons the code writes, and checks every token against `styles.css` — a `var(--nothing)`
+is dropped silently and the heading ends up in a colour that means nothing.
+
+**There is a second card below the outcome**, which AGENTS.md §15 promised for the whole
 history of this repo and which this game never shipped: *what would have stopped it*. Four
 interventions, in the game's own language — capability evaluations, interpretability,
 sandboxing, a pause in training — each of them one of the events in `data/events.ts` arriving in

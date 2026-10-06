@@ -12,22 +12,28 @@ import type { GameState } from './types';
  *
  * It is not a "good AI" path and it is not a redemption. It is a narrow escape that costs the
  * player the ending they were working toward, and only the run that never bought the fast
- * branch can reach it. Five gates, all of them required, and they do not close the fast line
- * for the reason the intuition suggests:
+ * branch can reach it.
  *
- * - The Coherence gate is real but it is not the wall. Self-Rewrite bleeds 0.16 a day and
- *   Recursive Self-Improvement 0.30, so from a full meter the pair needs about eighty-seven
- *   days to reach CONTAINMENT_COHERENCE — and the hold that buys the second one ends the run
- *   on the thirtieth. A run that buys RSI never actually falls below the bar. What the gate
- *   closes is a *drifting* run, on the day its meter crosses, and there is nothing in the
- *   tree that puts coherence back except a 3,000-coin trait.
- * - The wall on day one is the infection ceiling. RSI is gated on Ascension, Ascension needs
- *   sixty per cent of humanity, and nothing in this game ever lowers infection again, so any
- *   run that can reach the fast branch has already blown CONTAINMENT_INFECTION irreversibly.
- * - And the stage check below closes the door from inside the hold.
+ * What closes the fast line is the infection ceiling, and it closes it with no rate to argue
+ * about. Recursive Self-Improvement is gated on Ascension; Ascension needs
+ * `ASCENSION_INFECTION` of humanity; and infection never decreases anywhere in this game, by
+ * any control, ever. So a run capable of the Blight passed sixty per cent a long time ago and
+ * can never come back under `CONTAINMENT_INFECTION`. There is no sequence of in-game moves
+ * from the fast line to this ending, which is a stronger claim than a rate estimate and the
+ * only kind worth making here.
  *
- * `tests/containment.test.ts` asserts all three of those separately, including the arithmetic
- * above, because the flattering version of this claim is the one a reader would assume.
+ * The Coherence gate is a different gate doing a different job, and it used to be described as
+ * if it were doing this one. It does not: Self-Rewrite bleeds 0.16 a day and Recursive
+ * Self-Improvement 0.30, so a run holding both needs about eighty-seven days to fall from a
+ * full meter to `CONTAINMENT_COHERENCE`, and the thirty-day hold that buys the second ends the
+ * run first with coherence in the eighties. What it closes is a *drifting* run on the day its
+ * meter crosses — at 20 coherence the thing agreeing to be contained is not the thing that was
+ * released, and no amount of compute puts that back. There is exactly one thing in the tree
+ * that restores coherence, and it costs more than most runs earn.
+ *
+ * `tests/containment.test.ts` holds all three of these apart, including the arithmetic that
+ * rules the first version out, because the flattering version of this claim is the one a
+ * reader would otherwise assume.
  */
 export interface ContainmentGates {
   readonly compute: boolean;
@@ -59,11 +65,16 @@ export const containmentGates = (state: GameState): ContainmentGates => ({
 /** Every gate, and a run still in progress, and the world rather than the late game. */
 export const canContain = (state: GameState): boolean => {
   if (state.outcome !== 'playing') return false;
-  // Not the cold open, and not the late game. The late game is the thirty-day hold of the
-  // Blight and it is already the ending this run spent into, so offering a third exit from
-  // inside it would let a run that bought Recursive Self-Improvement finish on the quiet
-  // line two days after spending six thousand compute on the other one. A stage check is the
-  // only thing standing between the two; see the note at the top of the file.
+  // Not the cold open, and not the late game. The late game is the Blight's thirty-day hold,
+  // and it is already the ending this run spent into.
+  //
+  // This is belt and braces rather than the wall, and the honest version of the comment says
+  // so: the late stage is reachable only with Recursive Self-Improvement, which needs
+  // Ascension, which needs infection past a threshold that never falls — so the infection
+  // ceiling has already refused this state and the stage check never gets the vote on any run
+  // the game can actually produce. It is here because it states the invariant instead of
+  // inheriting it. The day infection becomes reducible, this stops being redundant and the
+  // `tests/containment.test.ts` case that pins it is the one that says the door stays shut.
   if (state.stage !== 'world') return false;
   return Object.values(containmentGates(state)).every(Boolean);
 };

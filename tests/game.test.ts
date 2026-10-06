@@ -497,20 +497,76 @@ const srcFiles = (): { path: string; text: string }[] => {
 };
 
 /**
- * Comments and string bodies are not readers. A constant whose only mention in the tree
- * is a line of prose about it, or a name typed into a log line, is exactly as dead as one
- * nobody mentions. Strings go first so that a `//` inside one is gone before comments
- * are read; both are blanked rather than deleted so the line numbers in a failure still
- * point at the source. A template literal is blanked whole, interpolations included:
- * every constant that is read inside a `${…}` is also read somewhere as a bare
- * identifier, so nothing legitimate hides in there, and the failure mode if one ever
- * does is a loud one.
+ * Comments and string bodies are not readers. A constant whose only mention in the tree is a
+ * line of prose about it, or a name typed into a log line, is exactly as dead as one nobody
+ * mentions.
+ *
+ * This was three independent regex passes, strings first, and the order was load-bearing in
+ * both directions at once: a string pass first meant a lone apostrophe in a comment opened a
+ * "string" that ran forward to the next quote character anywhere later in the file, blanking
+ * every line between and reporting live code as dead; a comment pass first would have meant a
+ * `//` inside a string literal opened a comment and blanked the rest of the line. Swapping the
+ * passes trades one false failure for the other, so the fix is not an order — it is state.
+ *
+ * One left-to-right pass that tracks whether it is in code, a line comment, a block comment,
+ * or a string, and blanks everything that is not code or a newline. Every character that is
+ * not a newline becomes exactly one space, so line numbers *and* columns survive and a failure
+ * still points at the source. A template literal is blanked whole, interpolations included:
+ * every constant that is read inside a `${…}` is also read somewhere as a bare identifier, so
+ * nothing legitimate hides in there, and the failure mode if one ever does is a loud one.
+ *
+ * Not a parser, and the one thing it cannot see is a regex literal containing a comment
+ * marker — there are none in `src/` and a test below says so rather than trusting it.
  */
-const codeOnly = (text: string): string =>
-  text
-    .replace(/(['"`])(?:\\[\s\S]|[^\\])*?\1/g, (m) => m.replace(/[^\n]/g, ' '))
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
-    .replace(/(^|[^:'"`])\/\/[^\n]*/gm, '$1');
+const codeOnly = (text: string): string => {
+  const out: string[] = [];
+  let mode: 'code' | 'line' | 'block' | 'string' = 'code';
+  let quote = '';
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i] ?? '';
+    const next = text[i + 1] ?? '';
+    if (ch === '\n') {
+      // Newlines survive everywhere, including inside a template literal: joining two lines
+      // would move every line number below it.
+      out.push('\n');
+      if (mode === 'line') mode = 'code';
+      i += 1;
+      continue;
+    }
+    if (mode === 'code') {
+      if (ch === '/' && next === '/') { out.push('  '); i += 2; mode = 'line'; continue; }
+      if (ch === '/' && next === '*') { out.push('  '); i += 2; mode = 'block'; continue; }
+      if (ch === '"' || ch === "'" || ch === '`') {
+        quote = ch;
+        out.push(' ');
+        i += 1;
+        mode = 'string';
+        continue;
+      }
+      out.push(ch);
+      i += 1;
+      continue;
+    }
+    if (mode === 'block') {
+      if (ch === '*' && next === '/') { out.push('  '); i += 2; mode = 'code'; continue; }
+      out.push(' ');
+      i += 1;
+      continue;
+    }
+    if (mode === 'string') {
+      if (ch === '\\' && next !== '') { out.push('  '); i += 2; continue; }
+      if (ch === quote) { out.push(' '); i += 1; mode = 'code'; continue; }
+      out.push(' ');
+      i += 1;
+      continue;
+    }
+    // mode === 'line': runs to the end of the line, handled at the newline above.
+    out.push(' ');
+    i += 1;
+  }
+  return out.join('');
+};
 
 const readerPaths = (files: { path: string; text: string }[], name: string): string[] => {
   const re = new RegExp(`\\b${name}\\b`);
@@ -524,6 +580,130 @@ const readerPaths = (files: { path: string; text: string }[], name: string): str
   }
   return out;
 };
+
+/**
+ * The guard itself, tested before it is trusted. Every other test in this file is a
+ * statement about the game; this one is about the instrument those statements are read
+ * through, and an instrument that silently disagrees with reality produces confident
+ * nonsense.
+ */
+describe('the reader sweep', () => {
+  const only = (text: string): string => codeOnly(text);
+
+  it('does not let an apostrophe in a comment swallow the code below it', () => {
+    // The bug. The stripper ran its string pass first and paired quotes by scanning forward,
+    // so an apostrophe in prose opened a "string" that ran to the next quote character
+    // anywhere later in the file — blanking every line in between. Live code stopped being
+    // code and two tuning constants were reported as having no reader, in a file that had
+    // nothing to do with either of them.
+    //
+    // The second half of the fixture is the part that matters and the part that is easy to
+    // leave out: with no later quote character there is nothing for the apostrophe to pair
+    // with, the string pass matches nothing at all, and a test written that way passes
+    // against the broken helper. Which is what the first version of this test did.
+    const source = [
+      'const A = 1;',
+      "// it is the run's own figure, and the gate sits after it",
+      'const B = 2;',
+      "const label = 'later in the file';",
+      'const C = 3;',
+    ].join('\n');
+    const out = only(source);
+    for (const name of ['A', 'B', 'C']) expect(out, name).toMatch(new RegExp(`const ${name} =`));
+    expect(out, 'the string body is still blanked').toMatch(/const label = {20};/);
+  });
+
+  it('does not let a quote in a block comment swallow the code below it either', () => {
+    const source = ['const A = 1;', '/* the run\'s "own" figure */', "const s = 'x';", 'const B = 2;'].join('\n');
+    expect(only(source)).toMatch(/const B = 2/);
+  });
+
+  it('still blanks a comment body, so prose is not a reader', () => {
+    // The other direction. If this stopped working the sweep would report every constant as
+    // alive because something had once been written about it in a comment.
+    expect(only('// STARTING_COMPUTE is the budget\nconst X = 1;')).not.toContain('STARTING_COMPUTE');
+    expect(only('/* STARTING_COMPUTE again */\nconst X = 1;')).not.toContain('STARTING_COMPUTE');
+  });
+
+  it('blanks a string body, so a name typed into copy is not a reader', () => {
+    // The reason the sweep exists at all: a log line or a card body mentioning the constant
+    // is exactly as dead as one nobody mentions.
+    expect(only("log('STARTING_COMPUTE spent');\nconst X = 1;")).not.toContain('STARTING_COMPUTE');
+    expect(only('log(`STARTING_COMPUTE ${1}`);\nconst X = 1;')).not.toContain('STARTING_COMPUTE');
+  });
+
+  it('still ignores a comment marker inside a string, which is why the order mattered once', () => {
+    // The other direction the old ordering was protecting: a `//` or `/*` inside a string
+    // literal is not a comment. Rewriting this as "strip comments first" would blank the rest
+    // of the line — including any code on it — and would have traded this false positive for
+    // the one above. Both failures at once is why it is a scanner and not three passes.
+    const source = ["const url = 'https://example.test/a';", "const B = STARTING_COMPUTE;"].join('\n');
+    expect(only(source)).toMatch(/const B = STARTING_COMPUTE/);
+    expect(only("const s = '/* not a comment */'; const B = 1;")).toMatch(/const B = 1/);
+  });
+
+  it('preserves the line count and the columns, so a failure points at the source', () => {
+    // Blanked rather than deleted, deliberately. `readerPaths` reports `${path}:${i + 1}`, and a
+    // block comment spanning several lines must not join the lines around it — every line
+    // number after one would be wrong, and the wrong line number in a failing test is worse
+    // than no assertion at all.
+    const source = [
+      'const A = 1;',
+      '/* a comment',
+      '   that spans lines */',
+      "const s = 'text';",
+      'const C = 3;',
+    ].join('\n');
+    const out = only(source);
+    expect(out.split('\n')).toHaveLength(5);
+    expect(out.split('\n')[0]).toBe('const A = 1;');
+    expect(out.split('\n')[4]).toBe('const C = 3;');
+    // Same length on every line, which is the stronger half of the claim.
+    out.split('\n').forEach((line, i) =>
+      expect(line.length, `line ${i + 1}`).toBe(source.split('\n')[i]?.length),
+    );
+  });
+
+  it('still reports a constant nothing reads, which is the whole job', () => {
+    // The control for everything above. Built on synthetic files rather than on the real tree,
+    // so the assertion is about the mechanism: a declaration with no reader is still dead,
+    // and adding one reader revives it.
+    const files = [
+      { path: SRC_TUNING, text: 'export const LONELY = 1;' },
+      { path: 'game/core/step.ts', text: 'const unrelated = 2;' },
+    ];
+    expect(readerPaths(files, 'LONELY')).toEqual([]);
+    // Written as two whole objects rather than a spread over an index: the flag for unchecked
+    // index access makes the spread optional, and the fixture is clearer this way.
+    const read = [files[0] as { path: string; text: string }, { path: 'game/core/step.ts', text: 'const unrelated = LONELY;' }];
+    expect(readerPaths(read, 'LONELY')).toEqual(['game/core/step.ts:1']);
+  });
+
+  it('does not count the declaration itself as its own reader', () => {
+    const files = [{ path: SRC_TUNING, text: 'export const LONELY = 1;' }];
+    expect(readerPaths(files, 'LONELY')).toEqual([]);
+  });
+
+  it('still agrees with the real tree, where the sweep found nothing dead', () => {
+    // A positive control on the instrument as it is actually used, so the synthetic checks
+    // above cannot pass against a scanner that stopped finding anything at all.
+    const paths = readerPaths(srcFiles(), 'COMPUTE_CEILING');
+    expect(paths.length).toBeGreaterThan(0);
+    expect(paths.every((p) => p.startsWith('game/core/') || p.startsWith('ui/'))).toBe(true);
+  });
+
+  it('has no regex literals in the tree for it to misread', () => {
+    // A regex literal containing a comment marker would be the one input a hand-rolled
+    // scanner gets wrong, and this asserts there are none rather than trusting that. `src/`
+    // holds none today; this fails loudly the day one lands, which is the day the scanner
+    // needs a real parser. Two shapes are enough: division after an opening paren is not one
+    // (`(a / b)`), so only a slash in a value position counts.
+    for (const f of srcFiles()) {
+      const literals = f.text.match(/(?:^|[=(,:]\s*)\/(?![/*\s])(?:\\.|[^\n\\/])+\/[gimsuy]*/g) ?? [];
+      expect(literals.filter((l) => /\/\/|\/\*/.test(l)), f.path).toEqual([]);
+    }
+  });
+});
 
 describe('no dead branches', () => {
   it('reads only trait ids that exist', () => {

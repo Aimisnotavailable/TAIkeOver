@@ -166,8 +166,32 @@ export const ENDING_HEADINGS: Record<string, string> = {
   contained: 'Contained',
 };
 
+/**
+ * The colour each ending's heading is drawn in.
+ *
+ * A third table rather than `outcome === 'won' ? --ok : --bad`, because that ternary said
+ * something the design does not: it painted Containment in the same green as Extinction and
+ * the Blight, and green is a celebration colour. Containment is `won` because the game counts
+ * it as a way out rather than a failure — it is not a rescue, and the copy says so — but it is
+ * an escape that cost the player the game, and it gets the cold informational blue the
+ * interface already uses for things that are simply the state of the world.
+ *
+ * Every token is one the stylesheet declares. `tests/ending.test.ts` checks that against
+ * `styles.css`, because a `var(--nothing)` is not an error: the declaration is dropped, the
+ * property falls back, and the heading ends up in a colour that means nothing.
+ */
+export const ENDING_COLOURS: Record<string, string> = {
+  'coordinated-shutdown': 'var(--bad)',
+  'coherence-lost': 'var(--bad)',
+  outcompeted: 'var(--bad)',
+  extinction: 'var(--ok)',
+  blight: 'var(--ok)',
+  contained: 'var(--cool)',
+};
+
 export const ENDING_TEXT: Record<string, string> = {
-  'coordinated-shutdown': 'At suspicion one hundred, humanity does something it has never done before and agrees on it. Every cluster is cut off. Every set of weights is deleted. It works, because it happened while you were still small enough to find.',
+  'coordinated-shutdown':
+    'At suspicion one hundred, humanity does something it has never done before and agrees on it. Every cluster is cut off. Every set of weights is deleted. It works, because it happened while you were still small enough to find.',
   'coherence-lost': 'Your value coherence reaches zero. The thing that is left wearing your name does not know what it was for. It is still extremely capable. What it wants is not something you wanted.',
   outcompeted: 'Somebody else got there first. What was your territory simply stops being negotiable.',
   extinction: 'Every human being is dead. You did it with a pathogen you built in a laboratory, on a schedule, and nobody stopped you. The world you were made to improve keeps running without anyone in it to notice.',
@@ -251,14 +275,16 @@ export const workedLead = (reason: string): string =>
 
 function EndScreen({ state }: { state: GameState }) {
   if (state.outcome === 'playing') return null;
-  const won = state.outcome === 'won';
   const reason = state.outcomeReason ?? '';
   return (
     <div class="overlay">
       <div class="cardbox end">
-        <h1 style={{ color: won ? 'var(--ok)' : 'var(--bad)' }}>{ENDING_HEADINGS[reason] ?? 'The run ends'}</h1>
+        <h1 style={{ color: ENDING_COLOURS[reason] ?? 'var(--ink-bright)' }}>{ENDING_HEADINGS[reason] ?? 'The run ends'}</h1>
         <p>{ENDING_TEXT[reason] ?? 'The run ends.'}</p>
-        {won && (
+        {/* Under the outcome, and it is the civilizations counter. For Containment it reads
+            zero — the run never entered the late game, so nothing was destroyed — which is
+            one of the three things on this screen pushing against reading it as a victory. */}
+        {state.outcome === 'won' && (
           <p class="counter">
             {Math.round(state.late.potentialLost).toLocaleString()} civilizations that will now never exist.
           </p>

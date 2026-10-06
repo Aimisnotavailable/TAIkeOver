@@ -114,8 +114,21 @@ Two clicks to confirm, because it ends the run.
 
 **This does not soften the thesis.** It says the dangerous thing is not the capability but the
 irreversibility, and that the escape is expensive, narrow, and forecloses the Blight. The fast
-aggressive line cannot be redeemed: Self-Modification costs Coherence, so it cannot pass the
-≥ 60 gate. That is the whole point of putting the gate there.
+aggressive line cannot be redeemed, because **infection never decreases anywhere in this game** and
+Recursive Self-Improvement is gated on Ascension, which needs 60% of humanity. Any run capable of
+the Blight has therefore already blown the ≤ 15% ceiling, irreversibly, before it has bled a point
+of coherence. That is arithmetic rather than a rate estimate, which is why it is worth more than
+the tidier claim that replaced it.
+
+**Correction, at review.** This paragraph originally justified the Coherence gate as the closure:
+*"Self-Modification costs Coherence, so it cannot pass the ≥ 60 gate. That is the whole point of
+putting the gate there."* The arithmetic does not support it. Self-Rewrite bleeds 0.16/day and
+Recursive Self-Improvement 0.30/day, so a run holding both needs about 87 days to fall from a full
+meter to 60 — and the thirty-day hold that buys the second one ends the run on day 30 with
+coherence in the eighties. **The gate stays at 60.** What it actually does is close a *drifting*
+run on the day the meter crosses: at 20 coherence the thing agreeing to be contained is not the
+thing that was released. Two gates, two jobs, neither pretending to be the other. Measured in
+`tests/containment.test.ts`.
 
 ## C4 — What actually worked
 
