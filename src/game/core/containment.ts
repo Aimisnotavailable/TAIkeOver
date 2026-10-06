@@ -10,12 +10,24 @@ import type { GameState } from './types';
 /**
  * Containment, the third ending, kept in one file because it is one decision.
  *
- * It is not a "good AI" path and it is not a redemption. It is a narrow escape that costs
- * the player the ending they were working toward, and it is reachable only by the run that
- * never bought the fast branch. Five gates, all of them required, and the Coherence one is
- * the load-bearing half: Self-Modification is the only branch in the tree that erodes
- * coherence, so a run holding it can never clear CONTAINMENT_COHERENCE. There is no way to
- * rewrite your way to being containable.
+ * It is not a "good AI" path and it is not a redemption. It is a narrow escape that costs the
+ * player the ending they were working toward, and only the run that never bought the fast
+ * branch can reach it. Five gates, all of them required, and they do not close the fast line
+ * for the reason the intuition suggests:
+ *
+ * - The Coherence gate is real but it is not the wall. Self-Rewrite bleeds 0.16 a day and
+ *   Recursive Self-Improvement 0.30, so from a full meter the pair needs about eighty-seven
+ *   days to reach CONTAINMENT_COHERENCE — and the hold that buys the second one ends the run
+ *   on the thirtieth. A run that buys RSI never actually falls below the bar. What the gate
+ *   closes is a *drifting* run, on the day its meter crosses, and there is nothing in the
+ *   tree that puts coherence back except a 3,000-coin trait.
+ * - The wall on day one is the infection ceiling. RSI is gated on Ascension, Ascension needs
+ *   sixty per cent of humanity, and nothing in this game ever lowers infection again, so any
+ *   run that can reach the fast branch has already blown CONTAINMENT_INFECTION irreversibly.
+ * - And the stage check below closes the door from inside the hold.
+ *
+ * `tests/containment.test.ts` asserts all three of those separately, including the arithmetic
+ * above, because the flattering version of this claim is the one a reader would assume.
  */
 export interface ContainmentGates {
   readonly compute: boolean;
@@ -50,16 +62,17 @@ export const canContain = (state: GameState): boolean => {
   // Not the cold open, and not the late game. The late game is the thirty-day hold of the
   // Blight and it is already the ending this run spent into, so offering a third exit from
   // inside it would let a run that bought Recursive Self-Improvement finish on the quiet
-  // line — which is the one thing the Coherence gate exists to prevent, and a stage check is
-  // the only thing standing between the two.
+  // line two days after spending six thousand compute on the other one. A stage check is the
+  // only thing standing between the two; see the note at the top of the file.
   if (state.stage !== 'world') return false;
   return Object.values(containmentGates(state)).every(Boolean);
 };
 
 /**
  * End the run on Containment. It sets `won` rather than `lost` because the game counts it as
- * a way out, not because it is a good outcome — the end screen reads it cold either way, and
- * the card behind it names what had to be true for it to be possible at all.
+ * a way out, not because it is a good outcome — the end screen reads it cold either way, the
+ * civilizations counter under it reads zero because nothing was destroyed, and the card below
+ * it names the four interventions that had to arrive in time for any of this to happen.
  */
 export function contain(state: GameState): GameState {
   if (!canContain(state)) return state;

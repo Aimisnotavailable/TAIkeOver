@@ -1006,8 +1006,9 @@ export function Situation({ state }: { state: GameState }) {
 
 /**
  * Which Containment conditions are still outstanding. The same move `ascensionShortfall`
- * makes, for the same reason: the button says "not available" on its own, which is a reason
- * for a player to believe the other four gates are fine.
+ * makes, for the same reason: naming one of three problems is a reason to believe the other
+ * two are fine, and a sixth condition that closes the ending with all five gates green needs
+ * saying out loud.
  *
  * Both readers of the gates — this and `canContain` — read `containmentGates`, so the list
  * here cannot drift from what the ending actually enforces. `tests/panels.test.ts` checks
@@ -1015,8 +1016,10 @@ export function Situation({ state }: { state: GameState }) {
  * Ascension latch shipped once with the panel and the tick holding separate copies of the
  * same three comparisons.
  *
- * Ceilings are written with the gate after the figure, floors before it, matching the
- * direction: `humanity 40/15%` is too high and `coherence 55/60` is too low.
+ * Every line is the run's own figure against the gate, in that order, whichever way the
+ * comparison runs: `humanity 40/15%` is a ceiling it is over and `coherence 55/60` is a floor
+ * it is under, and which of the two a line is comes from the constant rather than the
+ * wording.
  *
  * The gates all met is not the same as the ending being open — the Blight hold closes it
  * again, and a panel that said "open" during the hold the player had spent into would be
@@ -1039,9 +1042,11 @@ export function containmentShortfall(state: GameState): string[] {
  * What the Containment button does on this click.
  *
  * Two clicks, because one click on a button labelled with an ending ends the run, and the
- * first of the two does nothing but change the label. Losing eligibility disarms it: a
- * control that stayed armed across a gate being lost would end the run on a click the
- * player meant to spend on reading the list of what was still outstanding.
+ * first of the two does nothing but change the label. Losing eligibility disarms it, and the
+ * hazard is specific: the button is *replaced* by the outstanding list while the gates are not
+ * met, so the component stays mounted and a stale `armed` survives in it — without the disarm
+ * the next click the moment eligibility came back would end the run, on a control the player
+ * had not seen armed.
  */
 export function containmentStep(armed: boolean, ready: boolean): { armed: boolean; act: boolean } {
   if (!ready) return { armed: false, act: false };
@@ -1053,9 +1058,9 @@ export function containmentStep(armed: boolean, ready: boolean): { armed: boolea
  * because none of the five gates is about a particular country — which is why it does not
  * live with the eight actions in the context bar.
  *
- * The outstanding list is printed bare, under the heading, rather than behind a "needs": the
- * fifth possible line is the reason the Blight hold has closed the ending rather than an
- * unmet gate, and no prefix fits both.
+ * The outstanding list is printed bare, under the heading, rather than behind a "needs":
+ * one of the lines `containmentShortfall` can return reports that the Blight hold has closed
+ * the ending rather than naming an unmet gate, and no prefix reads correctly in front of both.
  */
 function Containment({ state }: { state: GameState }) {
   const [armed, setArmed] = useState(false);
