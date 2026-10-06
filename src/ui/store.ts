@@ -5,6 +5,7 @@ import {
   dismissCard as dismissCardCore,
 } from '../game/core/events';
 import { buyTrait, canBuyTrait } from '../game/core/queries';
+import { contain as containCore } from '../game/core/containment';
 import { advancePrimer } from '../game/core/primer';
 import { createInitialState } from '../game/core/state';
 import { step } from '../game/core/step';
@@ -220,6 +221,18 @@ export const actions = {
     if (game.peek() === before) return;
     play('hack-success');
     notify('rival', `SABOTAGED · ${(rival?.name ?? 'them').toUpperCase()}`, '300 compute, and they know something went wrong');
+  },
+
+  /**
+   * Ending the run on Containment. `mutate` rather than a direct assignment because the win
+   * sound and the run-over gate both hang off the change, and `contain` returns its argument
+   * untouched when a gate is not met, so a stale click cannot end a run.
+   */
+  contain(): void {
+    const before = game.peek();
+    mutate((s) => containCore(s));
+    if (game.peek() === before) return;
+    play('win');
   },
 
   /**

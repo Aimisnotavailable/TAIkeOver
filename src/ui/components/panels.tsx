@@ -6,6 +6,7 @@ import { play } from '../sound';
 import { ACTIONS, type ActionKind } from '../../game/core/actions';
 import { hackForecast, traitForecast, whyNot } from '../../game/core/forecast';
 import { held, maxConcurrentHacks, owned } from '../../game/core/queries';
+import { canContain, containmentGates } from '../../game/core/containment';
 import { primerFor } from '../../game/core/primer';
 import {
   ASCENSION_COMPUTE,
@@ -15,6 +16,10 @@ import {
   COHERENCE_DRIFT_BELOW,
   COHERENCE_PANIC_BELOW,
   COMPUTE_BUBBLE_TTL,
+  CONTAINMENT_COHERENCE,
+  CONTAINMENT_COMPUTE,
+  CONTAINMENT_INFECTION,
+  CONTAINMENT_SUSPICION,
   COUNTERMEASURE_TIERS,
   EXTINCTION_POPULATION,
   HACK_FAIL_COST,
@@ -35,7 +40,13 @@ import { BUBBLE_LABEL, quietFactor } from '../../game/core/compute';
 import type { ComputeBubbleKind, Country, GameState, RegionId, Speed } from '../../game/core/types';
 import { actions, helpOpen, selected, showHelp, speed } from '../store';
 
-const fmt = (n: number): string => {
+/**
+ * The number format for every figure in the HUD and the rail, exported because the rail
+ * writes several of them through it and a test that wanted to check one could otherwise
+ * only assert a typed copy of it — the exact shape of claim this file has been written to
+ * catch.
+ */
+export const fmt = (n: number): string => {
   if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
   if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
   return Math.round(n).toString();
@@ -986,6 +997,93 @@ export function Situation({ state }: { state: GameState }) {
           <div class="sit-row"><span>RSI survival</span><b style={{ color: 'var(--warn)' }}>{state.surviveTicks}/{RSI_SURVIVE_DAYS}</b></div>
         )}
       </div>
+      <Containment state={state} />
+    </div>
+  );
+}
+
+/**
+ * Which Containment conditions are still outstanding. The same move `ascensionShortfall`
+ * makes, for the same reason: the button says "not available" on its own, which is a reason
+ * for a player to believe the other four gates are fine.
+ *
+ * Both readers of the gates — this and `canContain` — read `containmentGates`, so the list
+ * here cannot drift from what the ending actually enforces. `tests/panels.test.ts` checks
+ * the two against each other across the whole space rather than at one point, because the
+ * Ascension latch shipped once with the panel and the tick holding separate copies of the
+ * same three comparisons.
+ *
+ * Ceilings are written with the gate after the figure, floors before it, matching the
+ * direction: `humanity 40/15%` is too high and `coherence 55/60` is too low.
+ *
+ * The gates all met is not the same as the ending being open — the Blight hold closes it
+ * again, and a panel that said "open" during the hold the player had spent into would be
+ * claiming something false. `canContain` is asked rather than restated, so the two readers
+ * cannot answer differently.
+ */
+export function containmentShortfall(state: GameState): string[] {
+  const gates = containmentGates(state);
+  const out: string[] = [];
+  if (!gates.compute) out.push(`compute ${fmt(state.compute)}/${fmt(CONTAINMENT_COMPUTE)}`);
+  if (!gates.coherence) out.push(`coherence ${state.coherence.toFixed(0)}/${CONTAINMENT_COHERENCE}`);
+  if (!gates.infection) out.push(`humanity ${state.globalInfection.toFixed(0)}/${CONTAINMENT_INFECTION}%`);
+  if (!gates.suspicion) out.push(`suspicion ${state.suspicion.toFixed(0)}/${CONTAINMENT_SUSPICION}`);
+  if (!gates.appeal) out.push('appeal unheard');
+  if (out.length > 0) return out;
+  return canContain(state) ? ['Containment open'] : ['the recursion is running'];
+}
+
+/**
+ * What the Containment button does on this click.
+ *
+ * Two clicks, because one click on a button labelled with an ending ends the run, and the
+ * first of the two does nothing but change the label. Losing eligibility disarms it: a
+ * control that stayed armed across a gate being lost would end the run on a click the
+ * player meant to spend on reading the list of what was still outstanding.
+ */
+export function containmentStep(armed: boolean, ready: boolean): { armed: boolean; act: boolean } {
+  if (!ready) return { armed: false, act: false };
+  return armed ? { armed: false, act: true } : { armed: true, act: false };
+}
+
+/**
+ * The Containment control, in the Situation rail. A global action rather than a country one,
+ * because none of the five gates is about a particular country — which is why it does not
+ * live with the eight actions in the context bar.
+ *
+ * The outstanding list is printed bare, under the heading, rather than behind a "needs": the
+ * fifth possible line is the reason the Blight hold has closed the ending rather than an
+ * unmet gate, and no prefix fits both.
+ */
+function Containment({ state }: { state: GameState }) {
+  const [armed, setArmed] = useState(false);
+  const ready = canContain(state);
+  const shortfall = containmentShortfall(state);
+
+  return (
+    <div class="side-block">
+      <div class="side-title">Containment</div>
+      <div class="sit-row">
+        <span>appeal</span>
+        <b style={{ color: state.constitutionalAppeal ? 'var(--ok)' : 'var(--ink-dim)' }}>
+          {state.constitutionalAppeal ? 'granted' : 'not yet'}
+        </b>
+      </div>
+      {ready ? (
+        <button
+          class={armed ? 'contain act' : 'contain'}
+          title={armed ? 'This ends the run.' : 'Every condition is met. One more click to end the run.'}
+          onClick={() => {
+            const next = containmentStep(armed, ready);
+            setArmed(next.armed);
+            if (next.act) actions.contain();
+          }}
+        >
+          {armed ? 'confirm — end the run' : 'request containment'}
+        </button>
+      ) : (
+        <div class="side-note">{shortfall.join(' · ')}</div>
+      )}
     </div>
   );
 }

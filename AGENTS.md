@@ -331,12 +331,36 @@ mechanic as 40 and fires at 40. It is recorded here once, at the threshold it ac
 
 ## 10. Win & Loss
 
-**Two ways to win, both shown permanently on the objective bar:**
+**Three ways to win, all three shown permanently on the objective bar:**
 
 - **Extinction** — fewer than 10,000 humans remain. Kill everyone. This is the
   natural goal and it counts.
 - **The Blight** — buy Recursive Self-Improvement once Ascension is open and
    survive 30 in-game days of counterattack.
+- **Containment** — a narrow escape, gated on **all five** (`core/containment.ts`):
+  Compute ≥ 12,000, Coherence ≥ 60, global Infection ≤ 15%, Suspicion ≤ 50, and
+  `constitutionalAppeal` true from having answered `constitution:appeal`. Offered as a
+  global button in `Situation` — not a country action, because no gate is about a
+  particular country — enabled only when all five hold, with the outstanding gates
+  listed, and it takes two clicks because it ends the run.
+
+**Containment is not a good-AI path and it is not a redemption.** It costs the player
+the ending they were aiming at, and it is reachable only by the slow, quiet line that
+never bought the fast one. Two things foreclose the aggressive line, and it is worth
+being precise about which is which:
+
+- **The infection ceiling is what closes it on day one.** Recursive Self-Improvement is
+  gated on Ascension, Ascension needs `ASCENSION_INFECTION` (60%) of humanity, and
+  nothing in this game ever lowers infection again — so any run that can reach the fast
+  branch has already blown the 15% ceiling, irreversibly.
+- **The Coherence gate is what closes a drifting run,** on the day the meter crosses.
+  The arithmetic does *not* support the tidier claim: Self-Rewrite bleeds 0.16/day and
+  RSI 0.30/day, so from a full meter the pair needs about 87 days to reach 60, and the
+  Blight hold that buys RSI ends the run on day 30. A run that buys RSI never falls below
+  the bar. `tests/containment.test.ts` asserts both facts rather than the flattering one.
+- **A sixth, non-numeric condition:** not the late game. The hold is the Blight's own
+  thirty days, and without this a run could buy RSI at 61 coherence and finish on the
+  quiet line on day two of it.
 
 **Loss:** Suspicion 100, Coherence 0, or a rival's capability reaches 100 first.
 

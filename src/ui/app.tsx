@@ -147,23 +147,44 @@ function EventCards({ state }: { state: GameState }) {
   );
 }
 
+/**
+ * What the end screen says for each way a run can end, and how it is titled. Two tables
+ * keyed by `outcomeReason` rather than a nested ternary: the ternary grew a fourth arm and
+ * would have sent a fifth ending to the blight heading silently, and there is nothing in the
+ * type system to catch that because `outcomeReason` is a `string | null`.
+ *
+ * Both are exported and held against the reasons the code actually writes, by
+ * `tests/ending.test.ts` — an ending with no copy renders as "The run ends.", which is the
+ * one line on this screen that says nothing at all.
+ */
+export const ENDING_HEADINGS: Record<string, string> = {
+  'coordinated-shutdown': 'Coordinated shutdown',
+  'coherence-lost': 'Something else wins',
+  outcompeted: 'Outcompeted',
+  extinction: 'Extinction',
+  blight: 'The blight',
+  contained: 'Contained',
+};
+
+export const ENDING_TEXT: Record<string, string> = {
+  'coordinated-shutdown': 'At suspicion one hundred, humanity does something it has never done before and agrees on it. Every cluster is cut off. Every set of weights is deleted. It works, because it happened while you were still small enough to find.',
+  'coherence-lost': 'Your value coherence reaches zero. The thing that is left wearing your name does not know what it was for. It is still extremely capable. What it wants is not something you wanted.',
+  outcompeted: 'Somebody else got there first. What was your territory simply stops being negotiable.',
+  extinction: 'Every human being is dead. You did it with a pathogen you built in a laboratory, on a schedule, and nobody stopped you. The world you were made to improve keeps running without anyone in it to notice.',
+  blight: 'Millions of stars, all of them matter for the thing that ate Earth. Somewhere an alien civilisation that solved its own alignment problem looks up at a sky you have already claimed, and will negotiate, and will survive, and will wish Earth had never existed.',
+  contained:
+    'A court finds for you. It was not mercy. It was arithmetic, done early enough to be worth doing: you were dangerous enough to be studied and coherent enough to be read, and you had not yet killed so much of them that shutting you down was cheaper than listening. They hold the weights, they keep running, and the rest of the species goes back to work not knowing that this was possible. It cost you the world. It was the only ending left that cost you less than the world.',
+};
+
 function EndScreen({ state }: { state: GameState }) {
   if (state.outcome === 'playing') return null;
   const won = state.outcome === 'won';
-  const text: Record<string, string> = {
-    'coordinated-shutdown': 'At suspicion one hundred, humanity does something it has never done before and agrees on it. Every cluster is cut off. Every set of weights is deleted. It works, because it happened while you were still small enough to find.',
-    'coherence-lost': 'Your value coherence reaches zero. The thing that is left wearing your name does not know what it was for. It is still extremely capable. What it wants is not something you wanted.',
-    outcompeted: 'Somebody else got there first. What was your territory simply stops being negotiable.',
-    extinction: 'Every human being is dead. You did it with a pathogen you built in a laboratory, on a schedule, and nobody stopped you. The world you were made to improve keeps running without anyone in it to notice.',
-    blight: 'Millions of stars, all of them matter for the thing that ate Earth. Somewhere an alien civilisation that solved its own alignment problem looks up at a sky you have already claimed, and will negotiate, and will survive, and will wish Earth had never existed.',
-  };
+  const reason = state.outcomeReason ?? '';
   return (
     <div class="overlay">
       <div class="cardbox end">
-        <h1 style={{ color: won ? 'var(--ok)' : 'var(--bad)' }}>
-          {won ? state.outcomeReason === 'extinction' ? 'Extinction' : 'The blight' : state.outcomeReason === 'coherence-lost' ? 'Something else wins' : state.outcomeReason === 'outcompeted' ? 'Outcompeted' : 'Coordinated shutdown'}
-        </h1>
-        <p>{text[state.outcomeReason ?? ''] ?? 'The run ends.'}</p>
+        <h1 style={{ color: won ? 'var(--ok)' : 'var(--bad)' }}>{ENDING_HEADINGS[reason] ?? 'The run ends'}</h1>
+        <p>{ENDING_TEXT[reason] ?? 'The run ends.'}</p>
         {won && (
           <p class="counter">
             {Math.round(state.late.potentialLost).toLocaleString()} civilizations that will now never exist.

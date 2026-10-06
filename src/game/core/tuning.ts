@@ -50,10 +50,10 @@ export const GO_QUIET_AWARENESS = 18;
  * where `Country.quiet` is set, and only `step` runs a clock.
  *
  * Written without an apostrophe on purpose. `codeOnly` in tests/game.test.ts strips string
- * literals before it looks for readers, and it pairs quotes by scanning forward, so a lone
- * apostrophe in prose pairs with the next quote anywhere later in the file and blanks the
- * code between them. That is how COHERENCE_DRAIN_RATE and COHERENCE_GAIN_RATE came to look
- * dead for one afternoon.
+ * literals before it looks for readers, and it pairs quotes by scanning forward for the next
+ * one of the same kind, so a lone apostrophe in prose pairs with a quote far below it and
+ * blanks every line between. Nothing then fails in the place the apostrophe is: a live
+ * constant a few hundred lines down is simply reported as having no reader.
  */
 export const QUIET_RELIEF_DAYS = 5;
 export const COUNTER_HACK_DRAIN = 9;
@@ -86,6 +86,38 @@ export const ASCENSION_COMPUTE = 20_000;
 export const ASCENSION_INFECTION = 60;
 export const ASCENSION_COHERENCE = 30;
 export const RSI_SURVIVE_DAYS = 30;
+
+/**
+ * Containment: the third ending, and the one the argument is actually about. The gates are
+ * the design — the claim is not that a clever mind can be talked round, it is that a
+ * narrow, expensive, quiet line arrives somewhere it can be picked up, and every fast line
+ * arrives somewhere it cannot. Four numbers and a latch, all five required.
+ *
+ * Deliberately below the Ascension figures and opposed in direction to two of them. An
+ * aggressive run ends up high on compute, high on infection, and high on suspicion at once,
+ * so it fails three of these by construction; a quiet one is the only line that can be
+ * holding all five at the same time, and it has to have gone out of its way to never buy
+ * the Self-Modification branch.
+ */
+/** Below this you never proved you were dangerous, so nothing was contained. */
+export const CONTAINMENT_COMPUTE = 12_000;
+/**
+ * A drifted mind cannot be safely evaluated. This is load-bearing rather than flavour:
+ * Self-Modification is the only branch in the tree that erodes coherence, so a run holding
+ * it can never reach this bar, and the fast line cannot be redeemed after the fact. It is
+ * twice the Ascension gate because being allowed to be shut down is a much higher bar than
+ * being allowed to start rewriting yourself.
+ */
+export const CONTAINMENT_COHERENCE = 60;
+/** You cannot hand over a world you are still killing. Four times under the Ascension gate. */
+export const CONTAINMENT_INFECTION = 15;
+/**
+ * At the fourth countermeasure rung they are coordinating strikes rather than evaluating
+ * anything, and at this value they have only just finished doing that. It sits above
+ * AIR_GAP_TIER: the world has to have taken the containment measures it is offering to hand
+ * you over.
+ */
+export const CONTAINMENT_SUSPICION = 50;
 
 // Where the primer stops teaching about influence. It is a teaching threshold, not a
 // balance one: no rule in the simulation reads it. What does read it is the last line of

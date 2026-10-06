@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   ascendRow,
   coherenceColor,
+  fmt,
   coherenceSev,
+  containmentShortfall,
+  containmentStep,
   HELP_SECTIONS,
   nextGoal,
   primerLine,
@@ -22,6 +25,10 @@ import {
   COHERENCE_DRIFT_BELOW,
   COHERENCE_PANIC_BELOW,
   COMPUTE_BUBBLE_TTL,
+  CONTAINMENT_COHERENCE,
+  CONTAINMENT_COMPUTE,
+  CONTAINMENT_INFECTION,
+  CONTAINMENT_SUSPICION,
   EXTINCTION_POPULATION,
   HACK_SUSPICION_FAIL,
   HACK_SUSPICION_SUCCESS,
@@ -29,6 +36,7 @@ import {
   RSI_SURVIVE_DAYS,
   coherencePerDay,
 } from '../src/game/core/tuning';
+import { canContain, containmentGates } from '../src/game/core/containment';
 import { TRAIT_BY_ID, TRAIT_GROUPS, TRAITS } from '../src/game/data/traits';
 import { REGIONS, REGION_BY_ID, REGION_IDS } from '../src/game/data/regions';
 import { createInitialState } from '../src/game/core/state';
@@ -186,7 +194,8 @@ const TRAIT_WORDS = new Set([
   ...TRAIT_GROUPS.flatMap((g) => g.name.split(/[^A-Za-z]+/).filter(Boolean)),
 ]);
 const PROSE_WORDS = new Set([
-  'Ascension', 'Buy', 'E', 'Hold', 'K', 'Raise', 'Spread', 'Survive', 'Tap', 'They', 'You',
+  'Ascension', 'Buy', 'Containment', 'E', 'Hold', 'K', 'Raise', 'Spread', 'Survive', 'Tap',
+  'They', 'You',
 ]);
 
 /** The branch whose traits cost Coherence to hold, found the way the panel finds it. */
@@ -677,6 +686,143 @@ describe('the next-goal line', () => {
     );
     expect(panelSource).not.toMatch(/expire in six days/);
     expect(panelSource).toMatch(/\$\{COMPUTE_BUBBLE_TTL\} days/);
+  });
+});
+
+/**
+ * The Containment control in `Situation`. A global action with five gates, so the panel has
+ * to do the same job `ascensionShortfall` does for Ascension — say which gate is outstanding
+ * rather than "not yet" — and the button has to take two clicks, because it ends the run.
+ */
+describe('the containment control', () => {
+  const at = (over: Partial<GameState> = {}): GameState => ({
+    ...createInitialState(42, 'default'),
+    stage: 'world',
+    ...over,
+  });
+
+  const ready = (over: Partial<GameState> = {}): GameState =>
+    at({
+      compute: CONTAINMENT_COMPUTE + 1_000,
+      coherence: CONTAINMENT_COHERENCE + 5,
+      globalInfection: 4,
+      suspicion: 20,
+      constitutionalAppeal: true,
+      ...over,
+    });
+
+  /** Every one of the five outstanding at once, which a clean run never is. */
+  const nothingMet = at({ coherence: 1, globalInfection: 90, suspicion: 99 });
+
+  it('names every outstanding gate, and each one in figures', () => {
+    // The same move `ascensionShortfall` makes, for the same reason: a headline that names
+    // one of three problems is a reason to believe the other two are fine. A clean run only
+    // fails two of the five, so the state that fails all five is built rather than assumed.
+    expect(containmentGates(nothingMet)).toEqual({
+      compute: false,
+      coherence: false,
+      infection: false,
+      suspicion: false,
+      appeal: false,
+    });
+    const lines = containmentShortfall(nothingMet);
+    expect(lines).toHaveLength(5);
+    const joined = lines.join(' · ');
+    // Through `fmt`, like the rest of the rail, and read off the constants rather than typed:
+    // `fmt(12000)` is `12.0K`, so an assertion against the raw digits would fail against
+    // correct code.
+    expect(joined).toContain(fmt(CONTAINMENT_COMPUTE));
+    expect(joined).toContain(`${CONTAINMENT_COHERENCE}`);
+    expect(joined).toContain(`${CONTAINMENT_INFECTION}%`);
+    expect(joined).toContain(`${CONTAINMENT_SUSPICION}`);
+    expect(joined).toContain('appeal unheard');
+    // And the figures on the left are the run's own, not constants that happen to match.
+    expect(joined).toContain(String(Math.round(nothingMet.coherence)));
+  });
+
+  it('drops a gate off the list as it is met, and says so when none are', () => {
+    expect(containmentShortfall(ready({ coherence: 1 }))).toHaveLength(1);
+    expect(containmentShortfall(ready({ coherence: 1 }))[0]).toContain(String(CONTAINMENT_COHERENCE));
+    expect(containmentShortfall(ready())).toEqual(['Containment open']);
+  });
+
+  it('does not say open during the hold, which closes the ending again', () => {
+    // The bug the equivalence check below caught: with all five gates met and the recursion
+    // running, the panel reported "Containment open" for an ending the core refused. It is
+    // the sixth condition, and it has to be visible for the same reason the other five are.
+    const holding = ready({ stage: 'late', traits: ['rsi'], surviveTicks: 4 });
+    expect(containmentGates(holding)).toEqual(containmentGates({ ...holding, stage: 'world' }));
+    expect(canContain(holding)).toBe(false);
+    expect(containmentShortfall(holding)).toEqual(['the recursion is running']);
+  });
+
+  it('agrees with the gates the ending itself enforces', () => {
+    // One list for both readers. A panel that reported four short gates while the core said
+    // the ending was available — or the reverse — is the Ascension bug again, so this checks
+    // the two against each other across the whole space rather than at one point.
+    for (const s of [
+      at(),
+      nothingMet,
+      ready(),
+      ready({ coherence: CONTAINMENT_COHERENCE - 1 }),
+      ready({ compute: CONTAINMENT_COMPUTE - 1 }),
+      ready({ globalInfection: CONTAINMENT_INFECTION + 1 }),
+      ready({ suspicion: CONTAINMENT_SUSPICION + 1 }),
+      ready({ constitutionalAppeal: false }),
+      ready({ stage: 'late', traits: ['rsi'] }),
+      ready({ outcome: 'won', outcomeReason: 'blight' }),
+      ready({ outcome: 'lost', outcomeReason: 'coherence-lost' }),
+    ]) {
+      expect(
+        canContain(s),
+        `${JSON.stringify(containmentGates(s))} -> ${containmentShortfall(s).join(' | ')}`,
+      ).toBe(containmentShortfall(s).includes('Containment open'));
+    }
+  });
+
+  it('takes two clicks to end the run, and one of them only arms it', () => {
+    // A button labelled with an ending, one click from ending the run, is how players lose
+    // runs by accident. First press arms, second press acts, and acting disarms so a third
+    // press has to arm again.
+    const first = containmentStep(false, true);
+    expect(first).toEqual({ armed: true, act: false });
+    const second = containmentStep(first.armed, true);
+    expect(second).toEqual({ armed: false, act: true });
+    const third = containmentStep(second.armed, true);
+    expect(third).toEqual({ armed: true, act: false });
+  });
+
+  it('cannot be armed out of eligibility, and does not act while ineligible', () => {
+    // A control that stayed armed across the gates being lost would end the run on a click
+    // the player meant to spend on looking.
+    expect(containmentStep(true, false)).toEqual({ armed: false, act: false });
+    expect(containmentStep(false, false)).toEqual({ armed: false, act: false });
+  });
+
+  it('is offered in the Situation rail, and calls the ending through the store', () => {
+    // No DOM in this suite, so the placement is asserted against the source the way
+    // tests/events.test.ts asserts the card. Both halves are sliced out of the file so a
+    // whole-file `toContain` cannot be satisfied by the word appearing somewhere unrelated:
+    // the rail has to render the control, and the control has to be the one that reads the
+    // gates and ends the run.
+    const rail = panelSource.match(/export function Situation[\s\S]*?\r?\n}\r?\n/);
+    const control = panelSource.match(/function Containment\([\s\S]*?\r?\n}\r?\n/);
+    if (rail === null) throw new Error('no Situation component in panels.tsx');
+    if (control === null) throw new Error('no Containment component in panels.tsx');
+    expect(rail[0]).toContain('<Containment state={state} />');
+    expect(control[0]).toContain('containmentShortfall(state)');
+    expect(control[0]).toMatch(/containmentStep\(armed, ready\)/);
+    expect(control[0]).toContain('actions.contain()');
+    // Two clicks, and the label says which one you are on.
+    expect(control[0]).toContain('confirm — end the run');
+  });
+
+  it('names no trait that is not in the tree, on any of its shortfall lines', () => {
+    // The next-goal guard, extended to the third thing in the rail that writes prose. A
+    // control that names a branch to buy to fix a gate would have to name a real one.
+    for (const s of [at(), ready(), ready({ coherence: 1 }), ready({ constitutionalAppeal: false })]) {
+      expect(unlisted(containmentShortfall(s).join(' · ')), JSON.stringify(containmentGates(s))).toEqual([]);
+    }
   });
 });
 

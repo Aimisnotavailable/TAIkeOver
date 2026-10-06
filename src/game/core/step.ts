@@ -165,7 +165,7 @@ export function step(state: GameState): GameState {
   const lines: LogEntry[] = [];
 
   // The world-wide forgetting from `leak:quiet` lapses on the last day of its countdown,
-  // before this tick's awareness growth, and every country at once. Never below what it has
+  // before this tick grows awareness, and every country at once. Never below what it has
   // climbed to since: awareness grows on its own while the relief is held, and a lapse that
   // lowered awareness would be the forgetting wearing off as a second gift. The test is
   // "one day left or fewer" rather than "some days left", because restoring while the
