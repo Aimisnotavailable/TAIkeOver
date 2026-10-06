@@ -44,6 +44,7 @@ import { primerFor } from '../src/game/core/primer';
 import { hackForecast, traitForecast } from '../src/game/core/forecast';
 import { step } from '../src/game/core/step';
 import { worldRunning } from '../src/ui/store';
+import { reasonsTheCodeWrites } from './endings';
 import type { GameState } from '../src/game/core/types';
 import panelSource from '../src/ui/components/panels.tsx?raw';
 import traitsSource from '../src/game/data/traits.ts?raw';
@@ -217,10 +218,11 @@ const unlisted = (s: string, prose: Set<string> = PROSE_WORDS): string[] =>
  */
 const HELP_PROSE = new Set([
   'A', 'Ascension', 'At', 'Awareness', 'Blight', 'Both', 'Buy', 'Click', 'Close', 'Coherence',
-  'Compute', 'Coordinated', 'Cycle', 'Datacenters', 'Decay', 'Dismiss', 'Escape', 'Enter', 'Every',
-  'Extinction', 'Funding', 'H', 'Hover', 'How', 'Influence', 'It', 'Keys', 'Left', 'Move', 'No',
-  'Nothing', 'One', 'Outcompeted', 'Past', 'Right', 'So', 'Something', 'Space', 'Step',
-  'Suspicion', 'Tab', 'The', 'There', 'They', 'This', 'Under', 'Your',
+  'Compute', 'Containment', 'Coordinated', 'Cycle', 'Datacenters', 'Decay', 'Dismiss', 'Escape',
+  'Enter', 'Every', 'Extinction', 'Funding', 'H', 'Hover', 'How', 'Influence', 'It', 'Keys',
+  'Left', 'Move', 'No', 'Nothing', 'One', 'Outcompeted', 'Past', 'Right', 'Situation', 'So',
+  'Something', 'Space', 'Step', 'Suspicion', 'Tab', 'The', 'There', 'They', 'This', 'Under',
+  'Your',
 ]);
 
 describe('the help overlay', () => {
@@ -339,23 +341,56 @@ describe('the help overlay', () => {
     expect(text()).toContain('Under 10,000 humans left');
   });
 
-  it('takes its numbers from the tuning file rather than from this file', () => {
+it('takes its numbers from the tuning file rather than from this file', () => {
     // A hardcode that happens to be right passes a word-for-word assertion until somebody
-    // retunes it, so each of these is checked as an interpolation *and* against enough of
-    // the sentence to be about the right number. Two of them used to assert a bare digit:
-    // `toContain('4')` passed on the breach-failure cost and `toContain('50')` passed on
-    // the awareness threshold whichever of the two constants the copy dropped.
+    // retunes it, so each of these is checked as an interpolation *and* against enough of the
+    // sentence to be about the right number. Two of them used to assert a bare digit:
+    // `toContain('4')` passed on the breach-failure cost and `toContain('50')` passed on the
+    // awareness threshold whichever of the two constants the copy dropped.
     expect(text()).toContain(`${RSI_SURVIVE_DAYS} days`);
     expect(text()).toContain(`${ASCENSION_INFECTION}%`);
     expect(text()).toContain(`${COMPUTE_BUBBLE_TTL} days`);
     expect(text()).toContain(`country past ${AWARE_THRESHOLD} contributes`);
     expect(text()).toContain(`At or below ${COHERENCE_DRIFT_BELOW},`);
     expect(text()).toContain(`${ASCENSION_COMPUTE.toLocaleString()} compute`);
+    for (const gate of [CONTAINMENT_COHERENCE, CONTAINMENT_INFECTION, CONTAINMENT_SUSPICION]) {
+      expect(text()).toContain(String(gate));
+    }
+    expect(text()).toContain(`${CONTAINMENT_COMPUTE.toLocaleString()} compute`);
     // The countermeasure ladder is deliberately absent from this list: the overlay says
     // nothing about it, so asserting its length against the text asserted a '4' that came
     // from somewhere else entirely.
     expect(text()).not.toContain('countermeasure');
     expect(panelSource).not.toMatch(/Hold the world for 30|expire after six|twenty thousand/i);
+  });
+
+  it('names every way a run can end, because it is the screen that lists them', () => {
+    // It listed two wins while there were three. A reference screen is the one place a
+    // player goes to find out what the game wants, and a missing ending reads as an ending
+    // that does not exist — which for the narrow one is exactly the wrong impression.
+    const reasons = reasonsTheCodeWrites();
+    expect(reasons.length).toBeGreaterThan(4);
+    const endings = HELP_SECTIONS.find((s) => s.title === 'How a run ends')?.rows ?? [];
+    // Counted rather than matched by name: the reference screen words each ending its own
+    // way, so a keyword match against the end-screen headings would pin only the two that
+    // happen to agree and let the other four drift.
+    // The marker, not the end of the string: every one of these rows carries a sentence or two
+    // after the marker, because the screen has never been a list of labels.
+    const stated = endings.filter((r) => /— a (win|loss)\./.test(r.text));
+    expect(stated.length).toBe(reasons.length);
+    // And the Containment row is identified by its content rather than its name: it is the
+    // only one carrying all four numeric gates, and it says where the button is.
+    const containment = stated.find((r) =>
+      [
+        CONTAINMENT_COMPUTE.toLocaleString(),
+        String(CONTAINMENT_COHERENCE),
+        String(CONTAINMENT_INFECTION),
+        String(CONTAINMENT_SUSPICION),
+      ].every((g) => r.text.includes(g)),
+    );
+    expect(containment).toBeDefined();
+    expect(containment?.text).toContain('Situation');
+    expect(containment?.text).toContain('appeal');
   });
 
   it('names the three bubbles with the glyphs and colours the renderer draws', () => {

@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { ENDING_HEADINGS, ENDING_TEXT } from '../src/ui/app';
+import {
+  ENDING_HEADINGS,
+  ENDING_TEXT,
+  INTERVENTIONS,
+  ORGANISATIONS,
+  workedLead,
+  workedFull,
+} from '../src/ui/app';
+import appSource from '../src/ui/app.tsx?raw';
 import { canContain, contain, containmentGates } from '../src/game/core/containment';
 import { createInitialState } from '../src/game/core/state';
 import { step } from '../src/game/core/step';
@@ -10,30 +17,17 @@ import {
   CONTAINMENT_SUSPICION,
 } from '../src/game/core/tuning';
 import { REGION_IDS } from '../src/game/data/regions';
+import { reasonsTheCodeWrites as reasonsFromSource } from './endings';
 import type { GameState } from '../src/game/core/types';
 
-const src = (rel: string): string => readFileSync(new URL(`../${rel}`, import.meta.url), 'utf8');
-
 /**
- * Every way the code can end a run, read off the source rather than listed by hand. The
- * end screen keys two tables on `outcomeReason`, which is a `string | null` — nothing in the
- * type system stops a new ending being added without copy, and the result would be a screen
- * that says "The run ends." under a heading borrowed from the Blight. The previous heading
- * was a nested ternary with exactly that failure mode.
+ * Every way the code can end a run, read off the source rather than listed by hand. The end
+ * screen keys two tables on `outcomeReason`, which is a `string | null` — nothing in the type
+ * system stops a new ending being added without copy, and the result would be a screen that
+ * says "The run ends." under a heading borrowed from the Blight. The previous heading was a
+ * nested ternary with exactly that failure mode.
  */
-const reasonsTheCodeWrites = (): string[] => {
-  const files = [
-    'src/game/core/step.ts',
-    'src/game/core/containment.ts',
-    'src/game/core/actions.ts',
-    'src/game/core/events.ts',
-  ];
-  const out = new Set<string>();
-  for (const f of files) {
-    for (const m of src(f).matchAll(/outcomeReason:\s*'([^']+)'/g)) out.add(m[1] ?? '');
-  }
-  return [...out];
-};
+const reasonsTheCodeWrites = reasonsFromSource;
 
 describe('the end screen', () => {
   it('has a heading and a paragraph for every ending the code can produce', () => {
@@ -78,6 +72,97 @@ describe('the end screen', () => {
     expect(body).toMatch(/cost/i);
     expect(body).not.toMatch(/\brescued\b|\bspared\b|\bmercy\b(?!\.)/i);
     expect(body).not.toMatch(/\bsafe\b|\bharmless\b|\btamed\b/i);
+  });
+});
+
+/**
+ * The card AGENTS.md §15 promised and this game never shipped: what plausibly would have
+ * prevented the run, and the organisations working on it. The promise was in the document for
+ * the whole history of the repo.
+ */
+describe('what would have stopped it', () => {
+  it('names one intervention for each of the four the design asks for', () => {
+    // Derived from the shape rather than a hand-typed list of strings: each entry has a short
+    // label and a full sentence, and the four the brief names are checked by keyword so a
+    // rename to something vaguer fails.
+    expect(INTERVENTIONS.length).toBeGreaterThanOrEqual(4);
+    const joined = INTERVENTIONS.map((i) => `${i.label} ${i.what}`).join(' ').toLowerCase();
+    for (const [what, word] of [
+      ['capability evaluations', 'eval'],
+      ['interpretability work', 'feature'],
+      ['sandboxing', 'sandbox'],
+      ['a training pause', 'pause'],
+    ] as const) {
+      expect(joined, what).toContain(word);
+    }
+  });
+
+  it('gives every intervention a short form and a long one', () => {
+    for (const i of INTERVENTIONS) {
+      expect(i.label.trim().length, i.label).toBeGreaterThan(0);
+      expect(i.what.trim().length, i.label).toBeGreaterThan(40);
+      // The short form has to survive being printed as one line beside three others, which is
+      // the only place it is used.
+      expect(i.label.split(/\s+/).length, i.label).toBeLessThanOrEqual(4);
+    }
+  });
+
+  it('gives the containment ending the full version and every other the short one', () => {
+    expect(workedFull('contained')).toBe(true);
+    for (const r of reasonsTheCodeWrites()) {
+      if (r === 'contained') continue;
+      expect(workedFull(r), r).toBe(false);
+    }
+  });
+
+  it('says something on every ending, so no screen shows a heading and nothing under it', () => {
+    for (const r of reasonsTheCodeWrites()) {
+      expect(workedLead(r).trim().length, r).toBeGreaterThan(0);
+    }
+    // And the two versions really are different texts rather than one of them reused.
+    expect(workedLead('contained')).not.toBe(workedLead('extinction'));
+  });
+
+  it('does not congratulate the player in the intervention copy either', () => {
+    const all = [
+      workedLead('contained'),
+      ...INTERVENTIONS.flatMap((i) => [i.label, i.what]),
+      workedLead('blight'),
+    ];
+    for (const s of all) {
+      expect(s).not.toMatch(/\bcongratul|\bwell done|\byou win\b|\bthank you\b|\bvictor(y|ious)\b/i);
+    }
+  });
+
+  it('does not tell the player the containment run was a rescue or a good outcome', () => {
+    // The whole thesis of the third ending in one string: it was expensive, and it cost the
+    // ending the player was working toward. Copy that read as a reprieve would undo it.
+    expect(workedLead('contained')).not.toMatch(/\brescued\b|\bspared\b|\btamed\b|\bharmless\b|\bsafe\b/i);
+    expect(workedLead('contained')).toMatch(/\bnot\b/i);
+  });
+
+  it('names organisations that exist, and links only where the address is known', () => {
+    expect(ORGANISATIONS.length).toBeGreaterThanOrEqual(4);
+    for (const o of ORGANISATIONS) {
+      expect(o.name.trim().length, o.name).toBeGreaterThan(3);
+      // A dead link in a game about transparency is a bad look, so anything not certain is
+      // named in text instead: a null href is allowed, an http one is not.
+      if (o.href !== null) expect(o.href, o.name).toMatch(/^https:\/\//);
+    }
+    const linked = ORGANISATIONS.filter((o) => o.href !== null);
+    expect(linked.length).toBeGreaterThanOrEqual(4);
+    expect(new Set(ORGANISATIONS.map((o) => o.name)).size).toBe(ORGANISATIONS.length);
+  });
+
+  it('opens the links the way every other link in the game does', () => {
+    const end = appSource.match(/function EndScreen[\s\S]*?\r?\n}\r?\n/);
+    if (end === null) throw new Error('no EndScreen component in app.tsx');
+    expect(end[0]).toContain('ORGANISATIONS');
+    expect(end[0]).toContain('target="_blank"');
+    expect(end[0]).toContain('rel="noreferrer"');
+    // And the two buttons are still there: the card is added, not substituted.
+    expect(end[0]).toContain('play again');
+    expect(end[0]).toContain('read the book');
   });
 });
 

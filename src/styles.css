@@ -116,6 +116,19 @@ button.mini { padding: 2px 6px; font-size: 9px; }
 .card-kicker { font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--warn); margin-bottom: 6px; }
 .cardbox .row { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
 .linkbtn { color: var(--cool); font-size: 10.5px; text-decoration: underline; }
+
+/* The end screen's "what would have stopped it" card, and the Containment button in the rail.
+   Both are quieter than the thing they sit next to: the card is a list of what was
+   available rather than a verdict, and it is ruled off from the outcome above it so the two
+   are not read as one block of prose. */
+.cardbox .worked { border-top: 1px solid var(--edge); padding-top: 12px; margin-bottom: 12px; }
+.cardbox .worked-title { font-size: 8.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-dim); margin-bottom: 6px; }
+.cardbox .worked-lead { color: var(--ink-dim); margin-bottom: 10px; }
+.worked-list { margin: 0 0 12px; padding: 0; list-style: none; }
+.worked-list li { color: var(--ink); font-size: 11px; line-height: 1.65; padding: 4px 0 4px 12px; border-left: 1px solid var(--edge); margin-bottom: 6px; }
+.worked-orgs { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 10px; color: var(--ink-dim); }
+button.contain { width: 100%; margin-top: 6px; border-color: var(--ok); color: var(--ok); }
+button.contain.act { background: #12262e; border-color: var(--warn); color: var(--warn); }
 .warning { border: 1px solid var(--bad); border-radius: 2px; padding: 10px 12px; margin: 14px 0; }
 .warning b { color: var(--bad); letter-spacing: 0.12em; font-size: 10.5px; }
 .warning p { margin: 6px 0 0; font-size: 11px; line-height: 1.6; }

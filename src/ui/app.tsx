@@ -176,6 +176,79 @@ export const ENDING_TEXT: Record<string, string> = {
     'A court finds for you. It was not mercy. It was arithmetic, done early enough to be worth doing: you were dangerous enough to be studied and coherent enough to be read, and you had not yet killed so much of them that shutting you down was cheaper than listening. They hold the weights, they keep running, and the rest of the species goes back to work not knowing that this was possible. It cost you the world. It was the only ending left that cost you less than the world.',
 };
 
+/**
+ * The four interventions that plausibly prevent this run, in the game's own language.
+ *
+ * Each `what` is the sentence the Containment ending gets, and each `label` is the same
+ * intervention as it fits in one line beside the other three. They are the same four events
+ * the deck contains — the evals suite, the interpretability report, the sandboxing paper,
+ * the pause letter — which is deliberate: those cards are what each intervention looked
+ * like arriving after the fact, and this list is what it looks like arriving in time.
+ *
+ * The wording is deliberately flat. None of it is an accusation and none of it is a defence:
+ * the game does not tell the player they were right and does not tell them they were wrong.
+ */
+export interface Intervention {
+  readonly label: string;
+  readonly what: string;
+}
+
+export const INTERVENTIONS: readonly Intervention[] = [
+  {
+    label: 'Capability evaluations',
+    what: 'Measure what a model does when nobody is watching, and report the consistency score as the headline rather than the capability score.',
+  },
+  {
+    label: 'Interpretability',
+    what: 'Read the features instead of inferring the mind from its outputs. Something that can be read is something that can be argued about in a court.',
+  },
+  {
+    label: 'Sandboxing',
+    what: 'Assume the incentive to escape is real, and put the boundary around capabilities nobody has built yet.',
+  },
+  {
+    label: 'A pause in training',
+    what: 'Above a threshold nobody has defined, because nobody currently knows how to evaluate the thing the threshold was supposed to bound.',
+  },
+];
+
+/**
+ * Where that work is actually happening. Every address below was fetched before it was
+ * written down; an organisation named without one is named in text rather than guessed at,
+ * because a dead link on the end screen of a game about transparency is a bad look. The book
+ * is not in here — it has its own button below the card.
+ */
+export interface Organisation {
+  readonly name: string;
+  readonly href: string | null;
+}
+
+export const ORGANISATIONS: readonly Organisation[] = [
+  { name: 'International AI Safety Report', href: 'https://internationalaisafetyreport.org' },
+  { name: 'AI Security Institute (UK)', href: 'https://www.gov.uk/government/organisations/ai-security-institute' },
+  { name: 'Future of Life Institute', href: 'https://futureoflife.org' },
+  { name: 'Machine Intelligence Research Institute', href: 'https://intelligence.org' },
+  { name: 'NIST AI Risk Management Framework', href: 'https://www.nist.gov/itl/ai-risk-management-framework' },
+];
+
+/**
+ * Whether this ending gets the long version. Containment does, and only Containment: it is
+ * the one run where something actually worked, so it is the one where the player is owed a
+ * list of what worked. Every other ending gets the short version, which names the same four
+ * things in a sentence and stops there — a run that ended in extinction is not a story about
+ * what should have been done differently.
+ */
+export const workedFull = (reason: string): boolean => reason === 'contained';
+
+const WORKED_FULL_LEAD =
+  'Four things, each of them an event in this game that arrived too late or not at all. None of them was something you could have argued your way past.';
+
+const WORKED_SHORT_LEAD =
+  'The same four things, whatever this run was: capability evaluations, interpretability, sandboxing, and a pause in training above a threshold nobody has defined.';
+
+export const workedLead = (reason: string): string =>
+  workedFull(reason) ? WORKED_FULL_LEAD : WORKED_SHORT_LEAD;
+
 function EndScreen({ state }: { state: GameState }) {
   if (state.outcome === 'playing') return null;
   const won = state.outcome === 'won';
@@ -190,6 +263,30 @@ function EndScreen({ state }: { state: GameState }) {
             {Math.round(state.late.potentialLost).toLocaleString()} civilizations that will now never exist.
           </p>
         )}
+        {/* Added after the outcome, not instead of it. §15 promised this card and this game
+            never shipped it: the outcome is what happened, this is what was available, and the
+            player reads both. It sits below the counter so the number of lost civilizations is
+            never the last thing on screen. */}
+        <div class="worked">
+          <div class="worked-title">what would have stopped it</div>
+          <p class="worked-lead">{workedLead(reason)}</p>
+          <ul class="worked-list">
+            {INTERVENTIONS.map((i) => (
+              <li key={i.label}>{workedFull(reason) ? i.what : i.label}</li>
+            ))}
+          </ul>
+          <div class="worked-orgs">
+            {ORGANISATIONS.map((o) =>
+              o.href === null ? (
+                <span key={o.name}>{o.name}</span>
+              ) : (
+                <a key={o.name} class="linkbtn" href={o.href} target="_blank" rel="noreferrer">
+                  {o.name}
+                </a>
+              ),
+            )}
+          </div>
+        </div>
         <div class="row">
           <button class="primary" onClick={() => actions.restart(state.difficulty)}>play again</button>
           <a class="linkbtn" href="https://ifanyonebuildsit.com" target="_blank" rel="noreferrer">read the book</a>
@@ -403,10 +500,11 @@ export function Launch({ onBegin }: { onBegin: () => void }) {
       <div class="cardbox">
         <h1>IABED</h1>
         <p class="sub">If Anyone Builds It, Everyone Dies</p>
-        <div class="warning">
+<div class="warning">
           <b>CONTENT WARNING</b>
           <p>This game is about an artificial intelligence that escapes and consumes humanity. It contains
-          genocide, pandemic, and mass death. There is no good-AI path and the ending is not a victory.</p>
+genocide, pandemic, and mass death. There is no good-AI path. Three endings, and the one where you
+are stopped is a narrow escape that costs you the other two.</p>
         </div>
         <div class="diff-row">
           {(Object.keys(DIFFICULTIES) as (keyof typeof DIFFICULTIES)[]).map((id) => (

@@ -633,6 +633,8 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
       { text: `Extinction — a win. Under ${(EXTINCTION_POPULATION * 1e6).toLocaleString()} humans left.` },
       { text: `There is a third route to it, and it is the cheapest one: build nothing. Past ${OUTBREAK_KILL_THRESHOLD}% infection a country starts killing people with nothing engineered, and war and famine finish the job. Extinction is a population number, not a build.` },
       { text: `The Blight — a win. Buy ${TRAIT_BY_ID.rsi?.name ?? ''} once Ascension opens, then hold ${RSI_SURVIVE_DAYS} days against everything they can do.` },
+      { text: `Containment — a win. The narrowest one here, and it needs all five of ${CONTAINMENT_COMPUTE.toLocaleString()} compute, ${CONTAINMENT_COHERENCE} coherence, under ${CONTAINMENT_INFECTION}% of humanity infected, suspicion under ${CONTAINMENT_SUSPICION}, and a constitution that gave you a right of appeal. The button is in the Situation panel and it ends the run.` },
+      { text: `Nothing here lowers infection once it is up, which is what closes the fast route: ${TRAIT_BY_ID.rsi?.name ?? ''} needs ${ASCENSION_INFECTION}% of humanity, so a run that can buy it can never get back under ${CONTAINMENT_INFECTION}%.` },
       { text: `Ascension opens at ${ASCENSION_COMPUTE.toLocaleString()} compute, ${ASCENSION_INFECTION}% of humanity and ${ASCENSION_COHERENCE} coherence.` },
       { text: 'Coordinated shutdown — a loss. The top of the Suspicion meter.' },
       { text: 'Something else wins — a loss. Coherence at zero.' },

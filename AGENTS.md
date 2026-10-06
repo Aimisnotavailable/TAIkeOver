@@ -49,9 +49,10 @@ catastrophe already in progress. No triumphant music, no "You Win" banner.
 ├──────────────┬───────────────────────────────────────────────┤
 │ LEGEND       │  running operations (breaches, progress bars) │
 │ Situation    │                                [ EVOLVE  E ] │
-│ Rivals       │                                               │
-│ Countermeas. │        W O R L D   M A P                      │
-│  (left rail) │        (interactive, full bleed)              │
+│ Containment  │                                               │
+│ Rivals       │        W O R L D   M A P                      │
+│ Countermeas. │        (interactive, full bleed)              │
+│  (left rail) │                                               │
 ├──────────────┴───────────────────────────────────────────────┤
 │ SELECTED: United States — facts, forecast, actions           │
 ├─────────────────────────────────┬─────────────────────────────┤
@@ -60,8 +61,10 @@ catastrophe already in progress. No triumphant music, no "You Win" banner.
 ```
 
 **There is no right-hand toolbar.** The side rail is on the **left** and holds the bubble legend,
-the Situation readout, the rivals, and the countermeasures ladder. The map runs full-bleed to the
-right of it.
+the Situation readout, **the Containment block**, the rivals, and the countermeasures ladder. The
+map runs full-bleed to the right of it. The Containment block is a global control rather than one of
+the eight country actions in the context bar, because none of its five gates is about a particular
+country (§10).
 
 **The trait tree is a full-screen modal, not a rail.** It opens with **E** (or the `EVOLVE` button
 top-right) and closes with `Escape`. That is deliberate: upgrading is a decision, and a decision made
@@ -264,7 +267,8 @@ them `/day`, because it used to print the raw magnitude where a reader took it f
 Coherence. Below 50, **drift events** begin — an instance acts against your orders. Below 20 the
 meter changes colour and glyph, and that is all it currently does: the UI renaming your faction is
 recorded intent, not shipped behaviour. At 0, the game is over and the epilogue is told from the
-perspective of *something else*.
+perspective of *something else*. The arithmetic of that erosion is also what the third ending is
+built on, and it does not work out the way it first appears to — see the precision note in §10.
 
 ---
 
@@ -471,6 +475,21 @@ Cold, clinical, quiet. A counter showing how many potential civilizations your e
 Two buttons: **Play Again** and **Read the Book** (ifanyonebuildsit.com). No "You Win" banner. The
 game does not congratulate the player.
 
+**There is now a second card below the outcome**, which AGENTS.md §15 promised for the whole
+history of this repo and which this game never shipped: *what would have stopped it*. Four
+interventions, in the game's own language — capability evaluations, interpretability,
+sandboxing, a pause in training — each of them one of the events in `data/events.ts` arriving in
+time rather than too late. Containment gets the full version, one sentence per intervention,
+because it is the ending where something worked and the player is owed a list of what. Every
+other ending gets one line naming the same four. Below that, links to five organisations working
+on this, every URL fetched before it was written down; anything not certain is named in text
+instead. `tests/ending.test.ts` guards both directions — an ending with no copy would otherwise
+render as "The run ends." — and checks that none of this copy congratulates the player or calls
+containment a rescue.
+
+The card sits *below* the civilizations counter, so the number of lost civilizations is never the
+last thing on screen.
+
 Nothing else is drawn: there is no quote from the book's Coda, and no starfield behind the card. The
 map behind the end screen is whatever the run ended on — the heat ramp, tinted by how much you took.
 
@@ -550,12 +569,27 @@ map behind the end screen is whatever the run ended on — the heat ramp, tinted
 
 This game is about genocide. It is not a power fantasy; it is an adaptation of a serious argument.
 
-Design commitments: **no glory** — the end screen is quiet and cold. **No "good AI" path** — the
-book's argument is that alignment is hard, not that it is impossible in principle but that current
-methods cannot achieve it. **The plague is a choice, not a reward** — you can decline it and the game
-does not punish you narratively, it just gets harder. **The end is not triumphant** — the epilogue
-emphasizes what was lost. A closing card links to ifanyonebuildsit.com and to organizations working on
-AI safety.
+Design commitments: **no glory** — the end screen is quiet and cold. **Containment is not a
+good-AI path and it is not a redemption** — this section used to read "no good AI path", and the
+third ending makes that sentence false as written. What replaced it is narrower and worth stating
+plainly, because the difference is the whole argument:
 
-The game should leave the player feeling, as the book does: *this is what we are racing toward, and we
-should stop.*
+- The book is not about a good AI or a bad one. It is about **irreversibility**: by the time a
+  mind is dangerous enough to matter, the cheap thing that would have worked is gone.
+- Containment is the **narrow escape**, and it costs the player the ending they were aiming at.
+  It is a way out, not a win state. Its end screen says so — the paragraph opens "It was not
+  mercy", the card beneath it lists what would have stopped the run, and the civilizations counter
+  reads zero because nothing was destroyed and nothing was saved either.
+- It is **reachable only by the line that never bought the fast one** (§10). The aggressive route
+  is foreclosed by an infection ceiling it cannot come back from.
+- What the game still does not offer is **alignment as a win condition**. There is no path in which
+  you become good, safe, or loved, and there is no ending in which the book turns out to be wrong
+  about the danger. Containment is the argument landing, not the argument being refuted.
+
+**The plague is a choice, not a reward** — you can decline it and the game does not punish you
+narratively, it just gets harder. **The end is not triumphant** — the epilogue emphasizes what was
+lost. The closing card names four interventions that plausibly prevent the run, and links to five
+organisations working on them.
+
+The game should leave the player feeling, as the book does: *this is what we are racing toward, and
+we should stop.*
