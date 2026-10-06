@@ -3,6 +3,15 @@ import type { GameState, TraitEffect, TraitId } from './types';
 
 export const owned = (state: GameState, id: TraitId): boolean => state.traits.includes(id);
 
+/**
+ * Whether a trait is held, or bought and still incubating on its way to being held.
+ * `buyTrait` files a purchase under `incubating` for three days and only `step` promotes
+ * it into `traits`, so advice that asks whether the player owns a trait has to ask this
+ * rather than `owned` — otherwise it tells them to buy the thing they already paid for.
+ */
+export const held = (state: GameState, id: TraitId): boolean =>
+  owned(state, id) || state.incubating.some((i) => i.trait === id);
+
 export function effectsOf(state: GameState, kind: TraitEffect['kind']): TraitEffect[] {
   const out: TraitEffect[] = [];
   for (const id of state.traits) {

@@ -16,7 +16,7 @@
  */
 
 import { TRAIT_BY_ID } from '../data/traits';
-import { owned } from './queries';
+import { held } from './queries';
 import { PRIMER_INFLUENCE_GOAL } from './tuning';
 import type { GameState, PrimerStep, TraitId } from './types';
 
@@ -34,15 +34,6 @@ type PrimerInstruction = Exclude<PrimerStep, 'done'>;
 
 const ORDER: readonly PrimerInstruction[] = ['select', 'hack-protocols', 'tap-bubble', 'breach', 'influence'];
 
-/**
- * Whether a trait is held or already on its way. `buyTrait` files a purchase under
- * `incubating` for three days and only `step` promotes it into `traits`, so reading
- * `traits` alone would tell a player to buy the thing they are already incubating for
- * most of the early game.
- */
-const holds = (state: GameState, id: TraitId): boolean =>
-  owned(state, id) || state.incubating.some((i) => i.trait === id);
-
 const TEXT: Record<PrimerInstruction, string> = {
   select: 'Click any country on the map.',
   'hack-protocols':
@@ -58,7 +49,10 @@ const passed = (state: GameState, step: PrimerInstruction): boolean => {
     case 'select':
       return state.primer !== 'select';
     case 'hack-protocols':
-      return holds(state, 'hack-1');
+      // `held` rather than `owned`: a purchase sits in `incubating` for three days, and
+      // telling a player to buy the thing they are already incubating is worse than
+      // saying nothing.
+      return held(state, 'hack-1');
     case 'tap-bubble':
       return state.primerBubblesTapped > 0;
     case 'breach':

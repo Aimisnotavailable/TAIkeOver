@@ -5,7 +5,7 @@ import { TRAIT_BY_ID, TRAITS, TRAIT_GROUPS } from '../../game/data/traits';
 import { play } from '../sound';
 import { ACTIONS, type ActionKind } from '../../game/core/actions';
 import { hackForecast, traitForecast, whyNot } from '../../game/core/forecast';
-import { maxConcurrentHacks, owned } from '../../game/core/queries';
+import { held, maxConcurrentHacks, owned } from '../../game/core/queries';
 import {
   ASCENSION_COMPUTE,
   ASCENSION_COHERENCE,
@@ -78,6 +78,74 @@ function ascensionShortfall(state: GameState): string[] {
 }
 
 /**
+ * Ascension's two conditions other than compute. `step` raises `ascensionUnlocked` the
+ * moment all three are met, so while the gate is shut and compute is already there, at
+ * least one of these is short and `ascensionShortfall` has something to name.
+ */
+const ascensionRestMet = (state: GameState): boolean =>
+  state.globalInfection >= ASCENSION_INFECTION && state.coherence >= ASCENSION_COHERENCE;
+
+/** A trait's price and whether it is affordable on the spot. */
+const costDetail = (state: GameState, id: string): string => {
+  const cost = TRAIT_BY_ID[id]?.cost ?? 0;
+  const short = cost - state.compute;
+  return short > 0
+    ? `${cost.toLocaleString()} compute · ${short.toLocaleString()} short`
+    : `${cost.toLocaleString()} compute · affordable now`;
+};
+
+/**
+ * The one line that says what to do next.
+ *
+ * The trait tree is a modal behind E, so a player who never opens it sees no reason to
+ * ever open it, and the only buttons on screen are things they can do without compute.
+ * This sits under the two objectives and names the next move, most urgent first.
+ *
+ * Every trait name and price is read out of the tree. A Spec A review caught a
+ * disabled-button tooltip still telling players to buy "Hack IV", a tier the cut
+ * removed, and a typed name cannot be caught by looking at the tree — only by a test
+ * that compares what the game says against what the game has. `tests/panels.test.ts`
+ * holds that guard, which is also why `detail` carries the numbers: the headline is one
+ * short sentence and it cannot be right about every run that reaches its branch.
+ */
+export function nextGoal(state: GameState): { text: string; detail: string } {
+  if (state.stage === 'late') {
+    return { text: 'Hold the world.', detail: `${RSI_SURVIVE_DAYS} days of counterattack before the map is gone` };
+  }
+  if (owned(state, 'rsi')) {
+    // Clamped: the hold ends when the counter reaches the constant, so counting on past
+    // it would put a negative number of days on the one line that is still being read.
+    const left = Math.max(0, RSI_SURVIVE_DAYS - state.surviveTicks);
+    return { text: `Survive ${left} more days.`, detail: `day ${state.surviveTicks} of ${RSI_SURVIVE_DAYS}` };
+  }
+  if (state.ascensionUnlocked) {
+    return {
+      text: `${TRAIT_BY_ID.rsi?.name ?? ''} is on the tree.`,
+      detail: `press E, then hold it for ${RSI_SURVIVE_DAYS} days`,
+    };
+  }
+  if (state.compute >= ASCENSION_COMPUTE && !ascensionRestMet(state)) {
+    return {
+      text: 'You have the compute for Ascension. Raise infection.',
+      detail: ascensionShortfall(state).join(' · '),
+    };
+  }
+  if (!held(state, 'hack-1')) {
+    return { text: `Buy ${TRAIT_BY_ID['hack-1']?.name ?? ''}.`, detail: costDetail(state, 'hack-1') };
+  }
+  if (state.compute < (TRAIT_BY_ID['hack-2']?.cost ?? 0)) {
+    return { text: `Buy ${TRAIT_BY_ID['hack-2']?.name ?? ''}.`, detail: costDetail(state, 'hack-2') };
+  }
+  if (state.globalInfection < ASCENSION_INFECTION) {
+    return {
+      text: 'Spread further.',
+      detail: `humanity ${state.globalInfection.toFixed(0)}% · ${ASCENSION_INFECTION}% opens Ascension`,
+    };
+  }
+  return { text: 'Tap bubbles. They expire in six days.', detail: 'every circle on the map is compute you already own' };
+}
+
+/**
  * The two ways to end a run, always on screen, so nobody has to guess what the
  * game wants from them. Deaths are counted against the real world population
  * because that is the only target number anyone already has.
@@ -87,6 +155,7 @@ export function Objective({ state }: { state: GameState }) {
   const total = WORLD_POPULATION;
   const pct = Math.min(100, (dead / total) * 100);
   const near = pct >= 99;
+  const goal = nextGoal(state);
   return (
     <div class="objective">
       <div class="obj-row">
@@ -107,6 +176,10 @@ export function Objective({ state }: { state: GameState }) {
             {ascensionShortfall(state).join(' · ')}
           </b>
         )}
+      </div>
+      <div class="obj-row obj-alt">
+        <span class="obj-tag">NEXT</span>
+        <b style={{ color: 'var(--ink-dim)' }} title={goal.detail}>{goal.text}</b>
       </div>
     </div>
   );

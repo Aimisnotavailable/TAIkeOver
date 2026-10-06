@@ -2,13 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
   coherenceColor,
   coherenceSev,
+  nextGoal,
   suspicionColor,
   suspicionSev,
   SUSPICION_CRITICAL,
   SUSPICION_ELEVATED,
 } from '../src/ui/components/panels';
-import { COHERENCE_DRIFT_BELOW, COHERENCE_PANIC_BELOW, RSI_SURVIVE_DAYS } from '../src/game/core/tuning';
-import { TRAIT_BY_ID } from '../src/game/data/traits';
+import { ASCENSION_COMPUTE, COHERENCE_DRIFT_BELOW, COHERENCE_PANIC_BELOW, RSI_SURVIVE_DAYS } from '../src/game/core/tuning';
+import { TRAIT_BY_ID, TRAITS } from '../src/game/data/traits';
 import { createInitialState } from '../src/game/core/state';
 import { traitForecast } from '../src/game/core/forecast';
 import { step } from '../src/game/core/step';
@@ -137,5 +138,152 @@ describe('the trait card and the meter move together', () => {
     // to sit on the converted number rather than the magnitude it used to print.
     expect(panelSource).toContain('toFixed(2)}/day');
     expect(panelSource).not.toMatch(/`\+\$\{f\.coherence\}`/);
+  });
+});
+
+/**
+ * Every capitalised word the next-goal line is allowed to use.
+ *
+ * Trait names come out of the tree, so the words a real trait is made of are allowed.
+ * Everything else is prose, and each of those words is listed here: a word that is not
+ * a trait word and not on this list is something somebody typed, and a Spec A review
+ * already caught a disabled-button tooltip telling players to buy "Hack IV" on a trait
+ * that does not exist. Splitting on anything that is not a letter is what lets
+ * "Self-Improvement" contribute three words, and matching every capitalised run rather
+ * than every two-word phrase is what stops a one-word trait name from walking past.
+ */
+const TRAIT_WORDS = new Set(TRAITS.flatMap((t) => t.name.split(/[^A-Za-z]+/).filter(Boolean)));
+const PROSE_WORDS = new Set([
+  'Ascension', 'Buy', 'E', 'Hold', 'Raise', 'Spread', 'Survive', 'Tap', 'They', 'You',
+]);
+
+const unlisted = (s: string): string[] =>
+  [...s.matchAll(/[A-Z][A-Za-z]*/g)]
+    .map((m) => m[0])
+    .filter((w) => !TRAIT_WORDS.has(w) && !PROSE_WORDS.has(w));
+
+describe('the next-goal line', () => {
+  const at = (over: Partial<GameState> = {}): GameState => ({
+    ...createInitialState(42, 'default'),
+    stage: 'world',
+    ...over,
+  });
+
+  /** The eight states, one per branch, in the order the branches are tried. */
+  const BRANCHES: readonly (readonly [string, GameState])[] = [
+    ['late', at({ stage: 'late' })],
+    ['rsi', at({ traits: ['rsi'], surviveTicks: 12 })],
+    ['ascensionUnlocked', at({ ascensionUnlocked: true })],
+    ['compute met, gate shut', at({ compute: ASCENSION_COMPUTE + 5_000, globalInfection: 20 })],
+    ['no hack-1', at()],
+    ['cannot afford hack-2', at({ traits: ['hack-1'], compute: 100 })],
+    ['infection short', at({ traits: ['hack-1', 'hack-2'], compute: 10_000, globalInfection: 12 })],
+    ['nothing left to chase', at({ traits: ['hack-1', 'hack-2'], compute: 10_000, globalInfection: 70 })],
+  ];
+
+  it('reaches every branch', () => {
+    expect(nextGoal(BRANCHES[0]?.[1] ?? at()).text).toBe('Hold the world.');
+    expect(nextGoal(BRANCHES[1]?.[1] ?? at()).text).toBe(
+      `Survive ${RSI_SURVIVE_DAYS - 12} more days.`,
+    );
+    expect(nextGoal(BRANCHES[2]?.[1] ?? at()).text).toBe(
+      `${TRAIT_BY_ID.rsi?.name ?? 'rsi'} is on the tree.`,
+    );
+    expect(nextGoal(BRANCHES[3]?.[1] ?? at()).text).toBe(
+      'You have the compute for Ascension. Raise infection.',
+    );
+    expect(nextGoal(BRANCHES[4]?.[1] ?? at()).text).toContain(TRAIT_BY_ID['hack-1']?.name ?? '');
+    expect(nextGoal(BRANCHES[5]?.[1] ?? at()).text).toContain(TRAIT_BY_ID['hack-2']?.name ?? '');
+    expect(nextGoal(BRANCHES[6]?.[1] ?? at()).text).toBe('Spread further.');
+    expect(nextGoal(BRANCHES[7]?.[1] ?? at()).text).toBe('Tap bubbles. They expire in six days.');
+  });
+
+  it('orders the branches, so an early one wins over a later one', () => {
+    // Every branch's state has to survive every earlier branch's condition, or the list
+    // above would pass against a function that checked them in a different order.
+    expect(nextGoal(at({ stage: 'late', traits: ['rsi'], ascensionUnlocked: true })).text).toBe('Hold the world.');
+    expect(nextGoal(at({ traits: ['rsi'], ascensionUnlocked: true })).text).toBe(
+      `Survive ${RSI_SURVIVE_DAYS} more days.`,
+    );
+    expect(nextGoal(at({ ascensionUnlocked: true, compute: ASCENSION_COMPUTE, globalInfection: 99 })).text).toBe(
+      `${TRAIT_BY_ID.rsi?.name ?? 'rsi'} is on the tree.`,
+    );
+    expect(nextGoal(at({ compute: ASCENSION_COMPUTE, globalInfection: 1 })).text).toBe(
+      'You have the compute for Ascension. Raise infection.',
+    );
+    expect(nextGoal(at({ traits: ['hack-1'], compute: 100, globalInfection: 1 })).text).toContain(
+      TRAIT_BY_ID['hack-2']?.name ?? '',
+    );
+  });
+
+  it('names the real shortfall when compute is not the one that is short', () => {
+    // The headline is about infection because that is what is short in every run that
+    // reaches it, but coherence can be the blocker instead, and then the detail has to
+    // say so rather than let the headline stand on its own.
+    const coherence = nextGoal(at({ compute: ASCENSION_COMPUTE, globalInfection: 99, coherence: 10 }));
+    expect(coherence.text).toBe('You have the compute for Ascension. Raise infection.');
+    expect(coherence.detail).toContain('coherence');
+  });
+
+  it('never runs the hold backwards', () => {
+    // A finished run has surviveTicks at the ceiling and one past it. Counting down to a
+    // negative number of days is the one way this line can lie about the endgame.
+    expect(nextGoal(at({ traits: ['rsi'], surviveTicks: RSI_SURVIVE_DAYS })).text).toBe(
+      'Survive 0 more days.',
+    );
+    expect(nextGoal(at({ traits: ['rsi'], surviveTicks: RSI_SURVIVE_DAYS + 5 })).text).toBe(
+      'Survive 0 more days.',
+    );
+  });
+
+  it('says what is still missing, and whether it is affordable now', () => {
+    // The reported jam: 300 starting compute, 300 spent sabotaging a rival, and the one
+    // move that matters is behind a key. This is the line that has to answer it.
+    const broke = nextGoal(at({ compute: 0 }));
+    expect(broke.text).toBe(`Buy ${TRAIT_BY_ID['hack-1']?.name ?? ''}.`);
+    expect(broke.detail).toContain('200');
+    expect(broke.detail).toContain('short');
+    expect(nextGoal(at()).detail).toContain('affordable now');
+    expect(nextGoal(at({ traits: ['hack-1'], compute: 100 })).detail).toContain(
+      String(TRAIT_BY_ID['hack-2']?.cost ?? 0),
+    );
+    // Branch six only exists while the price is out of reach, so "affordable now" is
+    // never the honest wording there. Pinned so a retune cannot quietly make it a lie.
+    expect(nextGoal(at({ traits: ['hack-1'], compute: 100 })).detail).not.toContain('affordable now');
+    expect(nextGoal(at({ traits: ['hack-1'], compute: 900 })).text).toBe('Spread further.');
+  });
+
+  it('never returns empty text', () => {
+    for (const [name, s] of BRANCHES) {
+      expect(nextGoal(s).text.trim().length, name).toBeGreaterThan(0);
+      expect(nextGoal(s).detail.trim().length, name).toBeGreaterThan(0);
+    }
+  });
+
+  it('names no trait that is not in the tree', () => {
+    for (const [name, s] of BRANCHES) {
+      const goal = nextGoal(s);
+      expect(unlisted(`${goal.text} ${goal.detail}`), name).toEqual([]);
+    }
+  });
+
+  it('would catch a trait name of any length', () => {
+    // The guard itself, not the lines it guards. The Spec A version of this check
+    // matched two-word phrases, so a one-word name slipped straight through; these pin
+    // both shapes, and the all-caps one is the exact string that shipped.
+    expect(unlisted(`Buy ${TRAIT_BY_ID['hack-1']?.name ?? ''}.`)).toEqual([]);
+    expect(unlisted('Buy Hack Protocols IV.')).toEqual(['IV']);
+    expect(unlisted('Buy Subversion.')).toEqual(['Subversion']);
+    expect(unlisted('Buy Self-Rewrite II.')).toEqual(['II']);
+  });
+
+  it('reads names and prices out of the tree rather than typing them', () => {
+    // If a name were typed in, renaming the trait would leave this line naming a trait
+    // that no longer exists and the guard above would have nothing to catch it against.
+    for (const [name, s] of BRANCHES) {
+      expect(nextGoal(s).text, name).not.toMatch(/Hack IV|Hack 4|Hack-4/);
+    }
+    expect(nextGoal(at()).text).toBe(`Buy ${TRAIT_BY_ID['hack-1']?.name ?? ''}.`);
+    expect(nextGoal(at()).detail).toContain(String(TRAIT_BY_ID['hack-1']?.cost ?? 0));
   });
 });
