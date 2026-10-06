@@ -25,11 +25,20 @@ button:disabled { opacity: 0.32; cursor: not-allowed; }
 button.primary { border-color: var(--ok); color: var(--ok); }
 button.mini { padding: 2px 6px; font-size: 9px; }
 
-.game { position: fixed; inset: 0; }
+/* `--hud` is the height of the top bar, and everything pinned under it reads it rather
+   than repeating the number. The bar is 46px until the primer needs a second row, at
+   which point `.game.priming` makes room and the rail, the operations panel, the bar and
+   the toasts all move down together. Every offset below is `46px` plus what it always was,
+   so with the primer dismissed nothing moves. */
+.game {
+  position: fixed; inset: 0;
+  --hud: 46px;
+}
+.game.priming { --hud: 78px; }
 .game canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 
 .topbar {
-  position: absolute; top: 0; left: 0; right: 0; height: 46px;
+  position: absolute; top: 0; left: 0; right: 0; height: var(--hud);
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 12px; background: rgba(3, 7, 9, 0.92); border-bottom: 1px solid var(--edge);
 }
@@ -60,7 +69,7 @@ button.mini { padding: 2px 6px; font-size: 9px; }
 .trait.incubating { border-color: var(--warn); opacity: 0.8; }
 .trait.locked { opacity: 0.38; }
 
-.side { position: absolute; top: 46px; left: 0; bottom: 150px; width: 186px; background: var(--pane); border-right: 1px solid var(--edge); padding: 8px; overflow-y: auto; }
+.side { position: absolute; top: var(--hud); left: 0; bottom: 150px; width: 186px; background: var(--pane); border-right: 1px solid var(--edge); padding: 8px; overflow-y: auto; }
 .side-block { margin-bottom: 14px; }
 .side-title { font-size: 8.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-dim); margin-bottom: 6px; }
 .rival { margin-bottom: 7px; }
@@ -123,7 +132,7 @@ button.mini { padding: 2px 6px; font-size: 9px; }
 .trait-bar i { display: block; height: 100%; background: var(--warn); }
 .trait-why { font-size: 9px; color: var(--warn); margin-top: 3px; }
 
-.ops { position: absolute; top: 52px; left: 196px; width: 470px; background: var(--pane); border: 1px solid var(--edge); border-radius: 2px; padding: 7px 9px; }
+.ops { position: absolute; top: calc(var(--hud) + 6px); left: 196px; width: 470px; background: var(--pane); border: 1px solid var(--edge); border-radius: 2px; padding: 7px 9px; }
 .ops-head { display: flex; justify-content: space-between; font-size: 8.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-dim); margin-bottom: 5px; }
 .ops-cap { color: var(--ink); }
 .ops-empty { font-size: 10px; color: var(--ink-dim); }
@@ -157,7 +166,7 @@ button.mini { padding: 2px 6px; font-size: 9px; }
    scrim — at z-index 25 the bar rendered underneath the card it was describing, so the one
    piece of text explaining the interaction was the one thing the interaction hid. 45 puts
    it over the overlay and over the toasts, which are transient and pointer-transparent. */
-.paused-bar { position: absolute; top: 46px; left: 0; right: 0; height: 24px; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: rgba(60,20,10,.94); border-bottom: 1px solid var(--bad); color: #ffb4a2; font-size: 10px; letter-spacing: 0.08em; z-index: 45; }
+.paused-bar { position: absolute; top: var(--hud); left: 0; right: 0; height: 24px; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: rgba(60,20,10,.94); border-bottom: 1px solid var(--bad); color: #ffb4a2; font-size: 10px; letter-spacing: 0.08em; z-index: 45; }
 .pb-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--bad); }
 .op-hard { color: var(--bad); }
 .tier-max { color: var(--ink-dim); font-size: 9px; }
@@ -169,7 +178,7 @@ button.ignore:hover { border-color: var(--ink-dim); color: var(--ink); backgroun
 /* Action confirmations. Loud enough to notice mid-run, gone in under three seconds. */
 .toasts {
   position: fixed;
-  top: 58px;
+  top: calc(var(--hud) + 12px);
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -222,6 +231,12 @@ button.ignore:hover { border-color: var(--ink-dim); color: var(--ink); backgroun
   .toast { animation: none; }
 }
 
+.hud-mid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
 /* The goal, always visible. Two ways to end a run, neither of them a secret. */
 .objective {
   display: flex;
@@ -267,12 +282,40 @@ button.ignore:hover { border-color: var(--ink-dim); color: var(--ink); backgroun
   cursor: help;
 }
 
+/* The primer. A line in the bar and not a card over it: the world runs underneath this,
+   and it only gets shorter as the player does the things it names. */
+.primer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 520px;
+}
+.primer b {
+  font: 400 9.5px/1.5 ui-monospace, Consolas, monospace;
+  color: var(--ink);
+  text-align: center;
+}
+.primer-tag {
+  flex: none;
+  color: var(--cool);
+  font-size: 8.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.primer-x {
+  flex: none;
+  padding: 0 4px;
+  font-size: 9px;
+  line-height: 1.4;
+  color: var(--ink-dim);
+}
+
 /* The upgrade screen. Full-screen because upgrading is a decision, and you cannot
    make a decision while the world is running at 8x. */
 .evolve-btn {
   position: fixed;
   right: 12px;
-  top: 58px;
+  top: calc(var(--hud) + 12px);
   z-index: 30;
   padding: 7px 12px;
   font: 600 10px/1 ui-monospace, Consolas, monospace;

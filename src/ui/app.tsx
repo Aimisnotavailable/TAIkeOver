@@ -3,11 +3,11 @@ import { rollEvent } from '../game/core/events';
 import { DIFFICULTIES, getDifficulty } from '../game/core/tuning';
 import { REGION_BY_ID, REGION_IDS, type RegionId } from '../game/data/regions';
 import { actions, game } from './store';
-import { ContextBar, Evolve, EvolveButton, EventLog, Operations, SideRail, TopBar } from './components/panels';
+import { ContextBar, Evolve, EvolveButton, EventLog, Operations, primerLine, SideRail, TopBar } from './components/panels';
 import { drawWorldMap, hitTest, hitTestCompute, mapStageFor } from './map/worldMap';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { TICK_MS } from '../game/core/tuning';
-import { announce, evolving, evolveBlocked, flash, hovered, selected, speed, toasts, worldRunning, type ToastTone } from './store';
+import { announce, evolving, evolveBlocked, flash, hovered, selected, showHelp, speed, toasts, worldRunning, type ToastTone } from './store';
 import { startMusic, unlockAudio } from './sound';
 
 const TOAST_TONE: Record<ToastTone, string> = {
@@ -242,11 +242,20 @@ function Map({ state }: { state: GameState }) {
   );
 }
 
+/**
+ * The keys that dismiss the primer line. One-way for the run: the point is that someone
+ * who already knows the game is not made to read it again, and a toggle invites a press
+ * that brings back the thing they just turned off. `?` is `Shift+/` on most layouts, so it
+ * arrives as its own `key` rather than as a shifted `/`.
+ */
+export const dismissesPrimer = (key: string): boolean => key.toLowerCase() === 'h' || key === '?';
+
 export function Game() {
   const state = game.value;
   const cardPending = evolveBlocked(state);
   const running = worldRunning(state, speed.value, evolving.value);
   const paused = !running;
+  const primer = primerLine(state, showHelp.value);
 
   useEffect(() => {
     // Keyed on the decision itself, not on the individual inputs. Listing the inputs
@@ -294,15 +303,21 @@ export function Game() {
         e.preventDefault();
         evolving.value = true;
       }
+      // H and ? take the primer away for the rest of the run. No preventDefault: neither
+      // key has a default action, and swallowing one would be a claim about a binding
+      // that has not been made.
+      if (dismissesPrimer(e.key)) showHelp.value = false;
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   return (
-    <div class="game">
+    // `.priming` is what gives the bar its extra row: the primer sits above the goal, so
+    // the goal and everything pinned below the bar move down while there is one to read.
+    <div class={`game${primer !== null ? ' priming' : ''}`}>
       <Map state={state} />
-      <TopBar state={state} />
+      <TopBar state={state} primer={primer} />
       {/* Gated on the run still being live: a card can survive into the end screen, and
           "the world is still moving" over a finished run is the one thing this bar must
           never say. */}

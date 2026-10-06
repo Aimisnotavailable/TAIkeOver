@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { createInitialState } from '../src/game/core/state';
 import { primerFor } from '../src/game/core/primer';
 import { step } from '../src/game/core/step';
-import { actions, announce, announced, game, selected, toasts } from '../src/ui/store';
+import { actions, announce, announced, game, selected, showHelp, toasts } from '../src/ui/store';
+import { primerLine } from '../src/ui/components/panels';
 import { quietFactor } from '../src/game/core/compute';
 import { INFLUENCE_MAX } from '../src/game/core/tuning';
 import { REGION_IDS } from '../src/game/data/regions';
@@ -19,6 +20,7 @@ beforeEach(() => {
   game.value = start();
   toasts.value = [];
   selected.value = null;
+  showHelp.value = true;
 });
 
 describe('confirming an action', () => {
@@ -119,6 +121,27 @@ describe('announcements re-arm on restart', () => {
 
     announce(s);
     expect(toasts.value.map((t) => t.title)).toContain('THE PATHOGEN IS VISIBLE');
+  });
+});
+
+describe('the primer can be dismissed, and comes back with the run', () => {
+  it('goes quiet for the rest of the run once the player says no', () => {
+    game.value = start();
+    expect(primerLine(game.peek(), showHelp.value)).not.toBeNull();
+    showHelp.value = false;
+    expect(primerLine(game.peek(), showHelp.value)).toBeNull();
+    // It does not come back on a milestone. This is a preference about the interface,
+    // not a step the projection can walk on.
+    actions.select('us');
+    expect(primerLine(game.peek(), showHelp.value)).toBeNull();
+  });
+
+  it('re-arms on restart, because a new run is a run nobody has told this player about', () => {
+    showHelp.value = false;
+    actions.restart('default');
+    expect(showHelp.value).toBe(true);
+    expect(primerFor(game.peek()).step).toBe('select');
+    expect(primerLine(game.peek(), showHelp.value)).not.toBeNull();
   });
 });
 

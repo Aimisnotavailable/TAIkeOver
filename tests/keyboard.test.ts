@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { stepRegion } from '../src/ui/app';
-import { closesEvolve } from '../src/ui/components/panels';
-import { REGION_IDS } from '../src/game/data/regions';
+import { dismissesPrimer, stepRegion } from '../src/ui/app';
+import { closesEvolve, selectionAnnouncement } from '../src/ui/components/panels';
+import { REGION_BY_ID, REGION_IDS } from '../src/game/data/regions';
 import appSource from '../src/ui/app.tsx?raw';
 import panelSource from '../src/ui/components/panels.tsx?raw';
 
@@ -115,7 +115,10 @@ describe('the map is not silent', () => {
     const region = liveRegion();
     expect(region).toContain('role="status"');
     expect(region).toContain('aria-live="polite"');
-    expect(region).toMatch(/\$\{name\} selected\./);
+    // The string itself is built and asserted in tests/panels.test.ts; what matters here
+    // is that this is the element that publishes it, rather than a second live region
+    // somewhere that announces something slightly different.
+    expect(region).toContain('selectionAnnouncement(id)');
   });
 
   it('announces nothing that ticks', () => {
@@ -124,5 +127,46 @@ describe('the map is not silent', () => {
     // percentage once a day for the length of the run.
     const region = liveRegion();
     expect(region).not.toMatch(/Math\.round|\.toFixed|state\.tick|c\.infection|c\.awareness/);
+    // Position is the one number it does carry, and it is the one thing here that cannot
+    // be derived from the state: the function takes one argument and it is a region id,
+    // so there is no tick in it for a day to change.
+    expect(selectionAnnouncement.length).toBe(1);
+  });
+
+  it('says where in the ring the selection is', () => {
+    // Thirty countries and no other feedback while stepping: the name alone cannot tell a
+    // fresh selection from the one about to be taken.
+    const first = REGION_IDS[0];
+    const last = REGION_IDS[REGION_IDS.length - 1];
+    if (first === undefined || last === undefined) throw new Error('no regions');
+    expect(selectionAnnouncement(first)).toBe(
+      `${REGION_BY_ID[first]?.name ?? ''} selected, region 1 of ${REGION_IDS.length}.`,
+    );
+    expect(selectionAnnouncement(last)).toContain(`region ${REGION_IDS.length} of ${REGION_IDS.length}.`);
+  });
+});
+
+describe('dismissing the primer', () => {
+  it('takes H and ? and nothing else', () => {
+    expect(dismissesPrimer('h')).toBe(true);
+    expect(dismissesPrimer('H')).toBe(true);
+    // Shift+/ on most layouts, so it arrives as its own key rather than a shifted one.
+    expect(dismissesPrimer('?')).toBe(true);
+    // E is the trait tree, Space is the speed, Enter and Escape belong to a card, and a
+    // bare / is how someone mid-sentence types an address.
+    expect(dismissesPrimer('e')).toBe(false);
+    expect(dismissesPrimer(' ')).toBe(false);
+    expect(dismissesPrimer('Enter')).toBe(false);
+    expect(dismissesPrimer('Escape')).toBe(false);
+    expect(dismissesPrimer('/')).toBe(false);
+  });
+
+  it('is bound in the shell, beside the other global keys', () => {
+    // The shell is where Space and E live and where a key still works while the map has
+    // focus. A binding inside the primer itself would stop working the moment the line
+    // did, which is exactly when somebody wants to get rid of it.
+    expect(appSource).toMatch(/dismissesPrimer\(e\.key\)/);
+    expect(appSource).toContain('showHelp.value = false');
+    expect(panelSource).toContain('showHelp.value = false');
   });
 });

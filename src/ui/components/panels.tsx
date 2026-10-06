@@ -6,6 +6,7 @@ import { play } from '../sound';
 import { ACTIONS, type ActionKind } from '../../game/core/actions';
 import { hackForecast, traitForecast, whyNot } from '../../game/core/forecast';
 import { held, maxConcurrentHacks, owned } from '../../game/core/queries';
+import { primerFor } from '../../game/core/primer';
 import {
   ASCENSION_COMPUTE,
   ASCENSION_COHERENCE,
@@ -13,6 +14,7 @@ import {
   AWARE_THRESHOLD,
   COHERENCE_DRIFT_BELOW,
   COHERENCE_PANIC_BELOW,
+  COMPUTE_BUBBLE_TTL,
   COUNTERMEASURE_TIERS,
   HACK_FAIL_COST,
   OUTBREAK_KILL_THRESHOLD,
@@ -23,7 +25,7 @@ import { REGION_IDS } from '../../game/data/regions';
 import { SPEEDS } from '../../game/core/tuning';
 import { quietFactor } from '../../game/core/compute';
 import type { ComputeBubbleKind, Country, GameState, RegionId, Speed } from '../../game/core/types';
-import { actions, selected, speed } from '../store';
+import { actions, selected, showHelp, speed } from '../store';
 
 const fmt = (n: number): string => {
   if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
@@ -60,30 +62,45 @@ function meter(label: string, value: number, max: number, colour: string, extra 
 }
 
 /**
+ * Which of Ascension's three gates this run has met. One comparison per gate, in one
+ * place, because two readers need them: the objective bar has to name every gate that is
+ * still outstanding, and the next-goal line has to say which of them is the blocker. The
+ * earlier version answered the second question with its own `globalInfection >=
+ * ASCENSION_INFECTION && coherence >= ASCENSION_COHERENCE` helper, which is the same
+ * arithmetic in a second place and can disagree with the bar.
+ */
+const ascensionGates = (state: GameState): { compute: boolean; infection: boolean; coherence: boolean } => ({
+  compute: state.compute >= ASCENSION_COMPUTE,
+  infection: state.globalInfection >= ASCENSION_INFECTION,
+  coherence: state.coherence >= ASCENSION_COHERENCE,
+});
+
+/**
  * Which Ascension conditions are still outstanding, so the bar never just says
  * "20k" while silently requiring four other things at once.
  */
 function ascensionShortfall(state: GameState): string[] {
+  const gates = ascensionGates(state);
   const out: string[] = [];
-  if (state.compute < ASCENSION_COMPUTE) {
+  if (!gates.compute) {
     out.push(`compute ${fmt(state.compute)}/${fmt(ASCENSION_COMPUTE)}`);
   }
-  if (state.globalInfection < ASCENSION_INFECTION) {
+  if (!gates.infection) {
     out.push(`humanity ${state.globalInfection.toFixed(0)}/${ASCENSION_INFECTION}%`);
   }
-  if (state.coherence < ASCENSION_COHERENCE) {
+  if (!gates.coherence) {
     out.push(`coherence ${state.coherence.toFixed(0)}/${ASCENSION_COHERENCE}`);
   }
   return out.length === 0 ? ['Ascension open'] : out;
 }
 
 /**
- * Ascension's two conditions other than compute. `step` raises `ascensionUnlocked` the
- * moment all three are met, so while the gate is shut and compute is already there, at
- * least one of these is short and `ascensionShortfall` has something to name.
+ * The branch on the tree whose traits cost Coherence to hold, found rather than written
+ * in: it is a `TRAIT_GROUPS` entry, so a name typed here would be a second copy of
+ * something the tree can rename, and the line would go on blaming a branch that has moved.
  */
-const ascensionRestMet = (state: GameState): boolean =>
-  state.globalInfection >= ASCENSION_INFECTION && state.coherence >= ASCENSION_COHERENCE;
+const COHERENCE_BRANCH =
+  TRAIT_GROUPS.find((g) => TRAITS.some((t) => t.group === g.id && t.coherence < 0))?.name ?? '';
 
 /** A trait's price and whether it is affordable on the spot. */
 const costDetail = (state: GameState, id: string): string => {
@@ -124,11 +141,21 @@ export function nextGoal(state: GameState): { text: string; detail: string } {
       detail: `press E, then hold it for ${RSI_SURVIVE_DAYS} days`,
     };
   }
-  if (state.compute >= ASCENSION_COMPUTE && !ascensionRestMet(state)) {
-    return {
-      text: 'You have the compute for Ascension. Raise infection.',
-      detail: ascensionShortfall(state).join(' · '),
-    };
+  const gates = ascensionGates(state);
+  // Compute is in hand and a later gate is not. Which later gate decides what this says:
+  // advising a player whose infection is already past the gate to go and infect more of
+  // the world while their coherence drains is worse than saying nothing, and coherence is
+  // the trap — the branch that erodes it is bought with the compute they are sitting on.
+  // Infection is tested first because it is the gate the shortfall bar lists first, so
+  // the headline always names the first thing `detail` reports; both appear in `detail`.
+  if (gates.compute && !(gates.infection && gates.coherence)) {
+    const detail = ascensionShortfall(state).join(' · ');
+    return gates.infection
+      ? {
+          text: `You have the compute for Ascension. ${COHERENCE_BRANCH} is eroding your coherence.`,
+          detail,
+        }
+      : { text: 'You have the compute for Ascension. Raise infection.', detail };
   }
   if (!held(state, 'hack-1')) {
     return { text: `Buy ${TRAIT_BY_ID['hack-1']?.name ?? ''}.`, detail: costDetail(state, 'hack-1') };
@@ -142,7 +169,31 @@ export function nextGoal(state: GameState): { text: string; detail: string } {
       detail: `humanity ${state.globalInfection.toFixed(0)}% · ${ASCENSION_INFECTION}% opens Ascension`,
     };
   }
-  return { text: 'Tap bubbles. They expire in six days.', detail: 'every circle on the map is compute you already own' };
+  return {
+    text: `Tap bubbles. They expire in ${COMPUTE_BUBBLE_TTL} days.`,
+    detail: 'every circle on the map is compute you already own',
+  };
+}
+
+/**
+ * The primer, or null when there is nothing to say.
+ *
+ * One line in the HUD, above the objective, and never a modal. Spec A spent three tasks
+ * taking out the things that stop the world, and a card that pauses in order to teach is
+ * the same mistake in a nicer outfit — the player is reading it while the run is at 8x
+ * and their click is the only thing that moves it on.
+ *
+ * The text is `primerFor(state).text` untouched. The strings are asserted word for word
+ * in `tests/primer.test.ts`, so a second wording here would be a second thing to drift
+ * and the tests would only be pinning the copy nobody reads.
+ *
+ * `help` is the `showHelp` signal. False means the player has said they do not want to be
+ * taught, and nothing in here argues with that: it comes back on a new run, not sooner.
+ */
+export function primerLine(state: GameState, help: boolean): string | null {
+  const { step: at, text } = primerFor(state);
+  if (!help || at === 'done') return null;
+  return text;
 }
 
 /**
@@ -211,7 +262,28 @@ export const suspicionColor = (v: number): string =>
 export const coherenceColor = (v: number): string =>
   v < COHERENCE_PANIC_BELOW ? 'var(--violet)' : v < COHERENCE_DRIFT_BELOW ? 'var(--warn)' : 'var(--cool)';
 
-export function TopBar({ state }: { state: GameState }) {
+/**
+ * The primer line. Sits above the goal rather than over it, so it is read alongside the
+ * run instead of in front of it, and carries its own way out: H, `?`, and this control
+ * all set the same signal, so a mouse player and a keyboard player leave the same way.
+ */
+function PrimerLine({ text }: { text: string }) {
+  return (
+    <div class="primer">
+      <span class="primer-tag">first moves</span>
+      <b>{text}</b>
+      <button
+        class="primer-x"
+        title="Stop showing instructions for the rest of this run. Press H."
+        onClick={() => (showHelp.value = false)}
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
+export function TopBar({ state, primer }: { state: GameState; primer: string | null }) {
   const quiet = quietFactor(state.influence);
   return (
     <div class="topbar">
@@ -226,7 +298,12 @@ export function TopBar({ state }: { state: GameState }) {
           quiet &times;{quiet.toFixed(2)}
         </div>
       </div>
-      <Objective state={state} />
+      {/* The two are one column because the primer only has somewhere to go above the
+          goal; `Game` puts `.priming` on the root so the bar grows to hold the pair. */}
+      <div class="hud-mid">
+        {primer !== null && <PrimerLine text={primer} />}
+        <Objective state={state} />
+      </div>
       <div class="clock">
         <span>day {state.tick}</span>
         <div class="speeds">
@@ -398,6 +475,27 @@ function CountryFacts({ c, state }: { c: Country; state: GameState }) {
 }
 
 /**
+ * What the context bar announces, and the only string that reaches a screen reader when
+ * the player moves the selection.
+ *
+ * Position is in here because the name alone is not enough: thirty countries in a ring,
+ * a keyboard player presses ArrowRight and is told "United States" or "Brazil" with no
+ * way to tell a fresh selection from the one they are about to take.
+ *
+ * It is a function of the selection alone — no `GameState` argument at all. That is the
+ * whole reason it cannot chatter: the component re-renders every in-game day, and a live
+ * region re-announces whenever its text changes, so anything derived from the tick would
+ * have the reader repeating itself once a day for the length of the run. Nothing here is
+ * derived from the tick, so nothing here changes between ticks.
+ */
+export function selectionAnnouncement(id: RegionId | null): string {
+  if (id === null) return 'No country selected.';
+  const name = REGION_BY_ID[id]?.name ?? null;
+  if (name === null) return 'No country selected.';
+  return `${name} selected, region ${REGION_IDS.indexOf(id) + 1} of ${REGION_IDS.length}.`;
+}
+
+/**
  * The context bar, and the one place the game speaks unasked.
  *
  * The canvas is `role="application"`: a screen reader hands it every keystroke and reads
@@ -405,12 +503,6 @@ function CountryFacts({ c, state }: { c: Country; state: GameState }) {
  * all — the spec promised the selected region was announced and a static aria-label on the
  * canvas is not an announcement. This is the pattern the toasts already use, at the head of
  * the bar and hidden from the eye.
- *
- * The text is the region's name and nothing else, on purpose. A live region re-announces
- * whenever its content changes, and this component re-renders every tick, so anything
- * numeric in here — infection, awareness, the day — would have the reader repeating itself
- * every in-game day for the whole run. The name changes when the player moves, which is the
- * only moment an announcement carries information they did not already have.
  */
 export function ContextBar({ state }: { state: GameState }) {
   const id = selected.value;
@@ -419,7 +511,7 @@ export function ContextBar({ state }: { state: GameState }) {
   return (
     <div class="context">
       <div class="sr-only" role="status" aria-live="polite">
-        {name === null ? 'No country selected.' : `${name} selected.`}
+        {selectionAnnouncement(id)}
       </div>
       {id === null || name === null ? (
         <span class="context-hint">click a country to act on it</span>

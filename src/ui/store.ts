@@ -21,7 +21,13 @@ export const speed = signal<Speed>(1);
 export const selected = signal<RegionId | null>(null);
 export const hovered = signal<RegionId | null>(null);
 export const evolving = signal(false);
-export const showHelp = signal(false);
+/**
+ * Whether the game is still allowed to explain itself. `true` until the player says
+ * otherwise with H, `?`, or the line's own dismiss control; from then on the primer is
+ * silent for the rest of the run. Not stored in `GameState` because it is a preference
+ * about the interface rather than a fact about the world, so `step` never sees it.
+ */
+export const showHelp = signal(true);
 export const flash = signal(0);
 
 export type ToastTone = 'hack' | 'economy' | 'insurgency' | 'plague' | 'quiet' | 'rival' | 'info';
@@ -243,6 +249,8 @@ answerEvent(cardKey: number, choiceId: string): void {
     announced.clear();
     toasts.value = [];
     evolving.value = false;
+    // A fresh run is a run nobody has told this player they already know the game.
+    showHelp.value = true;
   },
 
   toggleAudio(): void {
