@@ -8,6 +8,7 @@ import {
   containmentStep,
   HELP_SECTIONS,
   nextGoal,
+  pathogenVisible,
   primerLine,
   selectionAnnouncement,
   suspicionColor,
@@ -52,6 +53,8 @@ import { reasonsTheCodeWrites } from './endings';
 import type { GameState } from '../src/game/core/types';
 import panelSource from '../src/ui/components/panels.tsx?raw';
 import traitsSource from '../src/game/data/traits.ts?raw';
+import stepSource from '../src/game/core/step.ts?raw';
+import actionsSource from '../src/game/core/actions.ts?raw';
 
 /**
  * The world a run starts in, in millions. Summed off the region table, which is the same
@@ -1027,6 +1030,90 @@ describe('the primer line', () => {
     const before = JSON.stringify(s);
     expect(primerLine(s, true)).not.toBeNull();
     expect(JSON.stringify(s)).toBe(before);
+  });
+});
+
+/**
+ * The two unit mistakes the context panel shipped, both in the same component and both of
+ * the shape this repository exists to catch.
+ */
+describe('the context panel reads its numbers in the units they are stored in', () => {
+  const canada = createInitialState(1, 'default').countries.canada;
+  if (canada === undefined) throw new Error('no canada');
+  const start = REGION_BY_ID.canada?.population ?? 0;
+
+  it('says the pathogen is at work where the region is visibly half gone', () => {
+    // `CountryFacts` guarded this with `c.population < 1000`, and every population in this
+    // game is in *millions* — a thousand of them is a billion people. So it fired on Canada
+    // and on nearly every other region in the world, and never on the one the pathogen had
+    // emptied, which is the exact inverse of what the tag claims.
+    expect(start).toBeGreaterThan(0);
+    expect(canada.population).toBe(start);
+    expect(pathogenVisible(canada)).toBe(false);
+    // Both ends, on Canada's own figure: silent on it intact, and loud once the pathogen
+    // has thinned it to a third of what it started with.
+    expect(pathogenVisible({ ...canada, population: start / 3 })).toBe(true);
+    expect(pathogenVisible({ ...canada, population: start * 1.2 })).toBe(false);
+    // A boundary case, because a `<` on a derived threshold is exactly where the off-by-one
+    // hides and nothing else in the file would notice it.
+    expect(pathogenVisible({ ...canada, population: start / 2 })).toBe(false);
+    expect(pathogenVisible({ ...canada, population: start / 2 - 0.001 })).toBe(true);
+    // And the threshold is this region's own size, not the world's: a world-relative figure
+    // is below every region in the table, so it would flag the entire planet.
+    expect(start).toBeLessThan(WORLD / 2);
+  });
+
+  it('cannot fire on a healthy region, which is what the old threshold did', () => {
+    // Swept rather than spot-checked: the defect was that the guard was true for almost the
+    // whole world, so the count is the claim.
+    const clean = createInitialState(1, 'default');
+    const loud = REGION_IDS.filter((id) => pathogenVisible(clean.countries[id]!));
+    expect(loud).toEqual([]);
+    // And every region's threshold is its own, read off the same table its population is.
+    for (const id of REGION_IDS) {
+      expect(pathogenVisible({ ...clean.countries[id]!, population: (REGION_BY_ID[id]?.population ?? 0) / 2 - 1 }), id).toBe(true);
+    }
+  });
+});
+
+/**
+ * What the Influence branch actually buys, which is two continuous sources and one one-off
+ * charge. `quietFactor` is applied in exactly three places: aware countries and the released
+ * pathogen in `step.ts`, and the charge for letting it out in `actions.ts`. A traced hack,
+ * an insurgency and all twenty-one event branches are raw.
+ */
+describe('the Influence card does not promise reach the code does not have', () => {
+  const card = TRAIT_BY_ID['propaganda-1']?.description ?? '';
+  const helpText = (): string =>
+    HELP_SECTIONS.map((s) => [s.title, ...s.rows.map((r) => r.text)].join(' ')).join(' ');
+
+  it('names the sources it reaches, and denies the ones it does not', () => {
+    expect(card).toContain('aware countries');
+    expect(card).toContain('the released pathogen');
+    for (const denied of ['traced', 'insurgency', 'a card']) {
+      expect(card, denied).toContain(denied);
+    }
+    // The claim that was there, which is a claim about *every* source. There are two.
+    expect(card).not.toMatch(/\bevery\b/i);
+    expect(card).not.toMatch(/\ball\b/i);
+  });
+
+  it('agrees with the help screen, which already drew the line correctly', () => {
+    // Both are checked against the same thing: the two continuous sources, named as two.
+    for (const phrase of ['aware countries', 'the released pathogen']) {
+      expect(helpText(), phrase).toContain(phrase);
+    }
+    expect(helpText()).toContain('the two continuous sources');
+    expect(helpText()).not.toMatch(/Influence shrinks every/i);
+  });
+
+  it('reaches exactly the three charges quietFactor is applied to', () => {
+    // Counted off the source rather than asserted, so a fourth `quietFactor(` cannot be
+    // added without this failing and somebody deciding what the card now says. Three: two
+    // continuous in `step.ts` and the one-off release charge in `actions.ts`.
+    const stepUses = (stepSource.match(/quietFactor\(/g) ?? []).length;
+    const actionUses = (actionsSource.match(/quietFactor\(/g) ?? []).length;
+    expect({ step: stepUses, actions: actionUses }).toEqual({ step: 1, actions: 1 });
   });
 });
 

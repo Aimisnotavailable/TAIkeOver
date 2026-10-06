@@ -790,6 +790,26 @@ export function Help({ onClose }: { onClose: () => void }) {
   );
 }
 
+/**
+ * Whether the pathogen has visibly thinned this region.
+ *
+ * The guard used to be `c.population < 1000`, and every population in this game is in
+ * **millions** — a thousand of them is a billion people. So it fired on Canada, on almost
+ * every other region in the world, and on nothing the pathogen had emptied, which is the
+ * exact inverse of what the tag next to it claims.
+ *
+ * Half of *this region* is the line that means something: the place is visibly half gone.
+ * Against the region's own starting population rather than a typed number of millions, for
+ * the same reason the extinction threshold was multiplied out to people — a bare figure in
+ * the wrong unit is the whole defect, and a world-relative threshold is worse, because no
+ * single region is half the world. `tests/panels.test.ts` holds both ends: silent on a
+ * healthy Canada, loud on a Canada at a third of what it started with.
+ */
+export const pathogenVisible = (c: Country): boolean => {
+  const start = REGION_BY_ID[c.id]?.population ?? c.population;
+  return c.population < start / 2;
+};
+
 function CountryFacts({ c, state }: { c: Country; state: GameState }) {
   return (
     <div class="facts">
@@ -807,7 +827,7 @@ function CountryFacts({ c, state }: { c: Country; state: GameState }) {
       {c.atWar && <span class="tag war">at war · {c.warSeverity.toFixed(1)} — killing, and it will not stop while you hold it</span>}
       {c.quiet && <span class="tag quiet">gone quiet — not spreading here</span>}
       {!state.pathogen.released && c.infection >= OUTBREAK_KILL_THRESHOLD && <span class="tag bio">outbreak — this is killing people on its own</span>}
-      {state.pathogen.released && c.population < 1000 && <span class="tag bio">pathogen active here</span>}
+      {state.pathogen.released && pathogenVisible(c) && <span class="tag bio">pathogen active here</span>}
     </div>
   );
 }

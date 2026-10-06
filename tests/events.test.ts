@@ -773,7 +773,7 @@ describe('the card on screen', () => {
     // z-index, so the visible one was always the last drawn. Rendering the rest as well
     // meant Tab walked into the buttons of two cards the player could not see.
     const src = eventCardsSource();
-    expect(src).toContain('const topKey = topmostCardKey(state.cards)');
+    expect(src).toMatch(/const topKey = .*topmostCardKey\(state\.cards\)/);
     expect(src).not.toContain('state.cards.map');
     expect(src).toContain('dismiss(topKey)');
   });
@@ -805,5 +805,19 @@ describe('Enter on a card', () => {
 
   it('is consulted by the card handler', () => {
     expect(eventCardsSource()).toContain('controlTakesKey');
+  });
+
+  it('is gated on the run still being live, like the pending-decisions bar', () => {
+    // Four of the five endings are written by `step` and none of them clear the queue, so a
+    // card queued on the day a run ended survived into the end screen — drawn on top of it,
+    // with a window keydown handler attached that would `answerEvent` and `dismissCard`
+    // against a finished run. Containment is the only ending that empties the queue, because
+    // it is the only one a player presses a button for rather than one `step` finds.
+    const src = eventCardsSource();
+    expect(src).toMatch(/state\.outcome === 'playing' \? topmostCardKey\(state\.cards\) : null/);
+    expect(src).toContain('const topKey');
+    // The gate is the whole fix, so the topmost-key projection itself stays outcome-blind:
+    // `topmostCardKey` is asked which card is on top, not whether anything should be.
+    expect(topmostCardKey([{ ...cardFor('leak'), key: 3 }])).toBe(3);
   });
 });

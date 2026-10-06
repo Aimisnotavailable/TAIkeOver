@@ -6,6 +6,7 @@ import {
   ENDING_TEXT,
   INTERVENTIONS,
   ORGANISATIONS,
+  civilizationCounter,
   workedLead,
   workedFull,
 } from '../src/ui/app';
@@ -123,6 +124,76 @@ describe('the end screen', () => {
     // the game never tells the player that anything they did was right.
     expect(body).not.toMatch(/\brescued\b|\bspared\b|\btamed\b|\bharmless\b|\bbenign\b|\bsafe\b/i);
     expect(body).not.toMatch(/proud|admire|well played|right to/i);
+  });
+});
+
+/**
+ * The civilizations counter: how many potential civilizations this run's expansion prevented.
+ *
+ * It counts `late.potentialLost`, which only `lateStep` writes, so it is zero on every run
+ * that never reached the late stage. It printed whenever the outcome was `won`, which put
+ * "0 civilizations that will now never exist" under a heading saying every human being is
+ * dead — on the biggest win in the game, and the one a player is most likely to sit and look
+ * at. Containment's zero is a different animal and has to survive this: there it is an
+ * argument the screen is making.
+ */
+describe('the civilizations counter', () => {
+  const base = createInitialState(1, 'default');
+  const won = (reason: string, potentialLost: number): GameState => ({
+    ...base,
+    stage: 'coda',
+    outcome: 'won',
+    outcomeReason: reason,
+    late: { ...base.late, potentialLost },
+  });
+
+  /**
+   * The figure, on a run that reached the late game. Both wins that go off-world land here:
+   * the Blight can only be bought with Recursive Self-Improvement, which is what opens the
+   * late stage, and an Extinction reached during the thirty-day hold is counted the same way.
+   */
+  it('prints the number where the number means something', () => {
+    expect(civilizationCounter(won('blight', 39_060))).toBe('39,060 civilizations that will now never exist.');
+    expect(civilizationCounter(won('extinction', 39_060))).toBe('39,060 civilizations that will now never exist.');
+  });
+
+  /**
+   * The difference the review asks to be preserved, pinned from both sides: two wins, two
+   * zeros, opposite treatment, on purpose. Containment's zero is an argument the screen is
+   * making — nothing was destroyed and nothing was saved — and Extinction's is arithmetic it
+   * has nothing to contribute to, because the run never claimed a star to prevent anyone
+   * building one on.
+   */
+  it('keeps Containment zero and drops the Extinction one', () => {
+    expect(civilizationCounter(won('contained', 0))).toBe('0 civilizations that will now never exist.');
+    expect(civilizationCounter(won('extinction', 0))).toBeNull();
+    expect(civilizationCounter(won('extinction', 0))).not.toBe(civilizationCounter(won('contained', 0)));
+  });
+
+  /**
+   * Every ending, every outcome, every counter reading — as a table rather than as spot
+   * checks, because the defect was an unconditional `outcome === 'won'` and a spot check
+   * cannot tell a deliberate silence from an accidental one on the fourth ending. Derived
+   * from the reasons the code writes, so an ending added without a decision about this
+   * screen fails here rather than inheriting the old behaviour.
+   */
+  it('prints on exactly the states where it has something to say', () => {
+    expect(reasonsTheCodeWrites().length).toBeGreaterThan(4);
+    for (const reason of reasonsTheCodeWrites()) {
+      for (const outcome of ['won', 'lost'] as const) {
+        for (const potentialLost of [0, 39_060]) {
+          const s = { ...base, outcome, outcomeReason: reason, late: { ...base.late, potentialLost } };
+          const expected =
+            outcome !== 'won'
+              ? null
+              : potentialLost > 0 || reason === 'contained'
+                ? `${potentialLost.toLocaleString()} civilizations that will now never exist.`
+                : null;
+          expect(civilizationCounter(s), `${reason} / ${outcome} / ${potentialLost}`).toBe(expected);
+        }
+      }
+    }
+    expect(civilizationCounter(base)).toBeNull();
   });
 });
 

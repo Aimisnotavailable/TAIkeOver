@@ -54,21 +54,26 @@ export const PANEL_HEIGHT = 232;
 
 /**
  * The area the panel may occupy: the window minus the three things it must not cover — the
- * top bar, the left rail, and the log dock along the bottom. The right edge is clear, so
- * that inset is zero and the panel can use it.
+ * top bar and the left rail, and the log column on the right. Only the first two are insets;
+ * the log's width is declared below because the anchor test needs to know how much of a
+ * narrow window the two columns already take, not because the panel has to stay off them.
  *
- * `--hud` and `--dock` are declared in the stylesheet and the rail's width is now
- * `--rail`; `tests/styles.test.ts` asserts all three against these numbers, so a retune of
- * the layout cannot leave the panel clamping against figures that no longer exist.
+ * `--hud` and `--rail` are declared in the stylesheet and `--log` with them;
+ * `tests/styles.test.ts` asserts all three against these numbers, so a retune of the layout
+ * cannot leave the panel clamping against figures that no longer exist. There is no fourth:
+ * `--dock` was the height of a bottom bar that spanned the screen, the log and the panel
+ * shared, and it went when the context panel began floating over the country it describes.
+ * `styles.css` says in as many words that it is gone, and this comment had been going on
+ * describing a bar that is not there.
  */
 export const PANEL_INSETS = {
   /** `--hud` in the stylesheet. */
   top: 46,
-  /** Nothing stands on the right edge. */
+  /** The log is a column on the right, so the panel may use the right edge. */
   right: 0,
   /**
-   * Nothing stands along the bottom either. There used to be a 150px bar here holding the
-   * panel, and the number went with it; the rail above runs full height for the same reason.
+   * Nothing stands along the bottom. The 150px dock that used to be here held the panel and
+   * the log, and the number went with it; the rail runs full height for the same reason.
    */
   bottom: 0,
   /** `--rail` in the stylesheet. */
@@ -116,7 +121,8 @@ const clamp = (v: number, lo: number, hi: number): number => (hi < lo ? lo : Mat
  *
  * Below the anchor if that fits, above the anchor if it does not, and clamped into the
  * allowed area when neither does — which is the very short window, where the panel is
- * taller than the gap between the bar and the dock.
+ * taller than the gap between the bar and the bottom of the window, where there is nowhere
+ * to put it and it has to be clamped into whatever band is left.
  */
 function fitVertical(anchorY: number, height: number, view: AnchorPoint, insets: Insets): number {
   const floor = insets.top;

@@ -392,8 +392,11 @@ describe('taking the ending', () => {
   });
 
   it('clears any pending card, because an ending is not a decision', () => {
-    // `EventCards` is the only overlay in the game that is not gated on the outcome, so a
-    // card queued at the moment of the ending would draw on top of the end screen.
+    // Not what stops the card drawing over the end screen: `EventCards` is gated on the
+    // outcome, like `paused-bar`, and that gate is the general guard — it covers the four
+    // endings `step` writes, none of which clear the queue. This is about the finished run's
+    // own state, and Containment is the only ending a player presses a button for rather than
+    // one `step` finds, so it is the only one authored rather than produced.
     const s = contain(gatesMet({ cards: [{ key: 1, event: 'drift', title: 'Drift', body: '', country: 'us', choices: [], urgent: true }] }));
     expect(s.cards).toHaveLength(0);
   });

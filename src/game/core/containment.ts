@@ -91,9 +91,18 @@ export function contain(state: GameState): GameState {
     ...state,
     outcome: 'won',
     outcomeReason: 'contained',
-    // A card queued at the moment of the ending would draw on top of the end screen:
-    // `EventCards` is the one overlay in this game that is not gated on the outcome. And an
-    // ending is not a decision, so there is nothing left to decide.
+    // The queue is emptied here, and it is worth being precise about why, because the
+    // comment that used to sit on this line had it backwards. It claimed `EventCards` was
+    // "the one overlay in this game that is not gated on the outcome" and that clearing the
+    // queue was therefore what stopped a card drawing over the end screen. `EventCards` *is*
+    // gated on the outcome now, and has been since the four endings `step` writes were found
+    // leaving a live keydown handler on a finished run — so the gate is the general guard and
+    // this line is not what does the protecting.
+    //
+    // What it does do is stop the finished run's own state from carrying an unanswered
+    // decision. Containment is the only ending a player presses a button for rather than one
+    // `step` finds, so it is the only one whose state is authored at the moment the run ends,
+    // and an ending is not a decision. The saved run then has nothing left to decide either.
     cards: [],
   };
   return {

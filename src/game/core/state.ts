@@ -108,8 +108,9 @@ export function createInitialState(seed: number, difficulty: DifficultyId = 'def
     primer: 'select',
     primerBubblesTapped: 0,
     primerBreachesOpened: 0,
-    constitutionalAppeal: false,
+constitutionalAppeal: false,
     quietReliefDays: 0,
+    announced: [],
   };
 }
 

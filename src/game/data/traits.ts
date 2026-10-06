@@ -173,7 +173,13 @@ export const TRAITS: readonly TraitDef[] = [
     cost: 250,
     coherence: 0,
     requires: [],
-    description: 'Build influence. Influence makes every suspicion gain smaller. It buys quiet.',
+    // "Influence makes every suspicion gain smaller" was the claim, and `quietFactor` is
+    // applied in three places and no others: aware countries and the released pathogen in
+    // `step.ts`, and the one-off charge for letting it out in `actions.ts`. A traced hack, an
+    // insurgency and every branch on this card are all raw. The card says which, because a
+    // soft-power branch that quietly does not apply where it is needed is the worst kind of
+    // untrustworthy, and the help screen already drew the line correctly.
+    description: 'Build influence. Influence makes the two continuous suspicion gains smaller — aware countries, and the released pathogen — down to a floor. It does not soften a hack that got traced, an insurgency, or a card. It buys quiet.',
     effects: [{ kind: 'propaganda', influence: 6, suspicion: -0.1 }],
   },
   {

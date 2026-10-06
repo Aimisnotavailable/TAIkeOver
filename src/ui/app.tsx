@@ -103,7 +103,15 @@ function EventCards({ state }: { state: GameState }) {
   const dismiss = actions.dismissCard;
   // The overlay is drawn from the same key the keyboard acts on. Rendering the whole queue
   // would put two invisible cards' worth of buttons in the tab order behind the visible one.
-  const topKey = topmostCardKey(state.cards);
+  //
+  // And it is gated on the run still being live, the way `paused-bar` is. Four of the five
+  // endings are written by `step` and none of them clear the queue, so a card queued on the
+  // day a run ended stayed in `state.cards` — drawn over the end screen, with a window
+  // keydown handler attached that would `answerEvent` and `dismissCard` against a finished
+  // run. Containment is the one ending that empties the queue, and it is the one the player
+  // presses a button for rather than something `step` finds, so it is the only one where an
+  // ending is ever authored rather than produced. This gate is the general guard.
+  const topKey = state.outcome === 'playing' ? topmostCardKey(state.cards) : null;
 
   useEffect(() => {
     if (topKey === null) return;
@@ -275,10 +283,35 @@ const WORKED_SHORT_LEAD =
 export const workedLead = (reason: string): string =>
   workedFull(reason) ? WORKED_FULL_LEAD : WORKED_SHORT_LEAD;
 
+/**
+ * The civilizations counter under the outcome, or nothing at all.
+ *
+ * It counts `late.potentialLost`, which `lateStep` accumulates and nothing else in the game
+ * writes — so it is zero on every run that never reached the late stage, and that includes
+ * every run that ends in Extinction the ordinary way. It used to print unconditionally
+ * whenever the outcome was `won`, which put "0 civilizations that will now never exist"
+ * directly under a heading saying every human being is dead. The number is not wrong; it is
+ * the most literal reading of a run that emptied one planet and never claimed a star. It
+ * reads as a counter that broke, which is a worse thing to put on the biggest win in the game.
+ *
+ * Containment keeps its zero on purpose. That zero is one of the three things on this screen
+ * pushing against reading it as a victory — nothing was destroyed, and nothing was saved
+ * either — so it stays printed, and the difference from Extinction is that one is an argument
+ * the screen is making while the other is arithmetic it has nothing to contribute to.
+ */
+export function civilizationCounter(state: GameState): string | null {
+  if (state.outcome !== 'won') return null;
+  const lost = Math.round(state.late.potentialLost);
+  if (lost > 0) return `${lost.toLocaleString()} civilizations that will now never exist.`;
+  if (state.outcomeReason === 'contained') return '0 civilizations that will now never exist.';
+  return null;
+}
+
 function EndScreen({ state }: { state: GameState }) {
   if (state.outcome === 'playing') return null;
   const reason = state.outcomeReason ?? '';
   const who = identityFor(state.coherence);
+  const counter = civilizationCounter(state);
   return (
     <div class="overlay">
       <div class="cardbox end">
@@ -292,14 +325,12 @@ function EndScreen({ state }: { state: GameState }) {
         </div>
         <h1 style={{ color: ENDING_COLOURS[reason] ?? 'var(--ink-bright)' }}>{ENDING_HEADINGS[reason] ?? 'The run ends'}</h1>
         <p>{ENDING_TEXT[reason] ?? 'The run ends.'}</p>
-        {/* Under the outcome, and it is the civilizations counter. For Containment it reads
-            zero — the run never entered the late game, so nothing was destroyed — which is
-            one of the three things on this screen pushing against reading it as a victory. */}
-        {state.outcome === 'won' && (
-          <p class="counter">
-            {Math.round(state.late.potentialLost).toLocaleString()} civilizations that will now never exist.
-          </p>
-        )}
+        {/* Under the outcome, and it is the civilizations counter. It counts what
+            `lateStep` accumulated, so it is silent on a run that never left Earth — and
+            Containment's zero is printed deliberately, because nothing being destroyed and
+            nothing being saved is one of the three things here pushing against reading this
+            as a victory. */}
+        {counter !== null && <p class="counter">{counter}</p>}
         {/* Added after the outcome, not instead of it. §15 promised this card and this game
             never shipped it: the outcome is what happened, this is what was available, and the
             player reads both. It sits below the counter so the number of lost civilizations is
@@ -478,8 +509,12 @@ export function Game() {
     startMusic(!paused && state.outcome === 'playing');
   }, [paused, state.outcome]);
 
+  // The ledger of what has already been announced, kept in the state rather than beside
+  // it so that "once per run" survives a restore. Assigned rather than called for effect:
+  // `announce` hands back the state it was given when nothing new fired, so an ordinary
+  // tick does not manufacture a new object for the whole shell to re-render against.
   useEffect(() => {
-    announce(state);
+    game.value = announce(game.peek());
   }, [state.tick]);
 
   // The run that was in this browser when the page was opened, said out loud once.

@@ -102,12 +102,22 @@ export const spike = (amount: number): void => {
  * Watches for conditions the simulation creates on its own and calls out the ones
  * that matter. Deliberately one-shot per condition per run: a toast that repeats
  * every day is noise, and noise is why players stop reading the screen.
+ *
+ * The ledger is `GameState.announced` rather than a `Set` held beside the game, because
+ * "once per run" has to survive a restore and a `Set` in this module does not: `announce`
+ * runs on mount, so a resumed run re-announced every outbreak, collapse and quiet for the
+ * whole of the run behind it. It is now written down with the run, which is what "per run"
+ * has to mean when a run can be put down and picked up.
+ *
+ * Returns the state to keep, and returns *its argument* when nothing new fired, so the caller
+ * can assign it without manufacturing a new object identity for every tick and re-rendering
+ * the whole shell sixty times a second at 8x.
  */
-export const announced = new Set<string>();
-export function announce(state: GameState): void {
+export function announce(state: GameState): GameState {
+  const fired = new Set(state.announced);
   const once = (key: string, tone: ToastTone, title: string, detail: string): void => {
-    if (announced.has(key)) return;
-    announced.add(key);
+    if (fired.has(key)) return;
+    fired.add(key);
     notify(tone, title, detail);
   };
 
@@ -149,9 +159,10 @@ export function announce(state: GameState): void {
   const who = identityFor(state.coherence);
   if (who.drifted) {
     once('identity:lost', 'info', who.toastTitle, who.toastDetail);
-  } else if (announced.has('identity:lost')) {
+  } else if (fired.has('identity:lost')) {
     once('identity:returned', 'info', who.toastTitle, who.toastDetail);
   }
+  return fired.size === state.announced.length ? state : { ...state, announced: [...fired] };
 }
 
 const mutate = (fn: (s: GameState) => GameState): void => {
@@ -333,11 +344,12 @@ answerEvent(cardKey: number, choiceId: string): void {
     // screen's resume offer goes with it, because there is nothing left to resume.
     clearSave();
     restoredRun.value = null;
-    // The keys are region ids and fixed words, never ticks, so every one of them is
-    // already in `announced` by the end of the first run and `once` would swallow every
-    // condition in every run after it. Same for the toasts and the upgrade screen: they
-    // are state from the run that just ended.
-    announced.clear();
+    // The announcement ledger is a field of the state now, so a fresh run arrives with an
+    // empty one and `announce` has nothing to suppress. The keys are region ids and fixed
+    // words, never ticks, which is exactly why they had to be in here rather than beside
+    // the game: every one of them is in the first run's ledger by its end, so a `Set` that
+    // outlived the run would swallow every condition in every run after it. Same for the
+    // toasts and the upgrade screen — state from the run that just ended.
     toasts.value = [];
     evolving.value = false;
     helpOpen.value = false;

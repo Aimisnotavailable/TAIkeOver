@@ -2,11 +2,12 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { createInitialState } from '../src/game/core/state';
 import { primerFor } from '../src/game/core/primer';
 import { step } from '../src/game/core/step';
-import { actions, announce, announced, game, selected, showHelp, toasts } from '../src/ui/store';
+import { actions, announce, game, selected, showHelp, toasts } from '../src/ui/store';
 import { primerLine } from '../src/ui/components/panels';
 import { quietFactor } from '../src/game/core/compute';
 import { INFLUENCE_MAX } from '../src/game/core/tuning';
-import { REGION_IDS } from '../src/game/data/regions';
+import { REGION_BY_ID, REGION_IDS } from '../src/game/data/regions';
+import { SAVE_VERSION, parseSave, serializeSave } from '../src/game/core/save';
 import type { GameState } from '../src/game/core/types';
 import storeSource from '../src/ui/store.ts?raw';
 
@@ -112,15 +113,78 @@ describe('announcements re-arm on restart', () => {
     const s = start({
       pathogen: { released: true, killsPerDay: 0.005, suspicionPerDay: 1, sterility: false, targeted: false, cancer: false },
     });
-    announce(s);
+    game.value = announce(s);
     expect(toasts.value.map((t) => t.title)).toContain('THE PATHOGEN IS VISIBLE');
     toasts.value = [];
 
     actions.restart('default');
-    expect(announced.size).toBe(0);
+    expect(game.peek().announced).toEqual([]);
 
-    announce(s);
+    game.value = announce(s);
     expect(toasts.value.map((t) => t.title)).toContain('THE PATHOGEN IS VISIBLE');
+  });
+});
+
+/**
+ * §8.1 promises each announcement happens once per run. The ledger used to be a `Set` in
+ * the UI store, which is not once per run when a run can be put down and picked up: it was
+ * empty after a restore, `announce` runs on mount, and a resumed day-200 save re-announced
+ * every outbreak, every collapse and every country gone quiet in its whole history — four
+ * toasts deep, out of order, about days the player has already watched.
+ *
+ * So the ledger is a field of the state and therefore part of the save. These three are the
+ * whole claim: it survives the round trip, a restored run does not re-announce, and it is
+ * still cleared for a new run.
+ */
+describe('the announcement ledger is part of the run', () => {
+  /** A day-200-shaped run with something already announced in it, and something not. */
+  const interrupted = (): GameState => {
+    const fired = start({
+      tick: 200,
+      pathogen: { released: true, killsPerDay: 0.005, suspicionPerDay: 1, sterility: false, targeted: false, cancer: false },
+      announced: ['plague', 'outbreak:us', 'collapse:brazil'],
+    });
+    const countries = { ...fired.countries };
+    countries.brazil = { ...countries.brazil!, economy: 12 };
+    // And one that has *not* collapsed yet, which is what distinguishes a resume from a mute.
+    countries.canada = { ...countries.canada!, economy: 12 };
+    return { ...fired, countries };
+  };
+
+  it('survives a save, so a restored run does not repeat the whole run at the player', () => {
+    const before = interrupted();
+    const envelope = parseSave(serializeSave(before));
+    expect(envelope).not.toBeNull();
+    const restored = envelope!.state;
+    expect(restored.announced).toEqual(before.announced);
+
+    // Mount on a restored run: `announce` runs on mount, and this is what it sees.
+    toasts.value = [];
+    game.value = announce(restored);
+    // Nothing the ledger already recorded says anything. Everything else still can — so the
+    // ledger suppresses the past rather than the present, which is the whole difference
+    // between a resume and a mute.
+    const titles = toasts.value.map((t) => t.title);
+    expect(titles).not.toContain('THE PATHOGEN IS VISIBLE');
+    expect(titles).not.toContain(`ECONOMIC COLLAPSE · ${REGION_BY_ID.brazil?.name.toUpperCase()}`);
+    // A country that collapsed *after* the save still gets its announcement.
+    expect(titles).toContain(`ECONOMIC COLLAPSE · ${REGION_BY_ID.canada?.name.toUpperCase()}`);
+  });
+
+  it('is still empty on a clean run, and still the simulator that carries it', () => {
+    // `step` copies the state and nothing else, so a tick cannot drop the ledger on the way
+    // past — which is what would have made this fix intermittent rather than working.
+    expect(createInitialState(1, 'default').announced).toEqual([]);
+    const held = step(start({ announced: ['plague'], tick: 3 }));
+    expect(held.announced).toEqual(['plague']);
+  });
+
+  it('is not a field the save can do without', () => {
+    // `isGameState` builds its shape out of `createInitialState`, so this one is covered by
+    // construction — and asserted anyway, because "it is in the shape" is the load-bearing
+    // claim and a future field added beside it would not break anything on its own.
+    const { announced: _dropped, ...without } = createInitialState(1, 'default') as GameState;
+    expect(parseSave(JSON.stringify({ version: SAVE_VERSION, seed: 1, difficulty: 'default', state: without }))).toBeNull();
   });
 });
 

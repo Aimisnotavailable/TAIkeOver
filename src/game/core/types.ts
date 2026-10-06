@@ -222,4 +222,18 @@ suspicionSources: SuspicionSource[];
    * of the game and on a clean run.
    */
   quietReliefDays: number;
+  /**
+   * Which once-per-run announcements have already fired, as a list because this is a saved
+   * object. §8.1 promises each of them happens once per run, and a module-level `Set` in the
+   * UI store did not keep that across a restore: `announce` runs on mount, so a resumed run
+   * re-announced every outbreak, every collapse and every country gone quiet for the whole of
+   * the run behind it — four toasts deep, in the wrong order, about days the player has
+   * already seen.
+   *
+   * It lives in the state rather than beside it because the state is what is written to
+   * storage, and a ledger that is not written down is a ledger that forgets. `step` carries
+   * it untouched, so it costs the simulation nothing, and `createInitialState` is where
+   * `save.ts` reads the required shape from, so it is required in a save for free.
+   */
+  announced: string[];
 }

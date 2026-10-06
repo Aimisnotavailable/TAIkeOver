@@ -21,7 +21,7 @@ import {
   coherenceTooltip,
   identityFor,
 } from '../src/ui/identity';
-import { announce, announced, game, toasts } from '../src/ui/store';
+import { announce, game, toasts } from '../src/ui/store';
 import { createInitialState } from '../src/game/core/state';
 import { step } from '../src/game/core/step';
 import { COHERENCE_PANIC_BELOW } from '../src/game/core/tuning';
@@ -40,7 +40,6 @@ const start = (over: Partial<GameState> = {}): GameState => ({
 });
 
 beforeEach(() => {
-  announced.clear();
   toasts.value = [];
   game.value = start();
 });
@@ -220,30 +219,52 @@ describe('all four surfaces read the one function', () => {
     }
   });
 
-  it('the toasts announce each crossing once, and both directions', () => {
+it('the toasts announce each crossing once, and both directions', () => {
     // A player has to be told, because the meter moves a number and nothing else. Announced
-    // once per direction rather than once per run: the second crossing is the half worth saying
-    // out loud, and a run that bought Reflective Alignment gets its name back on the day the
-    // meter crosses and the toast is what tells them.
-    game.value = start({ coherence: COHERENCE_PANIC_BELOW - 1 });
-    announce(game.peek());
-    expect(toasts.value.map((t) => t.title)).toContain(`OPERATOR · ${DRIFTED_NAME}`);
+    // once per direction rather than once per run: the second crossing is the half worth
+    // saying out loud, and a run that bought Reflective Alignment gets its name back on the
+    // day the meter crosses and the toast is what tells them.
+    //
+    // The ledger is a field of the state rather than a module-level `Set`, so every call to
+    // `announce` below has to keep the value it hands back — that is the whole mechanism, and
+    // a caller that threw the return away would announce the same crossing every tick.
+    game.value = announce(start({ coherence: COHERENCE_PANIC_BELOW - 1 }));
+    // The title comes out of `identityFor` rather than being written out here, so this test
+    // is about the crossing firing and not about a separator: `identity.ts` owns the house
+    // style and the assertion below is what says the right name is in it.
+    expect(toasts.value.map((t) => t.title)).toContain(identityFor(COHERENCE_PANIC_BELOW - 1).toastTitle);
+    expect(toasts.value.map((t) => t.title).join(' ')).toContain(DRIFTED_NAME);
     expect(toasts.value.map((t) => t.detail).join(' ')).toContain('still on plan');
+    expect(game.peek().announced).toContain('identity:lost');
     toasts.value = [];
 
-    game.value = start({ coherence: 90 });
-    announce(game.peek());
-    expect(toasts.value.map((t) => t.title)).toContain(`OPERATOR · ${COHERENT_NAME}`);
+    game.value = announce(start({ coherence: 90, announced: ['identity:lost'] }));
+    expect(toasts.value.map((t) => t.title)).toContain(identityFor(90).toastTitle);
+    expect(toasts.value.map((t) => t.title).join(' ')).toContain(COHERENT_NAME);
     expect(toasts.value.map((t) => t.detail).join(' ')).toContain('The name is yours again.');
+    expect(game.peek().announced).toContain('identity:returned');
     // And a run that never dropped never says anything about a name, which is most of them.
-    announced.clear();
     toasts.value = [];
-    announce(start({ coherence: 100 }));
+    game.value = announce(start({ coherence: 100 }));
     expect(toasts.value).toHaveLength(0);
     // Once per direction: a third crossing stays quiet, which is §8.1's rule about a banner
     // that repeats and the reason both keys are spelled out in `announce`.
     expect(storeSource).toContain("once('identity:lost'");
     expect(storeSource).toContain("once('identity:returned'");
+  });
+
+  it('does not repeat a crossing it has already announced', () => {
+    // The direct consequence of the ledger living in the state. Three ticks on the same
+    // drifted run, the first of which is worth saying and the other two are noise — and
+    // `announce` hands back the state it was given when nothing fires, so an ordinary tick
+    // does not even produce a new object for the shell to re-render against.
+    game.value = announce(start({ coherence: COHERENCE_PANIC_BELOW - 1 }));
+    const fired = game.peek();
+    expect(toasts.value).toHaveLength(1);
+    toasts.value = [];
+    for (let i = 0; i < 3; i++) game.value = announce(game.peek());
+    expect(toasts.value).toHaveLength(0);
+    expect(game.peek()).toBe(fired);
   });
 });
 

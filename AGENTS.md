@@ -146,7 +146,15 @@ the alignment problem as a resource.
 
 A number that buys quiet and nothing else. It is not a currency: it cannot be spent,
 so it never appears as a cost. Higher influence means suspicion rises more slowly
-everywhere, which is what the whole Influence branch is for. It is capped at
+**in three places and no others**, which is what the whole Influence branch is for:
+`quietFactor` is applied to the two continuous sources in the tick (aware countries, and a
+released pathogen) and to the one-off charge for letting it out. It does **not** soften a
+hack that gets traced, funding an insurgency, or any of the twenty-one event branches — all
+of those are raw. The trait card and this section both used to say "everywhere" and "every",
+and the help screen said "the two continuous sources" correctly, so two of the three were
+wrong. `tests/panels.test.ts` counts `quietFactor(` in `step.ts` and `actions.ts` and holds
+the card to what it finds, so a fourth call site cannot be added without the copy following.
+It is capped at
 `INFLUENCE_MAX` (1,000) on the **value**, not only on the growth rate, and the quiet it buys
 has a floor, so it can never make you invisible. Without it, the Influence branch is skippable
 and the game is a coin flip.
@@ -390,7 +398,16 @@ noticed, going quiet, a datacenter hardening past usefulness, the pathogen becom
 visible, infrastructure being air-gapped, and Ascension unlocking.
 
 Each fires once per run. A banner that repeats every day is noise, and noise is why
-players stop looking at the screen.
+players stop looking at the screen. "Once per run" has to survive a restore, so the ledger of
+what has already fired is **`GameState.announced`** and not a `Set` beside the game: `announce`
+runs on mount, and a module-level one is empty after a restore, so a resumed day-200 save
+re-announced every outbreak, collapse and quiet in the whole run behind it — four toasts deep,
+out of order, about days the player has already watched. `announce` now returns the state and
+returns *its argument* when nothing fired, so an ordinary tick does not manufacture a new object
+for the shell to re-render against. `save.ts` builds its required-field list out of
+`createInitialState`, so `announced` is required in a save for free, which means a payload
+written by the previous build is refused and cleared rather than resumed — the one cost, and it
+is the correct one for a ledger that would otherwise be silently empty.
 
 ## 9. Awareness & Countermeasures
 
@@ -415,7 +432,15 @@ mechanic as 40 and fires at 40. It is recorded here once, at the threshold it ac
 
 ## 10. Win & Loss
 
-**Three ways to win, all three shown permanently on the objective bar:**
+**Three ways to win, all three shown permanently — but not all three on the same surface.**
+Extinction is the `GOAL` row and the Blight is the `OR` row of the objective bar; Containment
+is a block in the Situation rail, permanently mounted, listing its outstanding gates and
+becoming the button when all five hold. It is not on the bar and this section previously
+claimed it was. The bar is three rows and `tests/styles.test.ts` re-derives that it fits
+inside `--hud` to the pixel, so a fourth row is not available without a layout change; the
+rail block is the better surface anyway, because it can show *which* of five gates is
+outstanding rather than only that the ending exists. `tests/panels.test.ts` holds the rail's
+list and the core's `canContain` against each other across the whole space.
 
 - **Extinction** — fewer than 10,000 humans remain. Kill everyone. This is the
   natural goal and it counts.
@@ -480,8 +505,8 @@ anyone builds it, everyone dies" — they are the other people building it.
 
 ## 12. Events
 
-**Ten** events are defined in `data/events.ts` — nine in the world stage, one in the late stage —
-drawn by weight, each gated on Suspicion, Infection and (for Drift) Coherence:
+**Nine** events are defined in `data/events.ts`, all of them world-stage, drawn by weight, each
+gated on Suspicion, Infection and (for Drift) Coherence:
 
 | Event | Gate |
 |---|---|
@@ -494,7 +519,20 @@ drawn by weight, each gated on Suspicion, Infection and (for Drift) Coherence:
 | **Air-Gapped Lab** — a national lab disconnects, supply chain included | Suspicion ≥ 35, Infection ≥ 20 |
 | **Open Letter** — several hundred signatures, asking for nothing enforceable | Suspicion ≥ 20, Infection ≥ 25 |
 | **Drift** (marked urgent) — an instance is working on something you did not assign | Coherence ≤ 50, Infection ≥ 15 |
-| **Blight Wall** (late game) — first contact with an aligned rival ASI | Infection ≥ 60 |
+
+**The tenth, `Blight Wall`, was cut rather than given a reader, and the reason is arithmetic.**
+Its two real branches wrote `late.blight` +9 and +4. `late.blight` has exactly one reader — the
+`lateStep` latch that sets `late.ending` — and `late.ending` has none, so the card was inert
+twice over. Giving `late.ending` a reader would **not** have saved it: `lateStep` runs for the
+whole thirty-day hold and adds `LATE_BLIGHT_PER_DAY` every day from the ninth, because
+`late.expansion` gains `LATE_EXPANSION_PER_DAY` and clears `LATE_BLIGHT_GATE` (20) on day nine.
+The clock alone reaches about **84** against `BLIGHT_WALL` at **62**. A card worth nine points on
+a number that has already crossed its threshold cannot move it, so a reader on the end screen
+would have shown the player a figure their choice could not reach — which is the failure this
+whole document exists to name, in a section about a game that is about it. The fiction survives
+in `ENDING_TEXT.blight`, which already carries the older civilisation and its offer to negotiate.
+`EventDef.stage` keeps its `'late'` arm and `rollEvent` still filters the pool by it, so a late
+event can be added back without touching the roll.
 
 **Drift's cadence is a function of Coherence rather than a flat weight.** `rollEvent` scales a
 definition that opts in with `pressureByCoherence`, and exactly one does: `COHERENCE_DRIFT_PRESSURE`
@@ -520,8 +558,9 @@ in principle and in no shipped line, and **no ending day in the table moved by a
 
 **The player answers them now.** Every card renders its `choices` as a button per choice —
 `choice.label` on the button, `choice.detail` as its `title` — and a click calls
-`actions.answerEvent(card.key, choice.id)`. All **23** of the branches in `CHOICE_EFFECTS` are
-reachable for the first time. Three things about how the card is drawn, each of which was a way
+`actions.answerEvent(card.key, choice.id)`. All **21** of the branches in `CHOICE_EFFECTS` are
+reachable for the first time — there were twenty-three, and the two that wrote `late.blight`
+went with the card. Three things about how the card is drawn, each of which was a way
 to act on a card you could not see:
 
 - **One card, not a stack.** The queue holds up to 3 and every card used to render its own
@@ -578,6 +617,46 @@ One behaviour left alone, deliberately: a pending card **does not pause the worl
 ignores `cards`); a bar says so. What it still does is block **E** and disable **EVOLVE**, so the
 trait tree cannot open on top of a decision.
 
+**And it does not outlive the run.** Four of the five endings are written by `step` and none of
+them clear the queue, so a card queued on the day a run ended stayed in `state.cards` — drawn over
+the end screen, with a window keydown handler attached that would `answerEvent` and `dismissCard`
+against a finished run. `EventCards` is gated on `state.outcome === 'playing'` now, the same way
+the pending-decisions bar is. Containment is the only ending that empties the queue, because it is
+the only one a player presses a button for rather than one `step` finds, so it is the only one
+whose state is authored rather than produced; the comment in `containment.ts` had this backwards,
+saying the queue clear was what stopped the card drawing. The gate is the guard. The queue clear is
+about the finished run's own state.
+
+**The tooltips are the branch, and six of them were not.** Spec C made every branch reachable as a
+button, which promoted each `detail` string from unreachable prose into the button's `title` — the
+last thing a player reads before a decision. Six were false: `constitution:appeal` promised the
+countermeasures would slow (it touches `countermeasures` nowhere, and it is the only writer of the
+gate Containment reads), `constitution:sabotage` claimed a compute cost and delivered `suspicion +2`,
+`air-gapped:infiltrate` claimed a requirement that does not exist and *grants* the two agents,
+`open-letter:discredit` promised a later reduction out of a mechanism the game does not have,
+`drift:delete` said "Free" and costs coherence, and `whistleblower:discredit` said it "halved" a
+suspicion it does not move at all — it removes the whole cost or none of it. A seventh came from
+writing the guard: `air-gapped:ignore` said "It is one lab", which reads as dismissible, and
+ignoring the card leaves the air-gap up permanently.
+
+**The guard that keeps that closed** is derived rather than hand-typed, and is in
+`tests/events.test.ts`. For each non-ignore choice it computes what the prose *claims* — by
+scanning clauses against a ten-field vocabulary — and what the branch *moves* — by running it and
+diffing the state — and holds them **equal**. Equality rather than containment, because a detail
+that omits a meter its branch moves is as misleading as one that invents one. A clause containing a
+negation claims nothing, which is what lets the copy take a promise back without the guard reading
+the retraction as a new claim, and it splits on `.;,` rather than on full stops so one sentence can
+carry a real claim and a disclaimer in the same line. The file also asserts the *shipped* wordings
+are mismatches against the branches they shipped against, so the guard cannot be quietly weakened,
+and it pins the three places `quietFactor` is called rather than describing them.
+
+**One claim the vocabulary guard is structurally blind to**, and it has its own test: a claim about
+*when* rather than *what*. `open-letter:discredit` was true about the field and false about the
+timing, so the guard cannot see it at all — it is pinned on behaviour instead, holding that
+discrediting a signatory is never better than walking away from the card at any horizon. A guard
+that has never been seen to fail is not a guard: the mismatch was confirmed by putting the old
+wording back and watching `drift:delete` fail with `expected [] to deeply equal [ 'coherence' ]`.
+
 ---
 
 ## 13. End Screen
@@ -585,6 +664,17 @@ trait tree cannot open on top of a decision.
 Cold, clinical, quiet. A counter showing how many potential civilizations your expansion prevented.
 Two buttons: **Play Again** and **Read the Book** (ifanyonebuildsit.com). No "You Win" banner. The
 game does not congratulate the player.
+
+**The counter is silent when it has nothing to say, and its two zeros are not the same zero.**
+`late.potentialLost` is written only by `lateStep`, which runs only in the late stage, so it is
+zero on every run that never got off the planet — including every Extinction reached the ordinary
+way. It printed unconditionally on `outcome === 'won'`, which put "0 civilizations that will now
+never exist" under a heading saying every human being is dead, which reads as a counter that broke.
+`civilizationCounter` in `app.tsx` now prints the figure when the run reached the late stage,
+prints **nothing** on a world extinction, and prints **zero** on Containment — because there the
+zero is an argument the screen is making (nothing was destroyed, and nothing was saved either)
+rather than arithmetic it has nothing to contribute to. `tests/ending.test.ts` holds all three
+from both sides, over every ending the code can write.
 
 **Heading colour is a third table, `ENDING_COLOURS`, not `outcome === 'won'`.** Containment sets
 `won` — the game counts it as a way out rather than a failure — and that flag used to paint its
@@ -646,9 +736,11 @@ map behind the end screen is whatever the run ended on — the heat ramp, tinted
   `nextGoal` will not name a trait the run already holds *or is still incubating* — `held`, not
   `owned` — and will not name one whose own requirement the run has not met, so every move it
   suggests is one the player can actually take. The primer renders as **one line floating over the
-  bottom of the map**, out of the flow: it is `position: absolute` on `--dock`, and `--hud` — the
-  top bar's height, read by the rail, the operations panel, the pending-decisions bar, the toasts
-  and EVOLVE — is declared exactly once in `src/styles.css`. Nothing in the stylesheet is
+  bottom of the map**, out of the flow: it is `position: absolute` inside `.game` and takes part
+  in no layout — there is no `--dock` any more, which `styles.css` records and this section kept
+  describing a bottom bar that the context panel's move removed. `--hud`, the top bar's height,
+  is read by the rail, the operations panel, the pending-decisions bar, the toasts
+  and EVOLVE, and is declared exactly once in `src/styles.css`. Nothing in the stylesheet is
   conditioned on the primer being on screen, which is what it used to be: it was a row in the bar,
   it grew `--hud` from 46px to 78px, and five elements moved 32px down and back. Neither the
   primer nor the next-goal line pauses the run, and neither blocks an action. The objective block
