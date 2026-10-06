@@ -62,6 +62,10 @@ export const ASCENSION_INFECTION = 60;
 export const ASCENSION_COHERENCE = 30;
 export const RSI_SURVIVE_DAYS = 30;
 
+// Where the primer stops teaching about influence. It is a teaching threshold, not a
+// balance one: nothing in the simulation reads it.
+export const PRIMER_INFLUENCE_GOAL = 200;
+
 export const STARS_PER_DAY = 4200;
 export const BLIGHT_WALL = 62;
 

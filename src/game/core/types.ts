@@ -2,6 +2,9 @@ export type Speed = 0 | 1 | 2 | 4 | 8;
 
 export type Stage = 'coldopen' | 'world' | 'late' | 'coda';
 
+/** Which instruction the primer is currently on. `done` renders nothing. */
+export type PrimerStep = 'select' | 'hack-protocols' | 'tap-bubble' | 'breach' | 'influence' | 'done';
+
 export type Outcome = 'playing' | 'won' | 'lost';
 
 export type DifficultyId = 'simulation' | 'default' | 'iabed';
@@ -192,6 +195,12 @@ export interface GameState {
   economiesCollapsed: number;
   computeBubbles: ComputeBubble[];
   bubbleCounter: number;
-  suspicionSources: SuspicionSource[];
+suspicionSources: SuspicionSource[];
   suspicionTrend: number;
+  // The primer, core/primer.ts. `primer` is a floor rather than the answer: only the
+  // "has selected" milestone has no other record in this state, so it is the only one
+  // worth storing. The two counters are for the milestones nothing else witnesses.
+  primer: PrimerStep;
+  primerBubblesTapped: number;
+  primerBreachesOpened: number;
 }
