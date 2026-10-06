@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import panelSource from '../src/ui/components/panels.tsx?raw';
+import { PANEL_HEIGHT, PANEL_INSETS, PANEL_WIDTH } from '../src/ui/anchor';
 
 /**
  * `var(--nothing)` is not a CSS error. The declaration is dropped, the property falls
@@ -57,9 +58,9 @@ describe('stylesheet', () => {
     expect(ruleBody('canvas:focus-visible')).toContain('var(--ink-bright)');
   });
 
-  it('hides the live region it gives the context bar', () => {
+  it('hides the live region it gives the context panel', () => {
     // The class name is the whole mechanism: a `sr-only` with no rule beside it renders
-    // its text as a visible line of type in the middle of the map's bottom bar, and the
+    // its text as a visible line of type in the middle of the panel, and the
     // announcement becomes something everyone reads and nobody needs.
     const rule = ruleBody('.sr-only');
     expect(rule).not.toBeNull();
@@ -110,18 +111,52 @@ describe('stylesheet', () => {
     }
   });
 
-  it('names the bottom dock once, for the bar and the line that floats above it', () => {
-    // `.bottom`'s height was written into `.side` and the primer's offset separately, which
-    // is how a floating line ends up sitting inside the context bar after one retune. One
-    // number, read by everything that has to clear the dock or fill it.
-    expect(ruleBody('.game')).toContain('--dock: 150px');
-    expect(ruleBody('.bottom')).toContain('height: var(--dock)');
-    expect(ruleBody('.side')).toContain('bottom: var(--dock)');
-    expect(ruleBody('.primer')).toContain('var(--dock)');
+  it('leaves nothing behind that assumes a bottom bar', () => {
+    // There used to be a `--dock`, a full-width bar 150px tall that the context panel and
+    // the event log shared, and a guard holding the one number every element that had to
+    // clear or fill it read. The context panel floats over its country now, so the bar is
+    // gone, the rail runs the full height of the screen because there is nothing under it to
+    // clear, and the primer no longer has a dock to sit above. What replaced the number is
+    // the rail's width and the log column's, and those are read by `panelAnchor` — so the
+    // guard moved from counting declarations to holding the stylesheet and the anchor
+    // function against each other, which is where the drift would now happen.
+    // Declarations and reads, not the word: the comment at the top of the stylesheet explains
+    // what `--dock` used to be and why it is gone, and a plain `not.toContain` would forbid
+    // that explanation. `ruleBody` strips comments for the same reason.
+    expect([...css.matchAll(/--dock\s*:/g)]).toEqual([]);
+    expect(css).not.toContain('var(--dock)');
+    expect(ruleBody('.bottom')).toBeNull();
+    expect(ruleBody('.side')).toContain('bottom: 0');
+    expect(ruleBody('.primer')).not.toContain('var(--dock)');
+
+    expect(ruleBody('.game')).toContain(`--rail: ${PANEL_INSETS.left}px`);
+    expect(ruleBody('.game')).toContain(`--log: ${PANEL_INSETS.log}px`);
+    // Every rule that used to carry a copy of the rail width by hand reads the one number.
+    expect(ruleBody('.side')).toContain('width: var(--rail)');
+    expect(ruleBody('.logpane')).toContain('width: var(--log)');
+    expect(ruleBody('.ops')).toContain('var(--rail)');
+    expect(css).not.toMatch(/left:\s*196px/);
   });
 
-  it('leaves no hardcoded copy of the bar height behind to drift from it', () => {
-    expect(css).not.toMatch(/top:\s*(46|52|58)px/);
+  it('gives the floating panel its box from the anchor function and nothing else', () => {
+    // The panel's position is four inline styles from `panelAnchor`, so the stylesheet's only
+    // job is the box around them. Two things follow. It must be absolutely positioned — a
+    // `fixed` or flex-`1` panel would ignore the anchor entirely and fall back to being the
+    // bar it used to be. And the height the anchor clamps to is a number the stylesheet and
+    // `anchor.ts` both need, so they are held against each other here rather than one of
+    // them drifting.
+    const rule = ruleBody('.context');
+    expect(rule).not.toBeNull();
+    expect(rule).toContain('position: absolute');
+    expect(rule).not.toContain('flex: 1');
+    expect(rule).not.toContain('inset: 0');
+    expect(rule).toContain('overflow-y: auto');
+    // Below `.overlay`, so a decision card is never behind a panel of country facts.
+    expect(Number(/z-index:\s*(\d+)/.exec(rule ?? '')?.[1])).toBeLessThan(
+      Number(/z-index:\s*(\d+)/.exec(ruleBody('.overlay') ?? '')?.[1]),
+    );
+    expect(PANEL_HEIGHT).toBe(232);
+    expect(PANEL_WIDTH).toBe(320);
   });
 
   it('fits the objective block inside the bar, as the rows and the box add up', () => {

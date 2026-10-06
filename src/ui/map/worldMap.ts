@@ -9,6 +9,13 @@ const MILLER_MAX = 1.25 * Math.log(Math.tan(Math.PI / 4 + 0.4 * (84 * RAD)));
 export interface Projection {
   x(lon: number): number;
   y(lat: number): number;
+  /**
+   * What size this projection was built for, as `WIDTHxHEIGHT`. Both `x` and `y` move when
+   * either argument does, so anything that caches a point in *screen* pixels has to key on
+   * this rather than on the region — see `labelFor`, which did not, and drew every label
+   * and every bubble at the coordinates of whatever window size first asked.
+   */
+  readonly size: string;
 }
 
 export function makeProjection(width: number, height: number): Projection {
@@ -17,10 +24,20 @@ export function makeProjection(width: number, height: number): Projection {
   return {
     x: (lon) => (lon + 180) * scaleX,
     y: (lat) => height / 2 - 1.25 * Math.log(Math.tan(Math.PI / 4 + 0.4 * lat * RAD)) * scaleY,
+    size: `${width}x${height}`,
   };
 }
 
 const paths = new Map<string, Path2D>();
+/**
+ * Region label points, in screen pixels, keyed by `${projection.size}:${region}`.
+ *
+ * The size is in the key and used not to be. `p.x` and `p.y` are both functions of the
+ * width and height the projection was built with, so a point cached against one window and
+ * read back after a resize is a point in the wrong place — and the label it belongs to is
+ * then drawn at that wrong place too, because the label is the cached point. The path cache
+ * directly below already keys on `${width}x${height}`; this one did not.
+ */
 const labels = new Map<string, { x: number; y: number }>();
 
 function pathFor(country: CountryShape, p: Projection, key: string): Path2D {
@@ -47,8 +64,9 @@ function pathFor(country: CountryShape, p: Projection, key: string): Path2D {
   return path;
 }
 
-function labelFor(id: RegionId, p: Projection): { x: number; y: number } {
-  const cached = labels.get(id);
+export function labelFor(id: RegionId, p: Projection): { x: number; y: number } {
+  const key = `${p.size}:${id}`;
+  const cached = labels.get(key);
   if (cached !== undefined) return cached;
   const region = REGIONS.find((r) => r.id === id);
   let biggest: readonly (readonly [number, number])[] | null = null;
@@ -62,13 +80,13 @@ function labelFor(id: RegionId, p: Projection): { x: number; y: number } {
   if (biggest !== null) {
     let sx = 0;
     let sy = 0;
-    for (const [lon, lat] of biggest) {
+for (const [lon, lat] of biggest) {
       sx += p.x(lon);
       sy += p.y(lat);
     }
     point = { x: sx / biggest.length, y: sy / biggest.length };
   }
-  labels.set(id, point);
+  labels.set(key, point);
   return point;
 }
 

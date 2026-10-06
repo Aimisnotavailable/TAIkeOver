@@ -99,13 +99,13 @@ describe('the keyboard floor', () => {
 
 describe('the map is not silent', () => {
   /**
-   * The live region inside the context bar, sliced out of the component. Scoped the same
+   * The live region inside the context panel, sliced out of the component. Scoped the same
    * way the canvas tag is: a whole-file `toContain('aria-live')` is satisfied by the toast
    * container alone, which is what shipped while the map still said nothing.
    */
   const liveRegion = (): string => {
     const m = panelSource.match(/class="sr-only"[\s\S]*?<\/div>/);
-    if (m === null) throw new Error('no live region in the context bar');
+    if (m === null) throw new Error('no live region in the context panel');
     return m[0];
   };
 

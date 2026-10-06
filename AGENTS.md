@@ -46,34 +46,39 @@ catastrophe already in progress. No triumphant music, no "You Win" banner.
 ┌──────────────────────────────────────────────────────────────┐
 │ COMPUTE  Suspicion▲  Coherence▼  ×0.86   GOAL … / OR … / NEXT …│
 │                                            day 41  ▮▮ 1x 2x  │
-├──────────────┬───────────────────────────────────────────────┤
-│ LEGEND       │  running operations (breaches, progress bars) │
-│ Situation    │                                [ EVOLVE  E ] │
-│ Containment  │                                               │
-│ Rivals       │        W O R L D   M A P                      │
-│ Countermeas. │        (interactive, full bleed)              │
-│  (left rail) │                                               │
-├──────────────┴───────────────────────────────────────────────┤
-│ SELECTED: United States — facts, forecast, actions           │
-├─────────────────────────────────┬─────────────────────────────┤
-│                                 │  EVENT LOG (terse, scrolling)│
-└─────────────────────────────────┴─────────────────────────────┘
+├──────────────┬───────────────────────────────────┬─────────────┤
+│ LEGEND       │  running operations (breaches)    │             │
+│ Situation    │                  [ EVOLVE  E ]    │ EVENT LOG   │
+│ Containment  │                                   │ (terse,     │
+│ Rivals       │   W O R L D   M A P               │  scrolling) │
+│ Countermeas. │   (interactive, full bleed)        │             │
+│  (left rail) │                                   │             │
+│              │  ┌──────────────┐                  │             │
+│              │  │ United States│ ← context panel, │             │
+│              │  │ facts, actions│   beside it    │             │
+└──────────────┴──┴──────────────┴──────────────────┴─────────────┘
 ```
 
 **There is no right-hand toolbar.** The side rail is on the **left** and holds the bubble legend,
 the Situation readout, **the Containment block**, the rivals, and the countermeasures ladder. The
-map runs full-bleed to the right of it. The Containment block is a global control rather than one of
-the eight country actions in the context bar, because none of its five gates is about a particular
-country (§10).
+map runs full-bleed between it and the event log. The Containment block is a global control rather
+than one of the eight country actions in the context panel, because none of its five gates is about
+a particular country (§10).
 
 **The trait tree is a full-screen modal, not a rail.** It opens with **E** (or the `EVOLVE` button
-top-right) and closes with `Escape`. That is deliberate: upgrading is a decision, and a decision made
+top-right) and closes with **Escape**. That is deliberate: upgrading is a decision, and a decision made
 while the world runs at 8× is not a decision. Opening it pauses the clock (`worldRunning` in
 `src/ui/store.ts`), and the tick interval is keyed on the running decision rather than on the inputs,
 so opening the screen cannot leave the world advancing underneath it.
 
-Clicking a country opens a **context panel** at the bottom with that country's stats and its
-available actions.
+Clicking a country opens the **context panel** beside it — its stats, its hack forecast, and its
+available actions. It floats over the map and follows the selection, including the arrow keys. It is
+positioned by edge and never centred on the country, because a panel centred on the country covers
+the country the player just clicked; where neither side has room for it, it narrows, and only if even
+that is too narrow does it stack below and shorten itself. `panelAnchor` in `src/ui/anchor.ts` is the
+only copy of that rule, is pure, and is swept over every region at eleven window sizes in
+`tests/anchor.test.ts`. Its anchor is `labelFor` — the same on-screen point the map draws the label
+at — so there is no second projection.
 
 ---
 
@@ -682,7 +687,7 @@ map behind the end screen is whatever the run ended on — the heat ramp, tinted
   screen naming all three from the same table, and both loss meters carry severity shapes as well
   as hue. The log is not a live region; announcements reach assistive technology through two
   `role="status" aria-live="polite"` containers: the toasts, and a visually hidden one at the head
-  of the context bar that announces the selected region's name **and its position in the ring**
+  of the context panel that announces the selected region's name **and its position in the ring**
   (`United States selected, region 1 of 30.`). Nothing that ticks is in it: the announced
   string is a function of the `RegionId` alone and takes no `GameState`, so it cannot change
   between days and the reader is not made to repeat the region once a day for the length of the

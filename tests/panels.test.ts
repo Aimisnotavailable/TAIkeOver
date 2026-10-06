@@ -982,7 +982,7 @@ describe('where the map says you are', () => {
   });
 
   it('cannot change between ticks', () => {
-    // A live region re-announces whenever its text changes, and the context bar
+    // A live region re-announces whenever its text changes, and the context panel
     // re-renders every in-game day. The strongest thing that can be asserted about that
     // is that the announced string has no way to see a tick: the function takes one
     // argument and it is a region id. A number read off the state would have put the

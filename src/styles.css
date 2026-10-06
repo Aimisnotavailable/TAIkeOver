@@ -26,17 +26,21 @@ button.primary { border-color: var(--ok); color: var(--ok); }
 button.mini { padding: 2px 6px; font-size: 9px; }
 
 /* `--hud` is the height of the top bar, and everything pinned under it reads it rather than
-   repeating the number. `--dock` is the bottom bar, and everything that has to clear
-   it reads that instead. Both are single numbers for one reason: five elements are measured
-   from the top of the screen (the rail, the operations panel, the pending-decisions bar, the
-   toasts and EVOLVE), so a second value for the bar's height is five things that move when
-   it changes. The primer line used to grow `--hud` from 46px to 78px and take all five down
-   with it for as long as it was on screen. It is a floating line over the map now and takes
-   part in no layout. */
+   repeating the number. `--rail` is the width of the left rail and `--log` the width of the
+   log column beside it; the two are read by `PANEL_INSETS` in `src/ui/anchor.ts`, which is
+   what keeps the floating context panel off them, and `tests/styles.test.ts` holds the two
+   files against each other. `--dock` is gone: it was the height of a bottom bar that spanned
+   the screen, and the only thing left down there is the log, which is a column on the right
+   rather than a strip along the bottom. Five elements are measured from the top of the screen
+   (the rail, the operations panel, the pending-decisions bar, the toasts and EVOLVE), so a
+   second value for the bar's height is five things that move when it changes. The primer line
+   used to grow `--hud` from 46px to 78px and take all five down with it for as long as it was
+   on screen. It is a floating line over the map now and takes part in no layout. */
 .game {
   position: fixed; inset: 0;
   --hud: 46px;
-  --dock: 150px;
+  --rail: 186px;
+  --log: 330px;
 }
 .game canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 
@@ -76,7 +80,10 @@ button.mini { padding: 2px 6px; font-size: 9px; }
 .trait.incubating { border-color: var(--warn); opacity: 0.8; }
 .trait.locked { opacity: 0.38; }
 
-.side { position: absolute; top: var(--hud); left: 0; bottom: var(--dock); width: 186px; background: var(--pane); border-right: 1px solid var(--edge); padding: 8px; overflow-y: auto; }
+/* Full height now. The rail used to stop 150px short of the bottom edge to clear the bottom
+   bar; that bar held the context panel, and the panel now floats over the country it belongs
+   to, so there is nothing along the bottom to clear. */
+.side { position: absolute; top: var(--hud); left: 0; bottom: 0; width: var(--rail); background: var(--pane); border-right: 1px solid var(--edge); padding: 8px; overflow-y: auto; }
 .side-block { margin-bottom: 14px; }
 .side-title { font-size: 8.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-dim); margin-bottom: 6px; }
 .rival { margin-bottom: 7px; }
@@ -87,8 +94,26 @@ button.mini { padding: 2px 6px; font-size: 9px; }
 .tier.on { border-color: var(--bad); color: var(--bad); }
 .side-note { font-size: 9.5px; color: var(--warn); margin-top: 6px; line-height: 1.5; }
 
-.bottom { position: absolute; left: 0; right: 0; bottom: 0; height: var(--dock); display: flex; border-top: 1px solid var(--edge); background: rgba(3, 7, 9, 0.9); }
-.context { flex: 1; padding: 9px 12px; overflow-y: auto; }
+/* The event log. It was the right-hand third of a full-width bottom bar; the other two thirds
+   were the context panel, which now floats over the country it describes. A column rather
+   than a strip along the bottom, and the rail above it runs the full height for the same
+   reason there is no dock left to clear. */
+.logpane { position: absolute; top: var(--hud); right: 0; bottom: 0; width: var(--log); border-left: 1px solid var(--edge); padding: 8px 10px; display: flex; flex-direction: column; background: rgba(3, 7, 9, 0.9); }
+
+/* The context panel, floating over the country the player has selected.
+   Position comes from `panelAnchor` in `src/ui/anchor.ts` as inline `left`/`top`/`width`/
+   `max-height`, so none of the four is decided here — this rule is the box, and the only
+   number in it that the anchor also needs is the height, which `tests/styles.test.ts`
+   holds against `PANEL_HEIGHT` so the two cannot drift. */
+.context {
+  position: absolute;
+  z-index: 20;
+  padding: 9px 12px;
+  overflow-y: auto;
+  background: var(--pane-solid);
+  border: 1px solid var(--edge-bright);
+  border-radius: 3px;
+}
 .context-hint { color: var(--ink-dim); font-size: 10.5px; }
 .context-name { font-size: 14px; font-weight: 700; color: var(--ink-bright); margin-bottom: 6px; }
 .facts { display: flex; flex-wrap: wrap; gap: 12px; font-size: 10px; color: var(--ink-dim); margin-bottom: 8px; }
@@ -98,7 +123,6 @@ button.mini { padding: 2px 6px; font-size: 9px; }
 .actions-row { display: flex; flex-wrap: wrap; gap: 5px; }
 .hacking { font-size: 9.5px; color: var(--warn); align-self: center; margin-right: 6px; }
 
-.logpane { width: 330px; border-left: 1px solid var(--edge); padding: 8px 10px; display: flex; flex-direction: column; }
 .loglist { flex: 1; overflow-y: auto; display: flex; flex-direction: column-reverse; gap: 1px; }
 .logline { font-size: 10px; line-height: 1.5; color: var(--ink); }
 .logline.flagged { color: var(--bad); }
@@ -152,7 +176,7 @@ button.contain.act { background: #12262e; border-color: var(--warn); color: var(
 .trait-bar i { display: block; height: 100%; background: var(--warn); }
 .trait-why { font-size: 9px; color: var(--warn); margin-top: 3px; }
 
-.ops { position: absolute; top: calc(var(--hud) + 6px); left: 196px; width: 470px; background: var(--pane); border: 1px solid var(--edge); border-radius: 2px; padding: 7px 9px; }
+.ops { position: absolute; top: calc(var(--hud) + 6px); left: calc(var(--rail) + 10px); width: 470px; background: var(--pane); border: 1px solid var(--edge); border-radius: 2px; padding: 7px 9px; }
 .ops-head { display: flex; justify-content: space-between; font-size: 8.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-dim); margin-bottom: 5px; }
 .ops-cap { color: var(--ink); }
 .ops-empty { font-size: 10px; color: var(--ink-dim); }
@@ -223,7 +247,7 @@ button.ignore:hover { border-color: var(--ink-dim); color: var(--ink); backgroun
 }
 
 /* The class name is the whole mechanism: a live region with no rule beside it prints its
-   text as a visible line of type in the middle of the bottom bar. */
+   text as a visible line of type in the middle of the context panel. */
 .sr-only {
   position: absolute;
   width: 1px;
@@ -338,12 +362,12 @@ button.ignore:hover { border-color: var(--ink-dim); color: var(--ink); backgroun
    the toasts and EVOLVE down 32px and back again. The world runs underneath this, and it
    only gets shorter as the player does the things it names.
    Bottom-centre is the one band of the screen nothing else is anchored to — `.ops` and the
-   EVOLVE button hang off the top, the rail off the top left, the toasts off the top
-   centre — and it sits just above the context bar, which is where the player's eye already
-   goes for the state of the country they have selected. */
+   EVOLVE button hang off the top, the rail off the left edge, the log off the right — and
+   the floating context panel is beside a country rather than centred on one, so it reaches
+   this band only for a country low on the map. */
 .primer {
   position: absolute;
-  bottom: calc(var(--dock) + 8px);
+  bottom: 10px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;

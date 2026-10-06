@@ -3,6 +3,7 @@ import { REGION_BY_ID } from '../../game/data/regions';
 import { BUBBLE_FILL, BUBBLE_GLYPH } from '../map/worldMap';
 import { TRAIT_BY_ID, TRAITS, TRAIT_GROUPS, type TraitDef } from '../../game/data/traits';
 import { play } from '../sound';
+import { anchorFor, PANEL_HEIGHT, PANEL_WIDTH, panelAnchor } from '../anchor';
 import { ACTIONS, type ActionKind } from '../../game/core/actions';
 import { hackForecast, traitForecast, whyNot } from '../../game/core/forecast';
 import { held, maxConcurrentHacks, owned } from '../../game/core/queries';
@@ -776,7 +777,7 @@ function CountryFacts({ c, state }: { c: Country; state: GameState }) {
 }
 
 /**
- * What the context bar announces, and the only string that reaches a screen reader when
+ * What the context panel announces, and the only string that reaches a screen reader when
  * the player moves the selection.
  *
  * Position is in here because the name alone is not enough: thirty countries in a ring,
@@ -797,20 +798,38 @@ export function selectionAnnouncement(id: RegionId | null): string {
 }
 
 /**
- * The context bar, and the one place the game speaks unasked.
+ * The context panel, and the one place the game speaks unasked.
  *
  * The canvas is `role="application"`: a screen reader hands it every keystroke and reads
  * nothing back, so a player arrowing through thirty countries got no word of feedback at
  * all — the spec promised the selected region was announced and a static aria-label on the
  * canvas is not an announcement. This is the pattern the toasts already use, at the head of
- * the bar and hidden from the eye.
+ * the panel and hidden from the eye.
+ *
+ * It floats over the country it describes rather than sitting in a bar along the bottom, and
+ * where it goes is `panelAnchor`'s decision, not this component's: it hands over the
+ * selected region and the window size and puts the returned left/top/width/max-height on
+ * the element. Nothing here decides a position, so there is one copy of the rule and
+ * `tests/anchor.test.ts` can sweep it without a DOM.
+ *
+ * The window size is the same number the canvas is sized from, passed down rather than read
+ * again here: two listeners for one resize would eventually disagree, and a panel anchored
+ * to a stale size is a panel pointing at the wrong country.
  */
-export function ContextBar({ state }: { state: GameState }) {
+export function ContextPanel({ state, view }: { state: GameState; view: { w: number; h: number } }) {
   const id = selected.value;
   const name = id === null ? null : REGION_BY_ID[id]?.name ?? null;
+  const place = panelAnchor(
+    anchorFor(id, view.w, view.h),
+    { width: PANEL_WIDTH, height: PANEL_HEIGHT },
+    { x: view.w, y: view.h },
+  );
 
   return (
-    <div class="context">
+    <div
+      class="context"
+      style={{ left: `${place.left}px`, top: `${place.top}px`, width: `${place.width}px`, maxHeight: `${place.height}px` }}
+    >
       <div class="sr-only" role="status" aria-live="polite">
         {selectionAnnouncement(id)}
       </div>
@@ -1091,7 +1110,7 @@ export function containmentStep(armed: boolean, ready: boolean): { armed: boolea
 /**
  * The Containment control, in the Situation rail. A global action rather than a country one,
  * because none of the five gates is about a particular country — which is why it does not
- * live with the eight actions in the context bar.
+ * live with the eight actions in the context panel.
  *
  * The outstanding list is printed bare, under the heading, rather than behind a "needs":
  * one of the lines `containmentShortfall` can return reports that the Blight hold has closed

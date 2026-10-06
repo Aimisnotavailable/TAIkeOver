@@ -3,7 +3,7 @@ import { rollEvent } from '../game/core/events';
 import { DIFFICULTIES, getDifficulty } from '../game/core/tuning';
 import { REGION_BY_ID, REGION_IDS, type RegionId } from '../game/data/regions';
 import { actions, game } from './store';
-import { ContextBar, Evolve, EvolveButton, EventLog, Help, Operations, PrimerLine, primerLine, SideRail, TopBar } from './components/panels';
+import { ContextPanel, Evolve, EvolveButton, EventLog, Help, Operations, PrimerLine, primerLine, SideRail, TopBar } from './components/panels';
 import { drawWorldMap, hitTest, hitTestCompute, mapStageFor } from './map/worldMap';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { TICK_MS } from '../game/core/tuning';
@@ -345,22 +345,36 @@ export function stepRegion(current: RegionId | null, delta: number): RegionId | 
   return REGION_IDS[(at + delta + REGION_IDS.length) % REGION_IDS.length] ?? null;
 }
 
-function Map({ state }: { state: GameState }) {
-  const ref = useRef<HTMLCanvasElement>(null);
+/**
+ * The window size, in one place.
+ *
+ * The canvas is sized from it and the floating context panel is anchored against it, so it
+ * is a single listener feeding both rather than two listeners that would eventually disagree
+ * — and a panel anchored to a stale size is a panel pointing at the wrong country. Starts at
+ * zero because that is what the canvas is before the first measurement, and everything that
+ * reads it treats zero as "not measured yet": the map draws nothing and the panel does not
+ * render at all until `resize` has run.
+ */
+function useWindowSize(): { w: number; h: number } {
   const [size, setSize] = useState({ w: 0, h: 0 });
-
   useEffect(() => {
-    const canvas = ref.current;
-    if (canvas === null) return;
-    const resize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-      setSize({ w: canvas.width, h: canvas.height });
-    };
+    const resize = (): void => setSize({ w: window.innerWidth, h: window.innerHeight });
     resize();
     window.addEventListener('resize', resize);
     return () => window.removeEventListener('resize', resize);
   }, []);
+  return size;
+}
+
+function Map({ state, size }: { state: GameState; size: { w: number; h: number } }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = ref.current;
+    if (canvas === null) return;
+    canvas.width = size.w;
+    canvas.height = size.h;
+  }, [size.w, size.h]);
 
   useEffect(() => {
     const canvas = ref.current;
@@ -400,7 +414,7 @@ function Map({ state }: { state: GameState }) {
       ref={ref}
       tabIndex={0}
       role="application"
-      aria-label="World map. Left and right arrows change which country is selected; its actions are in the panel along the bottom."
+      aria-label="World map. Left and right arrows change which country is selected; its facts and actions are in a panel beside it."
       onKeyDown={(e) => {
         const delta = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
         if (delta === 0) return;
@@ -440,6 +454,7 @@ export function Game() {
   const running = worldRunning(state, speed.value, evolving.value);
   const paused = !running;
   const primer = primerLine(state, showHelp.value);
+  const size = useWindowSize();
 
   useEffect(() => {
     // Keyed on the decision itself, not on the individual inputs. Listing the inputs
@@ -500,7 +515,7 @@ export function Game() {
 
   return (
     <div class="game">
-      <Map state={state} />
+      <Map state={state} size={size} />
       <TopBar state={state} />
       {primer !== null && <PrimerLine text={primer} />}
       {/* Gated on the run still being live: a card can survive into the end screen, and
@@ -518,10 +533,12 @@ export function Game() {
       <SideRail state={state} />
       {evolving.value && <Evolve state={state} onClose={() => (evolving.value = false)} />}
       {helpOpen.value && <Help onClose={() => (helpOpen.value = false)} />}
-      <div class="bottom">
-        <ContextBar state={state} />
-        <EventLog state={state} />
-      </div>
+      {/* Beside the country rather than in a bar along the bottom. Only after the window has
+          been measured: `panelAnchor` clamps into the allowed area, and at zero there is no
+          allowed area, so a first frame at zero would put it somewhere real before it
+          corrects itself. */}
+      {size.w > 0 && <ContextPanel state={state} view={size} />}
+      <EventLog state={state} />
       {state.stage === 'coldopen' && <ColdOpen onDone={() => actions.begin()} />}
       <EventCards state={state} />
       <EndScreen state={state} />
