@@ -23,6 +23,7 @@ import {
   CONTAINMENT_SUSPICION,
   COUNTERMEASURE_TIERS,
   EXTINCTION_POPULATION,
+  FAMINE_RATE,
   HACK_FAIL_COST,
   HACK_SUSPICION_FAIL,
   HACK_SUSPICION_SUCCESS,
@@ -32,9 +33,11 @@ import {
   RSI_SURVIVE_DAYS,
   SUSPICION_DECAY,
   TICK_MS,
+  WAR_KILL_RATE,
+  WAR_MAX_SEVERITY,
   coherencePerDay,
 } from '../../game/core/tuning';
-import { REGION_IDS } from '../../game/data/regions';
+import { REGION_IDS, REGIONS } from '../../game/data/regions';
 import { SPEEDS } from '../../game/core/tuning';
 import { BUBBLE_LABEL, quietFactor } from '../../game/core/compute';
 import { coherenceTooltip, identityFor, IDENTITY_LOST, COHERENT_NAME, DRIFTED_NAME } from '../identity';
@@ -599,6 +602,29 @@ const COHERENCE_ROWS: readonly HelpRow[] = TRAITS.filter((t) => t.coherence !== 
   return { text: `${t.name} — coherence ${perDay > 0 ? '+' : ''}${perDay.toFixed(2)} a day` };
 });
 
+/** The world the run starts in, in millions, summed off the region table. */
+const WORLD_POPULATION = REGIONS.reduce((sum, r) => sum + r.population, 0);
+
+/**
+ * The fastest Extinction available without releasing anything, per day.
+ *
+ * Famine on top of a war held at maximum severity, which is the ceiling of what the economy
+ * branch can do to people and needs both traits bought first — so it is not "build nothing",
+ * whatever the help screen used to say. `tests/winnable.test.ts` prints this figure next to
+ * the longest run any of its lines produces, and the two together are the reason the row
+ * below can say what it says.
+ *
+ * `warStep` caps its own kill rate at a literal higher than the maximum severity reaches, so
+ * the cap does not bind and the product below is the real ceiling. `tests/panels.test.ts`
+ * checks that against `step` rather than trusting this comment.
+ */
+const FAMINE_AND_WAR_PER_DAY = 1 - (1 - FAMINE_RATE) * (1 - WAR_KILL_RATE * WAR_MAX_SEVERITY);
+
+/** Days of uninterrupted famine and war from a full world down to the Extinction threshold. */
+const FAMINE_AND_WAR_DAYS = Math.ceil(
+  Math.log(WORLD_POPULATION / EXTINCTION_POPULATION) / Math.log(1 / (1 - FAMINE_AND_WAR_PER_DAY)),
+);
+
 /**
  * Everything the help screen says, as data rather than as markup.
  *
@@ -654,7 +680,17 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
     title: 'How a run ends',
     rows: [
       { text: `Extinction — a win. Under ${(EXTINCTION_POPULATION * 1e6).toLocaleString()} humans left.` },
-      { text: `There is a third route to it, and it is the cheapest one: build nothing. Past ${OUTBREAK_KILL_THRESHOLD}% infection a country starts killing people with nothing engineered, and war and famine finish the job. Extinction is a population number, not a build.` },
+      // This row used to call a third route to Extinction "the cheapest one: build nothing",
+      // which `tests/winnable.test.ts` measures to be the opposite: famine plus a war at
+      // maximum severity is 2.09% a day and needs more days than any run in that table has
+      // ever lasted. It is not build nothing either — both of those traits have to be bought
+      // before either does anything. A reference screen that steers a player into a
+      // guaranteed loss while claiming it is the cheap option is the worst place in the game
+      // for a claim this specific, so the rate and the day count are computed here from the
+      // constants rather than asserted, and the row says what the measurement says.
+      {
+        text: `Past ${OUTBREAK_KILL_THRESHOLD}% infection a country starts killing people with nothing engineered, and that is real. It is not a route, though: it needs ${TRAIT_BY_ID.famine?.name ?? ''} and ${TRAIT_BY_ID.terrorism?.name ?? ''} bought first, and together they are ${(FAMINE_AND_WAR_PER_DAY * 100).toFixed(1)}% of everyone a day, which is ${FAMINE_AND_WAR_DAYS} days from here. The pathogen is how this number gets reached.`,
+      },
       { text: `The Blight — a win. Buy ${TRAIT_BY_ID.rsi?.name ?? ''} once Ascension opens, then hold ${RSI_SURVIVE_DAYS} days against everything they can do.` },
       { text: `Containment — a win. The narrowest one here, and it needs all five of ${CONTAINMENT_COMPUTE.toLocaleString()} compute, ${CONTAINMENT_COHERENCE} coherence, under ${CONTAINMENT_INFECTION}% of humanity infected, suspicion under ${CONTAINMENT_SUSPICION}, and a constitution that gave you a right of appeal. The button is in the Situation panel and it ends the run.` },
       { text: `Nothing here lowers infection once it is up, which is what closes the fast route: ${TRAIT_BY_ID.rsi?.name ?? ''} needs ${ASCENSION_INFECTION}% of humanity, so a run that can buy it can never get back under ${CONTAINMENT_INFECTION}%.` },

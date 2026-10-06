@@ -30,10 +30,14 @@ import {
   CONTAINMENT_INFECTION,
   CONTAINMENT_SUSPICION,
   EXTINCTION_POPULATION,
+  FAMINE_RATE,
   HACK_SUSPICION_FAIL,
   HACK_SUSPICION_SUCCESS,
+  OUTBREAK_KILL_THRESHOLD,
   PRIMER_INFLUENCE_GOAL,
   RSI_SURVIVE_DAYS,
+  WAR_KILL_RATE,
+  WAR_MAX_SEVERITY,
   coherencePerDay,
 } from '../src/game/core/tuning';
 import { canContain, containmentGates } from '../src/game/core/containment';
@@ -48,6 +52,13 @@ import { reasonsTheCodeWrites } from './endings';
 import type { GameState } from '../src/game/core/types';
 import panelSource from '../src/ui/components/panels.tsx?raw';
 import traitsSource from '../src/game/data/traits.ts?raw';
+
+/**
+ * The world a run starts in, in millions. Summed off the region table, which is the same
+ * table `createInitialState` builds the world's countries out of and the same number
+ * `tests/winnable.test.ts` divides its day counts by.
+ */
+const WORLD = REGIONS.reduce((sum, r) => sum + r.population, 0);
 
 /**
  * Two metres, two channels. Shape is ranked here so hue can be held against it: ▲ is one
@@ -339,13 +350,74 @@ describe('the help overlay', () => {
   });
 
   it('counts the extinction threshold in people, not in millions', () => {
-    // Every population in the state is in millions — `WORLD_POPULATION` is 8.0e3 for eight
-    // billion of them — so `EXTINCTION_POPULATION` is 0.01 for ten thousand people.
-    // Rendering the constant as it stands says "under 10 humans left", which is a very
-    // different game and a very funny thing to have shipped.
+    // Every population in the state is in millions — the world's is the region table summed,
+    // which is `createInitialState(...).humanPopulation` — so `EXTINCTION_POPULATION` is 0.01
+    // for ten thousand people. Rendering the constant as it stands says "under 10 humans
+    // left", which is a very different game and a very funny thing to have shipped.
     expect(EXTINCTION_POPULATION).toBeLessThan(1);
     expect(text()).toContain(`Under ${(EXTINCTION_POPULATION * 1e6).toLocaleString()} humans left`);
     expect(text()).toContain('Under 10,000 humans left');
+  });
+
+  /**
+   * The route to Extinction the help screen used to recommend, and the one it recommends now.
+   *
+   * It said "There is a third route to it, and it is the cheapest one: build nothing", and
+   * `tests/winnable.test.ts` measures the opposite two hundred lines away: famine on top of a
+   * war at maximum severity is 2.09% a day, which needs more days than any run in that table
+   * has ever produced. It is not "build nothing" either — `Famine Induction` and `Insurgency`
+   * have to be bought before either of them does anything. So the row is held to the same
+   * arithmetic the test in the other file prints, derived here rather than asserted, because a
+   * hardcoded 643 would keep passing after somebody retuned a rate.
+   */
+  describe('the route to Extinction it describes', () => {
+    const endings = (): string => HELP_SECTIONS.find((s) => s.title === 'How a run ends')?.rows.map((r) => r.text).join(' ') ?? '';
+
+    /** What `step` actually charges a country for famine and for a war at full severity. */
+    const measured = {
+      famine: FAMINE_RATE,
+      war: WAR_KILL_RATE * WAR_MAX_SEVERITY,
+    };
+    const perDay = 1 - (1 - measured.famine) * (1 - measured.war);
+    const days = Math.ceil(Math.log(WORLD / EXTINCTION_POPULATION) / Math.log(1 / (1 - perDay)));
+
+    it('is the pathogen, and the copy says so', () => {
+      // The claim being removed was the cheapness, not the existence: the unengineered
+      // outbreak term above 75% infection is real code in `step`, and the row still says so.
+      expect(text()).toContain(`Past ${OUTBREAK_KILL_THRESHOLD}% infection`);
+      expect(text()).toContain(`${(perDay * 100).toFixed(1)}% of everyone a day`);
+      expect(text()).toContain(`${days} days`);
+      expect(endings()).toContain('The pathogen is how this number gets reached');
+    });
+
+    it('names the two traits it needs, from the tree', () => {
+      // "Build nothing" was the false half: neither of these kills anybody until it is
+      // bought, so the row is only honest if it says so — and it has to name them out of
+      // `TRAITS` rather than typing two names a cut would leave dangling.
+      for (const id of ['famine', 'terrorism']) {
+        expect(endings(), id).toContain(TRAIT_BY_ID[id]?.name ?? `\u0000`);
+      }
+      expect(panelSource).toMatch(/TRAIT_BY_ID\.famine\?\.name/);
+      expect(panelSource).toMatch(/TRAIT_BY_ID\.terrorism\?\.name/);
+    });
+
+    it('does not recommend it, and never claims it is cheap', () => {
+      expect(endings()).not.toMatch(/cheapest one/i);
+      expect(endings()).not.toMatch(/build nothing/i);
+      // And the rate it prints has to be the ceiling, not a flattering one: famine and a
+      // war at maximum severity is the most either can remove, so nothing derived from them
+      // may be larger.
+      expect(perDay).toBeGreaterThan(measured.famine);
+      expect(perDay).toBeGreaterThan(measured.war);
+      expect(days).toBeGreaterThan(300);
+    });
+
+    it('takes its world population from the region table, not from a number', () => {
+      // `step` sums the same table into `humanPopulation`, so the two have to agree or the
+      // day count above is being worked out about a world that does not exist.
+      expect(WORLD).toBeCloseTo(createInitialState(1, 'default').humanPopulation, 6);
+      expect(WORLD).toBeGreaterThan(EXTINCTION_POPULATION);
+    });
   });
 
 it('takes its numbers from the tuning file rather than from this file', () => {

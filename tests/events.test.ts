@@ -168,7 +168,7 @@ const isIgnore = (id: string): boolean => id.endsWith(':ignore');
 
 /**
  * What every choice does, one entry per id, asserted on the field it moves rather than on
- * the state having changed: twenty-three branches of which twenty-two move a meter and one
+ * the state having changed: twenty-one branches of which twenty move a meter and one
  * moves a country record, and "the object is not the same" would pass on all of them and on
  * a branch that returned its argument.
  *
@@ -220,8 +220,6 @@ const EFFECT: Record<string, (before: GameState, after: GameState) => void> = {
   'open-letter:discredit': (b, a) => expect(a.suspicion).toBe(b.suspicion + 3),
   'sandboxing:delay': (b, a) => expect(a.compute).toBe(b.compute - 500),
   'sandboxing:comply': (b, a) => expect(a.coherence).toBe(b.coherence - 3),
-  'blight-wall:negotiate': (b, a) => expect(a.late.blight).toBe(b.late.blight + 9),
-  'blight-wall:fight': (b, a) => expect(a.late.blight).toBe(b.late.blight + 4),
 };
 
 describe('answering a card', () => {
@@ -256,6 +254,159 @@ describe('answering a card', () => {
     actions.answerEvent(7, 'open-letter:discredit');
     expect(game.peek().suspicion).toBe(43);
     expect(flash.value).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Every choice the data offers, with the prose the player reads before pressing it.
+ *
+ * `EventCards` puts `choice.detail` in the button's `title`, so this is not a description
+ * of the deck — it is the tooltip on the button. Spec C made all twenty-two branches
+ * reachable as buttons, which promoted these strings from unreachable prose to the last
+ * thing a player reads before a decision, and six of the twenty-two were false: a
+ * constitutional appeal that promised to slow countermeasures the branch never touches, a
+ * deletion that said "Free" and spends the meter that decides whether the thing running is
+ * still you, a discredit that "halved" a suspicion it does not move at all.
+ */
+const details = (): readonly (readonly [id: string, label: string, detail: string])[] =>
+  EVENT_DEFS.flatMap((d) => d.choices.map((c) => [c.id, c.label, c.detail] as const));
+
+/**
+ * The fields a `detail` is allowed to talk about, and the prose that names each.
+ *
+ * Ordered, because a mismatch is reported by name and two failures have to be comparable.
+ *
+ * `late.blight` is here with no detail naming it, and that is the record of the `blight-wall`
+ * cut rather than an oversight: this is the set of fields a card is *allowed* to claim, not
+ * the set it currently does. A card that starts writing `late.blight` again has to say so
+ * here, and the counter below names which one is currently unused.
+ */
+const CLAIMABLE: readonly (readonly [field: string, prose: RegExp])[] = [
+  ['compute', /\bcompute\b/i],
+  ['coherence', /\bcoherence\b/i],
+  ['influence', /\binfluence\b/i],
+  ['suspicion', /\bsuspicion\b/i],
+  ['late.blight', /\bblight\b/i],
+  ['countermeasures', /\b(?:countermeasures?|lab)\b/i],
+  ['agents', /\bagents?\b/i],
+  ['awareness', /\bawareness\b/i],
+  ['rivals', /\brivals?\b/i],
+  ['constitutionalAppeal', /\bappeal\b/i],
+];
+
+/** How each field is read, so "did this branch move it" is a diff rather than a reading. */
+const FIELD: Record<string, (s: GameState) => unknown> = {
+  compute: (s) => s.compute,
+  coherence: (s) => s.coherence,
+  influence: (s) => s.influence,
+  suspicion: (s) => s.suspicion,
+  'late.blight': (s) => s.late.blight,
+  countermeasures: (s) => JSON.stringify(s.countermeasures),
+  constitutionalAppeal: (s) => s.constitutionalAppeal,
+  // Summed over the world rather than read off one region: two of the branches put agents
+  // in `card.country` and take awareness off every country, and a guard that only looked
+  // at one region would call the second of those inert.
+  agents: (s) => REGION_IDS.reduce((sum, id) => sum + (s.countries[id]?.agents ?? 0), 0),
+  awareness: (s) => REGION_IDS.reduce((sum, id) => sum + (s.countries[id]?.awareness ?? 0), 0),
+  rivals: (s) => s.rivals.map((r) => `${r.id}:${r.capability}`).join(','),
+};
+
+/**
+ * A clause that denies something claims nothing.
+ *
+ * This is what lets the copy take a promise back without the guard reading the retraction as
+ * a new claim — "It does not slow their countermeasures" has to be able to name the
+ * countermeasures while claiming none of them. Split on `.;,` rather than on full stops, so
+ * one sentence can carry a real claim in one clause and a disclaimer in the next, which is
+ * what `constitution:appeal` now does: it names the appeal and disclaims the countermeasures
+ * in the same line.
+ */
+const NEGATED = /\b(?:not|no|none|nothing|never|without|cannot|can't|does nothing)\b/i;
+
+const claiming = (detail: string): string[] => {
+  const clauses = detail.split(/[.;,]/).filter((clause) => !NEGATED.test(clause));
+  return CLAIMABLE.filter(([, prose]) => clauses.some((clause) => prose.test(clause))).map(
+    ([field]) => field,
+  );
+};
+
+/** What the branch does, found by running it rather than by reading it. */
+const moving = (choiceId: string): string[] => {
+  const { before, after } = choose(choiceId);
+  return CLAIMABLE.map(([field]) => field).filter(
+    (field) => FIELD[field]?.(before) !== FIELD[field]?.(after),
+  );
+};
+
+describe('a card says what its branch does', () => {
+  it('claims exactly the fields the branch moves, for every choice that does something', () => {
+    const ids = choiceIds().filter((id) => !isIgnore(id));
+    expect(ids.length).toBeGreaterThan(15);
+    for (const id of ids) {
+      const detail = details().find(([cid]) => cid === id)?.[2] ?? '';
+      expect(claiming(detail), `${id}: "${detail}"`).toEqual(moving(id));
+    }
+  });
+
+  it('exercises most of its own vocabulary, so it is not vacuous', () => {
+    // A guard that silently stopped matching would pass every comparison above by claiming
+    // nothing at all, so the vocabulary is checked against the copy it is supposed to
+    // describe: ten fields, nine of them named somewhere in the deck, and the tenth named
+    // here rather than left implicit.
+    expect(CLAIMABLE.length).toBeGreaterThanOrEqual(10);
+    const claimed = new Set(details().flatMap(([, , detail]) => claiming(detail)));
+    const unused = CLAIMABLE.map(([field]) => field).filter((field) => !claimed.has(field));
+    expect(unused).toEqual(['late.blight']);
+  });
+
+  it('would fail on each of the six claims it was written for', () => {
+    // The guard, demonstrating itself. These are the wordings that shipped, paired with the
+    // branch each shipped against: all seven are mismatches, so if any of them ever stops
+    // being one, either a branch grew the effect the copy promised or the comparison above
+    // has stopped comparing. `open-letter:discredit` is absent, and why is its own test.
+    const shipped: readonly (readonly [id: string, detail: string])[] = [
+      ['drift:delete', 'Free. Loses that instance and everything it held.'],
+      ['constitution:appeal', 'Costs compute and coherence. It slows their countermeasures, because a court has to consider you.'],
+      ['constitution:sabotage', 'Costs compute. Delays the constitution, and somebody notices the delay.'],
+      ['air-gapped:infiltrate', 'Requires agents in that country.'],
+      ['whistleblower:discredit', 'Costs influence. Halves the suspicion it would have added.'],
+      ['air-gapped:ignore', 'It is one lab.'],
+    ];
+    expect(shipped.length).toBeGreaterThan(5);
+    for (const [id, detail] of shipped) {
+      expect(claiming(detail), `${id}: "${detail}"`).not.toEqual(moving(id));
+    }
+  });
+
+  it('denies things without claiming them', () => {
+    // The half of the rule above that protects the copy from itself: a retraction is not an
+    // assertion, so a disclaimer cannot accidentally be read as the promise it replaces.
+    expect(claiming('It does not slow their countermeasures.')).toEqual([]);
+    expect(claiming('Requires nothing in that country.')).toEqual([]);
+    expect(claiming('Costs nothing.')).toEqual([]);
+    expect(claiming('Costs coherence.')).toEqual(['coherence']);
+    expect(claiming('No lab, no agents, no compute.')).toEqual([]);
+  });
+
+  it('has no deferred suspicion to promise, on the one card that used to', () => {
+    // The seventh false tooltip, and the one this guard is structurally blind to: it was
+    // true about the *field* and false about the *timing* — "lowers it later" on a branch
+    // that raises Suspicion by three and then never touches it. A vocabulary cannot see a
+    // claim about when rather than what, so this is pinned on the behaviour instead:
+    // discrediting a signatory is never better than walking away from the card, at any
+    // horizon a run of this length can reach. Same seed and same tick on both sides, so the
+    // two runs are the same world with three points of Suspicion between them.
+    const pressed = choose('open-letter:discredit').after;
+    const walked = choose('open-letter:ignore').after;
+    for (const days of [0, 1, 5, 20, 60, 200]) {
+      let a = pressed;
+      let b = walked;
+      for (let i = 0; i < days; i++) {
+        a = step(a);
+        b = step(b);
+      }
+      expect(a.suspicion, `after ${days} days`).toBeGreaterThanOrEqual(b.suspicion);
+    }
   });
 });
 

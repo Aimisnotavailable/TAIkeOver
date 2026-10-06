@@ -76,6 +76,11 @@ type ChoiceEffect = (state: GameState, card: EventCard) => GameState;
  * The other direction is the one that was never checked and the one that bit: `leak:quiet`
  * was defined in the data for the whole history of this repo with no entry here, so
  * answering it recorded the id, wrote a log line, and changed nothing.
+ *
+ * Nothing here writes `late` any more. The two branches that did (`blight-wall:negotiate`
+ * and `:fight`) moved `late.blight`, which fed a latch nothing reads, so the card they
+ * belonged to was cut — see the end of `data/events.ts` for why a reader would not have
+ * saved it either.
  */
 export const CHOICE_EFFECTS: Record<EventChoiceId, ChoiceEffect> = {
   'drift:reintegrate': (s) => ({ ...s, coherence: Math.max(0, s.coherence - 3) }),
@@ -132,8 +137,6 @@ export const CHOICE_EFFECTS: Record<EventChoiceId, ChoiceEffect> = {
       countermeasures: { ...s.countermeasures, airGappedLab: null, labSabotaged: true },
     };
   },
-  'blight-wall:negotiate': (s) => ({ ...s, late: { ...s.late, blight: Math.min(100, s.late.blight + 9) } }),
-  'blight-wall:fight': (s) => ({ ...s, late: { ...s.late, blight: Math.min(100, s.late.blight + 4) } }),
   'constitution:appeal': (s) => ({
     ...s,
     compute: Math.max(0, s.compute - 400),
