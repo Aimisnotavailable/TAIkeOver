@@ -25,11 +25,27 @@ button:disabled { opacity: 0.32; cursor: not-allowed; }
 button.primary { border-color: var(--ok); color: var(--ok); }
 button.mini { padding: 2px 6px; font-size: 9px; }
 
-.game { position: fixed; inset: 0; }
+/* `--hud` is the height of the top bar, and everything pinned under it reads it rather than
+   repeating the number. `--rail` is the width of the left rail and `--log` the width of the
+   log column beside it; the two are read by `PANEL_INSETS` in `src/ui/anchor.ts`, which is
+   what keeps the floating context panel off them, and `tests/styles.test.ts` holds the two
+   files against each other. `--dock` is gone: it was the height of a bottom bar that spanned
+   the screen, and the only thing left down there is the log, which is a column on the right
+   rather than a strip along the bottom. Five elements are measured from the top of the screen
+   (the rail, the operations panel, the pending-decisions bar, the toasts and EVOLVE), so a
+   second value for the bar's height is five things that move when it changes. The primer line
+   used to grow `--hud` from 46px to 78px and take all five down with it for as long as it was
+   on screen. It is a floating line over the map now and takes part in no layout. */
+.game {
+  position: fixed; inset: 0;
+  --hud: 46px;
+  --rail: 186px;
+  --log: 330px;
+}
 .game canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 
 .topbar {
-  position: absolute; top: 0; left: 0; right: 0; height: 46px;
+  position: absolute; top: 0; left: 0; right: 0; height: var(--hud);
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 12px; background: rgba(3, 7, 9, 0.92); border-bottom: 1px solid var(--edge);
 }
@@ -43,17 +59,10 @@ button.mini { padding: 2px 6px; font-size: 9px; }
 .speeds { display: flex; gap: 2px; }
 .sp { padding: 3px 7px; font-size: 9.5px; }
 .sp.on { border-color: var(--ok); color: var(--ok); }
-
-.toolbar {
-  position: absolute; top: 46px; right: 0; bottom: 150px; width: 316px;
-  background: var(--pane); border-left: 1px solid var(--edge);
-  display: flex; flex-direction: column;
-}
-.toolbar-head { display: flex; align-items: center; justify-content: space-between; padding: 7px 9px; border-bottom: 1px solid var(--edge); }
-.toolbar-title { font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-dim); }
-.toolbar-body { flex: 1; overflow-y: auto; padding: 6px; }
-.rail { position: absolute; top: 46px; right: 0; bottom: 150px; width: 30px; background: var(--pane); border-left: 1px solid var(--edge); display: flex; flex-direction: column; gap: 3px; padding: 5px 3px; }
-.rail-btn { width: 100%; padding: 6px 0; font-size: 11px; }
+/* Not a fourth speed. `?` sits in the row of state buttons beside `|| 1x 2x 4x 8x` and
+   styled identically it reads as one. It opens a reference screen instead, so it is drawn
+   as one: quieter, and dashed against the solid state buttons. */
+.sp.help-btn { color: var(--ink-dim); border-style: dashed; }
 
 .group { margin-bottom: 4px; border: 1px solid var(--edge); border-radius: 2px; }
 .group-head { width: 100%; display: flex; align-items: center; gap: 6px; background: #08131a; border: 0; border-radius: 0; padding: 6px 8px; font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; }
@@ -71,7 +80,10 @@ button.mini { padding: 2px 6px; font-size: 9px; }
 .trait.incubating { border-color: var(--warn); opacity: 0.8; }
 .trait.locked { opacity: 0.38; }
 
-.side { position: absolute; top: 46px; left: 0; bottom: 150px; width: 186px; background: var(--pane); border-right: 1px solid var(--edge); padding: 8px; overflow-y: auto; }
+/* Full height now. The rail used to stop 150px short of the bottom edge to clear the bottom
+   bar; that bar held the context panel, and the panel now floats over the country it belongs
+   to, so there is nothing along the bottom to clear. */
+.side { position: absolute; top: var(--hud); left: 0; bottom: 0; width: var(--rail); background: var(--pane); border-right: 1px solid var(--edge); padding: 8px; overflow-y: auto; }
 .side-block { margin-bottom: 14px; }
 .side-title { font-size: 8.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-dim); margin-bottom: 6px; }
 .rival { margin-bottom: 7px; }
@@ -82,8 +94,26 @@ button.mini { padding: 2px 6px; font-size: 9px; }
 .tier.on { border-color: var(--bad); color: var(--bad); }
 .side-note { font-size: 9.5px; color: var(--warn); margin-top: 6px; line-height: 1.5; }
 
-.bottom { position: absolute; left: 0; right: 0; bottom: 0; height: 150px; display: flex; border-top: 1px solid var(--edge); background: rgba(3, 7, 9, 0.9); }
-.context { flex: 1; padding: 9px 12px; overflow-y: auto; }
+/* The event log. It was the right-hand third of a full-width bottom bar; the other two thirds
+   were the context panel, which now floats over the country it describes. A column rather
+   than a strip along the bottom, and the rail above it runs the full height for the same
+   reason there is no dock left to clear. */
+.logpane { position: absolute; top: var(--hud); right: 0; bottom: 0; width: var(--log); border-left: 1px solid var(--edge); padding: 8px 10px; display: flex; flex-direction: column; background: rgba(3, 7, 9, 0.9); }
+
+/* The context panel, floating over the country the player has selected.
+   Position comes from `panelAnchor` in `src/ui/anchor.ts` as inline `left`/`top`/`width`/
+   `max-height`, so none of the four is decided here — this rule is the box, and the only
+   number in it that the anchor also needs is the height, which `tests/styles.test.ts`
+   holds against `PANEL_HEIGHT` so the two cannot drift. */
+.context {
+  position: absolute;
+  z-index: 20;
+  padding: 9px 12px;
+  overflow-y: auto;
+  background: var(--pane-solid);
+  border: 1px solid var(--edge-bright);
+  border-radius: 3px;
+}
 .context-hint { color: var(--ink-dim); font-size: 10.5px; }
 .context-name { font-size: 14px; font-weight: 700; color: var(--ink-bright); margin-bottom: 6px; }
 .facts { display: flex; flex-wrap: wrap; gap: 12px; font-size: 10px; color: var(--ink-dim); margin-bottom: 8px; }
@@ -93,7 +123,6 @@ button.mini { padding: 2px 6px; font-size: 9px; }
 .actions-row { display: flex; flex-wrap: wrap; gap: 5px; }
 .hacking { font-size: 9.5px; color: var(--warn); align-self: center; margin-right: 6px; }
 
-.logpane { width: 330px; border-left: 1px solid var(--edge); padding: 8px 10px; display: flex; flex-direction: column; }
 .loglist { flex: 1; overflow-y: auto; display: flex; flex-direction: column-reverse; gap: 1px; }
 .logline { font-size: 10px; line-height: 1.5; color: var(--ink); }
 .logline.flagged { color: var(--bad); }
@@ -111,9 +140,29 @@ button.mini { padding: 2px 6px; font-size: 9px; }
 .card-kicker { font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--warn); margin-bottom: 6px; }
 .cardbox .row { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
 .linkbtn { color: var(--cool); font-size: 10.5px; text-decoration: underline; }
+
+/* The end screen's "what would have stopped it" card, and the Containment button in the rail.
+   Both are quieter than the thing they sit next to: the card is a list of what was
+   available rather than a verdict, and it is ruled off from the outcome above it so the two
+   are not read as one block of prose. */
+.cardbox .worked { border-top: 1px solid var(--edge); padding-top: 12px; margin-bottom: 12px; }
+.cardbox .worked-title { font-size: 8.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-dim); margin-bottom: 6px; }
+.cardbox .worked-lead { color: var(--ink-dim); margin-bottom: 10px; }
+.worked-list { margin: 0 0 12px; padding: 0; list-style: none; }
+.worked-list li { color: var(--ink); font-size: 11px; line-height: 1.65; padding: 4px 0 4px 12px; border-left: 1px solid var(--edge); margin-bottom: 6px; }
+.worked-orgs { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 10px; color: var(--ink-dim); }
+button.contain { width: 100%; margin-top: 6px; border-color: var(--ok); color: var(--ok); }
+button.contain.act { background: #12262e; border-color: var(--warn); color: var(--warn); }
 .warning { border: 1px solid var(--bad); border-radius: 2px; padding: 10px 12px; margin: 14px 0; }
 .warning b { color: var(--bad); letter-spacing: 0.12em; font-size: 10.5px; }
 .warning p { margin: 6px 0 0; font-size: 11px; line-height: 1.6; }
+
+/* The run this browser already had. Drawn above the content warning rather than in place of
+   it, because it is an offer and not a substitute: the warning is the thing a player has to
+   see before they are in a game again, and the run is only there if they ask for it. */
+.restore { border: 1px solid var(--edge-bright); border-radius: 2px; padding: 10px 12px; margin: 14px 0 0; }
+.restore b { color: var(--cool); letter-spacing: 0.14em; font-size: 10px; }
+.restore p { margin: 6px 0 10px; font-size: 11px; line-height: 1.6; color: var(--ink-dim); }
 .diff-row { display: flex; gap: 6px; margin-bottom: 6px; }
 .diff-note { font-size: 9.5px; color: var(--ink-dim); line-height: 1.6; margin-bottom: 16px; }
 
@@ -134,7 +183,7 @@ button.mini { padding: 2px 6px; font-size: 9px; }
 .trait-bar i { display: block; height: 100%; background: var(--warn); }
 .trait-why { font-size: 9px; color: var(--warn); margin-top: 3px; }
 
-.ops { position: absolute; top: 52px; left: 196px; width: 470px; background: var(--pane); border: 1px solid var(--edge); border-radius: 2px; padding: 7px 9px; }
+.ops { position: absolute; top: calc(var(--hud) + 6px); left: calc(var(--rail) + 10px); width: 470px; background: var(--pane); border: 1px solid var(--edge); border-radius: 2px; padding: 7px 9px; }
 .ops-head { display: flex; justify-content: space-between; font-size: 8.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-dim); margin-bottom: 5px; }
 .ops-cap { color: var(--ink); }
 .ops-empty { font-size: 10px; color: var(--ink-dim); }
@@ -163,10 +212,29 @@ button.mini { padding: 2px 6px; font-size: 9px; }
 .logline.k-rival { color: var(--violet); }
 .logline .s { color: var(--bad); margin-left: 5px; font-size: 9px; }
 
-.paused-bar { position: absolute; top: 46px; left: 0; right: 0; height: 24px; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: rgba(60,20,10,.94); border-bottom: 1px solid var(--bad); color: #ffb4a2; font-size: 10px; letter-spacing: 0.08em; z-index: 25; }
+/* Above the overlay, on purpose. The bar's whole claim is that the world is still moving
+   while a card is up, and `.overlay` is z-index 30 across the full viewport with an opaque
+   scrim — at z-index 25 the bar rendered underneath the card it was describing, so the one
+   piece of text explaining the interaction was the one thing the interaction hid. 45 puts
+   it over the overlay and over the toasts, which are transient and pointer-transparent. */
+.paused-bar { position: absolute; top: var(--hud); left: 0; right: 0; height: 24px; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: rgba(60,20,10,.94); border-bottom: 1px solid var(--bad); color: #ffb4a2; font-size: 10px; letter-spacing: 0.08em; z-index: 45; }
 .pb-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--bad); }
 .op-hard { color: var(--bad); }
 .tier-max { color: var(--ink-dim); font-size: 9px; }
+
+/* The choices on a decision card, one per row so a four-choice card reads as a list of
+   decisions rather than a row of equal buttons. The detail is the button's `title`, which is
+   why nothing here restates it. */
+.choices { display: flex; flex-direction: column; gap: 5px; }
+button.choice { display: block; width: 100%; text-align: left; padding: 7px 9px; }
+button.choice:hover { border-color: var(--ok); }
+
+/* Drift is the one card that cannot be left for later, and it is marked as such in three
+   places rather than one: the border, the kicker and the word in it. The colour is the same
+   `--bad` the loss meters use, which is also what `.card-kicker` was already printing for
+   every card, so the hue alone was carrying no information at all. */
+.cardbox.urgent { border-color: var(--bad); }
+.card-kicker.urgent { color: var(--bad); }
 
 button.ignore { width: 100%; margin-top: 10px; background: transparent; border: 1px dashed var(--edge-bright); color: var(--ink-dim); }
 button.ignore:hover { border-color: var(--ink-dim); color: var(--ink); background: transparent; }
@@ -175,7 +243,7 @@ button.ignore:hover { border-color: var(--ink-dim); color: var(--ink); backgroun
 /* Action confirmations. Loud enough to notice mid-run, gone in under three seconds. */
 .toasts {
   position: fixed;
-  top: 58px;
+  top: calc(var(--hud) + 12px);
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -184,12 +252,26 @@ button.ignore:hover { border-color: var(--ink-dim); color: var(--ink); backgroun
   z-index: 40;
   pointer-events: none;
 }
+
+/* The class name is the whole mechanism: a live region with no rule beside it prints its
+   text as a visible line of type in the middle of the context panel. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
 .toast {
   min-width: 260px;
   max-width: 420px;
   padding: 8px 12px 9px;
   background: rgba(4, 10, 13, 0.94);
-  border: 1px solid var(--line);
+  border: 1px solid var(--edge);
   border-left: 3px solid var(--warn);
   border-radius: 3px;
   animation: toast-in 160ms ease-out;
@@ -214,22 +296,45 @@ button.ignore:hover { border-color: var(--ink-dim); color: var(--ink); backgroun
   .toast { animation: none; }
 }
 
-/* The goal, always visible. Two ways to end a run, neither of them a secret. */
+/* The middle column of the bar. `min-width: 0` because a flex item's automatic minimum
+   is its content, and the next-goal headline runs to about 500px on a run short of
+   Ascension: without this the objective block refuses to shrink and pushes the clock off
+   the right edge of a narrow window. */
+.hud-mid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+/* The goal, always visible. Two ways to end a run, neither of them a secret.
+   Three rows in a 46px bar is tight by arithmetic, not by taste: `font: 9.5px/1.5` on
+   three rows plus two 2px gaps, 4px of padding and two 1px borders came to 57px, so the
+   block overhung onto the map by ten. Tightened to 1.3 line-height, a 1px gap and 2px of
+   padding — 45px — rather than raising `--hud`, which five other rules read and which
+   would cost every run 12px of map for a block that is only full at the very top of the
+   bar. `max-width` bounds the longest headline so it wraps inside the block instead of
+   widening it; `tests/styles.test.ts` adds the two up and fails if they stop fitting. */
 .objective {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 4px 10px;
-  border: 1px solid var(--line);
+  gap: 1px;
+  padding: 2px 10px;
+  border: 1px solid var(--edge);
   border-radius: 3px;
   background: rgba(4, 10, 13, 0.7);
+  max-width: min(560px, 44vw);
 }
 .obj-row {
   display: flex;
   align-items: center;
   gap: 7px;
-  font: 600 9.5px/1.5 ui-monospace, Consolas, monospace;
+  font: 600 9.5px/1.3 ui-monospace, Consolas, monospace;
+  min-width: 0;
 }
+/* The advice line is a sentence with no room to be cut, so it wraps rather than being
+   truncated — `anywhere` because "Self-Modification" alone is wider than a narrow column. */
+.obj-row b { min-width: 0; overflow-wrap: anywhere; }
 .obj-alt { font-weight: 400; }
 .obj-tag {
   color: var(--ink-dim);
@@ -259,12 +364,54 @@ button.ignore:hover { border-color: var(--ink-dim); color: var(--ink); backgroun
   cursor: help;
 }
 
+/* The primer. A floating line over the bottom of the map and not a row in the bar: in the
+   bar it grew `--hud` and moved the rail, the operations panel, the pending-decisions bar,
+   the toasts and EVOLVE down 32px and back again. The world runs underneath this, and it
+   only gets shorter as the player does the things it names.
+   Bottom-centre is the one band of the screen nothing else is anchored to — `.ops` and the
+   EVOLVE button hang off the top, the rail off the left edge, the log off the right — and
+   the floating context panel is beside a country rather than centred on one, so it reaches
+   this band only for a country low on the map. */
+.primer {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 520px;
+  padding: 5px 9px;
+  background: var(--pane);
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+}
+.primer b {
+  font: 400 9.5px/1.5 ui-monospace, Consolas, monospace;
+  color: var(--ink);
+  text-align: center;
+}
+.primer-tag {
+  flex: none;
+  color: var(--cool);
+  font-size: 8.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.primer-x {
+  flex: none;
+  padding: 0 4px;
+  font-size: 9px;
+  line-height: 1.4;
+  color: var(--ink-dim);
+}
+
 /* The upgrade screen. Full-screen because upgrading is a decision, and you cannot
    make a decision while the world is running at 8x. */
 .evolve-btn {
   position: fixed;
   right: 12px;
-  top: 58px;
+  top: calc(var(--hud) + 12px);
   z-index: 30;
   padding: 7px 12px;
   font: 600 10px/1 ui-monospace, Consolas, monospace;
@@ -289,7 +436,7 @@ button.ignore:hover { border-color: var(--ink-dim); color: var(--ink); backgroun
   display: flex;
   flex-direction: column;
   background: rgba(3, 8, 11, 0.98);
-  border: 1px solid var(--line);
+  border: 1px solid var(--edge);
   border-radius: 4px;
   padding: 20px 22px 22px;
 }
@@ -300,7 +447,7 @@ button.ignore:hover { border-color: var(--ink-dim); color: var(--ink); backgroun
   gap: 16px;
   padding-bottom: 14px;
   margin-bottom: 14px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--edge);
 }
 .evolve-head h1 {
   margin: 0;
@@ -322,14 +469,14 @@ button.ignore:hover { border-color: var(--ink-dim); color: var(--ink); backgroun
 }
 .evolve-group {
   background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--line);
+  border: 1px solid var(--edge);
   border-radius: 3px;
 }
 .evolve-group .group-body { padding: 8px 10px 10px; }
 .evolve-btn.blocked,
 .evolve-btn:disabled {
   color: var(--ink-dim);
-  border-color: var(--line);
+  border-color: var(--edge);
   cursor: not-allowed;
   opacity: 0.55;
 }
@@ -337,3 +484,78 @@ button.ignore:hover { border-color: var(--ink-dim); color: var(--ink); backgroun
 .tag.war { color: var(--bad); border-color: var(--bad); }
 .tag.quiet { color: var(--ink-dim); }
 .act.on { border-color: var(--cool); color: var(--cool); }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+canvas:focus-visible { outline: 2px solid var(--ink-bright); outline-offset: -3px; }
+.legend { margin-bottom: 10px; }
+.legend-row { font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink); line-height: 1.6; }
+.legend-row b { font-family: var(--mono); font-size: 11px; }
+
+/* The help screen. Modelled on the upgrade screen — full-screen, its own dismiss, Escape —
+   and on the ordinary `.overlay`, because unlike the trait tree it does not pause. */
+.help-box {
+  width: min(1120px, 94vw);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  background: rgba(3, 8, 11, 0.98);
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  padding: 20px 22px 22px;
+}
+.help-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--edge);
+}
+.help-head h1 {
+  margin: 0;
+  font: 600 20px/1.2 ui-monospace, Consolas, monospace;
+  letter-spacing: 0.18em;
+  color: var(--ink);
+}
+.help-sub {
+  margin-top: 4px;
+  font: 400 10px/1.5 ui-monospace, Consolas, monospace;
+  color: var(--ink-dim);
+}
+.help-sections {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+  gap: 10px 18px;
+  overflow-y: auto;
+  align-content: start;
+}
+.help-section {
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+}
+.help-title {
+  font-size: 8.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  margin-bottom: 7px;
+}
+.help-row {
+  display: flex;
+  gap: 8px;
+  font: 400 10px/1.6 ui-monospace, Consolas, monospace;
+  color: var(--ink);
+  margin-bottom: 5px;
+}
+.help-row:last-child { margin-bottom: 0; }
+/* A key cap, or the glyph the map paints inside a bubble. A fixed width so the copy in a
+   section lines up whether or not a row has one. */
+.help-mark {
+  flex: none;
+  width: 44px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--ink-bright);
+}

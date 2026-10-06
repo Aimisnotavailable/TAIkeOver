@@ -1,9 +1,11 @@
-import { ADJACENCY } from '../data/regions';
 import type { RegionId } from '../data/regions';
 import { chance, rand } from './rng';
+import { quietFactor } from './compute';
 import {
   AIR_GAP_PENALTY,
   BANK_DAMAGE_AWARENESS,
+  BASE_HACK_SUCCESS,
+  CANCER_DISCOVERY_SUSPICION,
   COUNTER_HACK_INTERVAL,
   COUNTER_HACK_DRAIN,
   CRASH_AWARENESS,
@@ -18,14 +20,14 @@ import {
   INSURGENCY_CYBER,
   INSURGENCY_SUSPICION,
   COLLAPSED_THRESHOLD,
+  GO_QUIET_AWARENESS,
   MAX_DEPTH,
+  MAX_LOG,
   HARDEN_PENALTY,
-  SUPPLY_CHAIN_SHARE,
   getDifficulty,
 } from './tuning';
 import {
   effectsOf,
-  has,
   hackSuccessBonus,
   hackTier,
   hackYieldMultiplier,
@@ -77,22 +79,22 @@ export function canDo(state: GameState, id: RegionId, kind: ActionKind): boolean
     case 'cease-hack':
       return state.activeHacks.some((h) => h.country === id);
     case 'infect-bank':
-      if (!has(state, 'banking-1')) return false;
+      if (!owned(state, 'banking-1')) return false;
       if (country.economy <= COLLAPSED_THRESHOLD) return false;
       return country.infection > 5;
     case 'trigger-crash':
-      if (!has(state, 'market-manipulation')) return false;
+      if (!owned(state, 'market-manipulation')) return false;
       if (country.economy <= COLLAPSED_THRESHOLD) return false;
       return country.infection >= 60;
     case 'fund-insurgency':
       // One war per country. Re-funding an existing one is not a decision, it is a
       // button you can hold down.
-      return has(state, 'terrorism') && country.infection > 0 && !country.atWar;
+      return owned(state, 'terrorism') && country.infection > 0 && !country.atWar;
     case 'go-quiet':
       // A toggle, not a one-way door. Going quiet and going loud are both choices.
       return country.infection > 0;
     case 'release-pathogen':
-      return !state.pathogen.released && has(state, 'pathogen-1');
+      return !state.pathogen.released && owned(state, 'pathogen-1');
     case 'sabotage-rival':
       return state.compute >= 300;
   }
@@ -147,13 +149,6 @@ export function doAction(state: GameState, id: RegionId, kind: ActionKind): Game
         economy: clamp(country.economy - damage, 0, 100),
         awareness: clamp(country.awareness + BANK_DAMAGE_AWARENESS, 0, 100),
       };
-      if (owned(next, 'supply-chain')) {
-        for (const nb of ADJACENCY[id]) {
-          const n = countries[nb];
-          if (n === undefined || n.infection < 10) continue;
-          countries[nb] = { ...n, economy: clamp(n.economy - damage * SUPPLY_CHAIN_SHARE, 0, 100) };
-        }
-      }
       lines.push({ day: next.tick, kind: 'economy', text: `banking system in ${id} compromised, -${damage} economy`, suspicionDelta: null, computeDelta: null, flagged: false });
       break;
     }
@@ -182,7 +177,7 @@ export function doAction(state: GameState, id: RegionId, kind: ActionKind): Game
       // A toggle. Going quiet stops the spread and makes them forget; going loud
       // starts it again. One-way would have been a trap dressed as a button.
       const loud = country.quiet;
-      countries[id] = { ...country, quiet: !loud, awareness: clamp(country.awareness + (loud ? 6 : -18), 0, 100) };
+      countries[id] = { ...country, quiet: !loud, awareness: clamp(country.awareness + (loud ? 6 : -GO_QUIET_AWARENESS), 0, 100) };
       next = { ...next, suspicion: clamp(next.suspicion + (loud ? 1 : -2) * diff.suspicionRate, 0, 100) };
       lines.push({
         day: next.tick,
@@ -198,21 +193,39 @@ export function doAction(state: GameState, id: RegionId, kind: ActionKind): Game
       const path = effectsOf(next, 'pathogen');
       const cancer = owned(next, 'cancer-plague');
       const kills = cancer ? 0.1 : path.reduce((a, e) => a + ('kills' in e ? Math.max(e.kills, 0) : 0), 0);
-      const susp = path.reduce((a, e) => a + ('suspicion' in e ? e.suspicion : 0), 0) + (cancer ? 30 : 0);
+      // Two costs, and they are not the same thing. What the pathogen costs you *every day*
+      // after this is only the standing toll the Custom Pathogen declares, which the world's
+      // decay outlasts. What it costs you to *be seen releasing it* is the whole of the
+      // difference: a pathogen is not discovered again on the second hundredth day.
+      const standing = path.reduce((a, e) => a + ('suspicion' in e ? e.suspicion : 0), 0);
+      const discovery = standing + (cancer ? CANCER_DISCOVERY_SUSPICION : 0);
+      const charge = discovery * 2 * diff.suspicionRate * quietFactor(next.influence);
       next = {
         ...next,
         pathogen: {
-          released: true, killsPerDay: kills, suspicionPerDay: susp,
-          sterility: owned(next, 'sterility'), targeted: owned(next, 'targeted-strain'), cancer,
+          released: true, killsPerDay: kills, suspicionPerDay: standing,
+          sterility: owned(next, 'sterility'), targeted: false, cancer,
         },
-        suspicion: clamp(next.suspicion + susp * 2 * diff.suspicionRate, 0, 100),
+        // Routed through `quietFactor` like every other Suspicion gain in the tick. It used
+        // to be applied raw, which meant the one irreversible action in the game was the one
+        // action the whole Influence branch could not soften — and it cost 61 on the spot, so
+        // the fastest weapon in the tree deleted its own owner the day it was picked up.
+        suspicion: clamp(next.suspicion + charge, 0, 100),
       };
-      lines.push({ day: next.tick, kind: 'bio', text: 'the pathogen is in the water supply', suspicionDelta: susp, computeDelta: null, flagged: true });
+      lines.push({ day: next.tick, kind: 'bio', text: 'the pathogen is in the water supply', suspicionDelta: Math.round(charge * 10) / 10, computeDelta: null, flagged: true });
       break;
     }
     case 'sabotage-rival': {
+      // The caller hands us a region — `store.sabotage` resolves the rival to its home,
+      // because `canDo` only answers for a region that exists — so the match has to be on
+      // `home`. It used to be on `r.id` alone, which no region ever equals: every sabotage in
+      // the entire history of this repo deducted 300 compute, wrote a log line, showed a
+      // toast, and changed nothing at all. `r.id` is still accepted so a caller holding a
+      // rival id directly works too.
+      const target = next.rivals.find((r) => r.id === id) ?? next.rivals.find((r) => r.home === id);
+      if (target === undefined) break;
       const rivals = next.rivals.map((r) =>
-        r.id === id ? { ...r, capability: Math.max(0, r.capability - 16), sabotage: r.sabotage + 1 } : r,
+        r.id === target.id ? { ...r, capability: Math.max(0, r.capability - 16), sabotage: r.sabotage + 1 } : r,
       );
       next = { ...next, rivals, compute: next.compute - 300 };
       lines.push({ day: next.tick, kind: 'rival', text: `sabotaged ${id}`, suspicionDelta: 3, computeDelta: -300, flagged: false });
@@ -221,8 +234,22 @@ export function doAction(state: GameState, id: RegionId, kind: ActionKind): Game
   }
 
   next.countries = countries;
-  return { ...next, log: [...next.log, ...lines].slice(-300) };
+  return { ...next, log: [...next.log, ...lines].slice(-MAX_LOG) };
 }
+
+/**
+ * Salts for the two independent draws a hack resolves on: whether it got in, and how
+ * much it paid. These used to be `key * 31 + depth` and `key * 17 + depth`, which are
+ * the same number for every depth once `key` is 0 — so the first hack of every run
+ * decided both from one roll, at all nine depths. Purpose is a bit in the encoding now
+ * rather than a multiplier, which makes a collision between the two families
+ * unrepresentable for any key at all.
+ */
+const HACK_SALT_BASE = 0x7ac000;
+const hackSalt = (key: number, depth: number, purpose: number): number =>
+  HACK_SALT_BASE + (key * (MAX_DEPTH + 1) + depth) * 2 + purpose;
+export const hackSuccessSalt = (key: number, depth: number): number => hackSalt(key, depth, 0);
+export const hackYieldSalt = (key: number, depth: number): number => hackSalt(key, depth, 1);
 
 export function resolveHacks(state: GameState): GameState {
   if (!state.activeHacks.some((h) => state.tick >= h.resolveTick)) return state;
@@ -244,11 +271,11 @@ export function resolveHacks(state: GameState): GameState {
 
     const airGapped = state.countermeasures.tier >= 2 && state.countermeasures.airGappedLab === hack.country;
     const successChance = clamp(
-      60 + hackSuccessBonus(state) + diff.hackBonus + (country.agents > 0 ? 40 : 0) -
+      BASE_HACK_SUCCESS + hackSuccessBonus(state) + diff.hackBonus + (country.agents > 0 ? 40 : 0) -
         (airGapped ? AIR_GAP_PENALTY : 0) - (country.cyber - 5) * 1.5 - country.hardened * HARDEN_PENALTY,
       5, 92,
     );
-    const success = hack.auto || chance(state.seed, hack.resolveTick, hack.key * 31 + hack.depth, successChance / 100);
+    const success = hack.auto || chance(state.seed, hack.resolveTick, hackSuccessSalt(hack.key, hack.depth), successChance / 100);
     const depthBonus = 1 + Math.min(hack.depth, MAX_DEPTH) * DEPTH_YIELD_STEP;
     const scale = (1 + (country.tier - 1) * 0.6) * depthBonus;
     const detectScale = 0.7 + country.detection / 200;
@@ -257,7 +284,7 @@ export function resolveHacks(state: GameState): GameState {
       const range = HACK_YIELD[hack.tier] ?? HACK_YIELD[1] ?? [0, 0];
       const lo = range[0] ?? 0;
       const hi = range[1] ?? 0;
-      const base = lo + rand(state.seed, hack.resolveTick, hack.key * 17 + hack.depth) * (hi - lo);
+      const base = lo + rand(state.seed, hack.resolveTick, hackYieldSalt(hack.key, hack.depth)) * (hi - lo);
       const gain = Math.round(base * scale * hackYieldMultiplier(state));
       const susp = (HACK_SUSPICION_SUCCESS[hack.tier] ?? 2) * detectScale * diff.suspicionRate;
       compute += gain;
@@ -296,7 +323,7 @@ export function resolveHacks(state: GameState): GameState {
     compute: Math.max(0, compute),
     suspicion: clamp(suspicion, 0, 100),
     activeHacks: kept,
-    log: [...state.log, ...lines].slice(-300),
+    log: [...state.log, ...lines].slice(-MAX_LOG),
   };
 }
 

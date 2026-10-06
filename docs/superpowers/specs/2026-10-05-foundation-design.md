@@ -91,17 +91,25 @@ supposed to have.
 in `LateState` and never written. `Stage`'s `'coda'` member (`types.ts:3`) is never
 assigned.
 
-Threshold them off the two accumulators `lateStep` already advances, so each flag has
+Threshold them off the accumulators `lateStep` already advances, so each flag has
 one obvious trigger and one test:
 
-| Flag | Trigger |
-|---|---|
-| `oceansBoiled` | `heat > 40` |
-| `askedHumanity` | `expansion > 25` |
-| `exterminated` | `expansion > 70` |
-| `encounters` | increments once per 5 `expansion` |
-| `ending = 'blight'` | `blight > 62` (already written at `step.ts:461`) |
-| `stage → 'coda'` | `heat > 100` |
+| Flag | Trigger | Shipped value |
+|---|---|---|
+| `oceansBoiled` | `heat > LATE_OCEANS_HEAT` | 55 |
+| `askedHumanity` | `expansion > LATE_ASKED_EXPANSION` | 20 |
+| `exterminated` | `expansion > LATE_EXTERMINATED_EXPANSION` | 60 |
+| `encounters` | `floor(expansion / LATE_ENCOUNTER_STEP)` | 15 |
+| `ending = 'blight'` | `blight > BLIGHT_WALL` (already written in `lateStep`) | 62 |
+| `stage → 'coda'` | `surviveTicks >= RSI_SURVIVE_DAYS` | 30 |
+
+The third column is what shipped, and it is not the second. Four of the six triggers
+were retuned while A1.3 was being implemented, and the stage trigger moved off `heat`
+entirely: heat is unbounded by a day count, so a heat threshold put the end of the run
+at the mercy of the heat rate, while `surviveTicks` is the thing the player was told they
+had to survive — the hold, not the thermometer. The late constants live in `tuning.ts`
+and are read by name in `lateStep`; these numbers are here so the spec records what the
+tuning file currently says, and `tests/game.test.ts` asserts each one has a reader.
 
 `'coda'` is AGENTS.md §13's starfield. Reaching it is what makes the end screen's
 backdrop the thing the design promised rather than the same scrim as every modal.

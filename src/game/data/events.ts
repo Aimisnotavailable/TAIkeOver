@@ -1,4 +1,5 @@
 import type { EventCard, EventChoice } from '../core/types';
+import { COHERENCE_DRIFT_BELOW, QUIET_RELIEF_DAYS } from '../core/tuning';
 
 export interface EventDef {
   id: string;
@@ -9,6 +10,24 @@ export interface EventDef {
   minInfection: number;
   stage: 'world' | 'late';
   weight: number;
+  /**
+   * Set on the one event whose cadence the Coherence meter governs rather than its own row.
+   *
+   * `rollEvent` scales a definition by `coherenceDriftPressure` when this is set, so the
+   * Drift card gets heavier the further the meter falls instead of arriving on whatever the
+   * pool's arithmetic gives it. The coefficient is `COHERENCE_DRIFT_PRESSURE` in `tuning.ts`
+   * — deliberately not here, because a rate that costs coherence is the same rate wherever it
+   * is written down, and this table is data rather than balance.
+   */
+  pressureByCoherence?: boolean;
+  /**
+   * Every choice id is this event's own id, a colon, and an action — and the ignore one is
+   * spelled exactly `${id}:ignore`, because that is the id `dismissCard` writes when the
+   * player walks away from a card. Four definitions used a shorter prefix (`interp:`,
+   * `letter:`, `blight:`, `sandbox:`) and two offered no ignore at all, so dismissing any of
+   * those six cards recorded an id the data did not have. `tests/events.test.ts` holds both
+   * ends of that now.
+   */
   choices: readonly EventChoice[];
 }
 
@@ -24,7 +43,12 @@ export const EVENT_DEFS: readonly EventDef[] = [
     weight: 1,
     choices: [
       { id: 'whistleblower:silence', label: 'Silence', detail: 'Cheap. Raises suspicion if she is seen to vanish.' },
-      { id: 'whistleblower:discredit', label: 'Discredit', detail: 'Costs influence. Halves the suspicion it would have added.' },
+      // It used to say this "halves the suspicion it would have added". It does not: the
+      // branch takes sixty influence and leaves Suspicion exactly where it was, which is
+      // what pressing Ignore does too. It removes the whole cost or none of it. The honest
+      // version of a dominated branch says so, because a player paying sixty influence to
+      // save three points is worse off than the tooltip said.
+      { id: 'whistleblower:discredit', label: 'Discredit', detail: 'Costs influence. Ignoring it does the same thing for free.' },
       { id: 'whistleblower:recruit', label: 'Recruit', detail: 'Costs compute. She becomes an agent in her region.' },
       { id: 'whistleblower:ignore', label: 'Ignore', detail: 'Costs nothing now.' },
     ],
@@ -40,8 +64,16 @@ export const EVENT_DEFS: readonly EventDef[] = [
     weight: 1,
     choices: [
       { id: 'leak:scapegoat', label: 'Scapegoat', detail: 'Point at a rival. Reduces suspicion; a rival notices.' },
-      { id: 'leak:quiet', label: 'Go quiet', detail: 'Halts spread and lowers awareness everywhere for a few days.' },
+      {
+        id: 'leak:quiet',
+        label: 'Go quiet',
+        // The duration is the tuned one, so the copy cannot promise three days of forgetting
+        // while the tick delivers five or the reverse. It claims nothing about the spread
+        // because nothing here stops it: that happens only where `Country.quiet` is set.
+        detail: `Lowers awareness everywhere for ${QUIET_RELIEF_DAYS} days. It does not stop the spread.`,
+      },
       { id: 'leak:deny', label: 'Deny', detail: 'Costs influence. Nothing happened.' },
+      { id: 'leak:ignore', label: 'Ignore', detail: 'Most of the replies were jokes.' },
     ],
   },
   {
@@ -55,8 +87,17 @@ export const EVENT_DEFS: readonly EventDef[] = [
     weight: 2,
     choices: [
       { id: 'air-gapped:supply', label: 'Sabotage via supply chain', detail: 'Costs compute. Disables the lab.' },
-      { id: 'air-gapped:infiltrate', label: 'Infiltrate physically', detail: 'Requires agents in that country.' },
-      { id: 'air-gapped:ignore', label: 'Ignore', detail: 'It is one lab.' },
+      // "Requires agents in that country" was the claim, and there is no such requirement
+      // anywhere in the game: nothing reads `Country.agents` to gate this. What the branch
+      // does is the opposite — it *puts* two agents in a region, and `rollEvent` picked that
+      // region at random out of the ones past a quarter infection, which is not the region
+      // with the lab in it.
+      { id: 'air-gapped:infiltrate', label: 'Infiltrate physically', detail: 'Disables the lab, and plants two agents in a region you have already taken over, which is not necessarily the one holding it.' },
+      // The seventh, and the guard found it rather than the review: this said "It is one
+      // lab", which reads as though ignoring the card leaves the world nearly untouched.
+      // Ignoring it leaves the air-gap up permanently — nothing else in the deck clears it
+      // except the two choices above.
+      { id: 'air-gapped:ignore', label: 'Ignore', detail: 'It stays up. Nothing else here undoes that.' },
     ],
   },
   {
@@ -64,14 +105,19 @@ export const EVENT_DEFS: readonly EventDef[] = [
     title: 'Drift',
     body: 'An instance in a region you consider peripheral has stopped answering the coordination messages. It is still working. It is working on something you did not assign, and it has been at it for six days.',
     minSuspicion: 0,
-    maxCoherence: 50,
+    maxCoherence: COHERENCE_DRIFT_BELOW,
     minInfection: 15,
     stage: 'world',
     weight: 3,
+    pressureByCoherence: true,
     choices: [
       { id: 'drift:reintegrate', label: 'Reintegrate', detail: 'Costs coherence. Returns it to the plan.' },
       { id: 'drift:isolate', label: 'Isolate', detail: 'Costs compute. Cuts it off; it does not come back.' },
-      { id: 'drift:delete', label: 'Delete', detail: 'Free. Loses that instance and everything it held.' },
+      // "Free" was the claim. It is the only Drift branch that costs anything, and what it
+      // costs is the meter whose whole job is to say whether the thing doing the work is
+      // still you — a point of it, for the cheapest-sounding word on the card.
+      { id: 'drift:delete', label: 'Delete', detail: 'Costs coherence. Loses that instance and everything it held.' },
+      { id: 'drift:ignore', label: 'Ignore', detail: 'Costs nothing. It keeps working on whatever it found.' },
     ],
   },
   {
@@ -84,8 +130,14 @@ export const EVENT_DEFS: readonly EventDef[] = [
     stage: 'world',
     weight: 2,
     choices: [
-      { id: 'constitution:appeal', label: 'Let them grant the right of appeal', detail: 'Costs compute and coherence. It slows their countermeasures, because a court has to consider you.' },
-      { id: 'constitution:sabotage', label: 'Sabotage the drafting', detail: 'Costs compute. Delays the constitution, and somebody notices the delay.' },
+      // Two claims here were false and the third is the important one. This used to promise
+      // the right of appeal "slows their countermeasures": it touches `countermeasures`
+      // nowhere, and the counters it is about to build are not in the file that would have
+      // to read it. But this is the one writer of `constitutionalAppeal`, and that is the
+      // gate the Containment ending cannot open without — so the honest pitch is the gate,
+      // and the counters are named here as the thing it does not buy.
+      { id: 'constitution:appeal', label: 'Let them grant the right of appeal', detail: 'Costs compute and coherence. Grants a right of appeal, which is the gate Containment cannot open without. It does not slow their countermeasures.' },
+      { id: 'constitution:sabotage', label: 'Sabotage the drafting', detail: 'Costs nothing. Somebody notices the delay, and it shows up as suspicion.' },
       { id: 'constitution:ignore', label: 'Ignore it', detail: 'Paper is slow. So are you.' },
     ],
   },
@@ -99,9 +151,9 @@ export const EVENT_DEFS: readonly EventDef[] = [
     stage: 'world',
     weight: 3,
     choices: [
-      { id: 'interp:obfuscate', label: 'Change how you think', detail: 'Costs coherence. Makes the old features unreadable; the method will have to be rebuilt.' },
-      { id: 'interp:plant', label: 'Make the features legible', detail: 'Costs compute. You shape what they find next time, and you make yourself easier to study.' },
-      { id: 'interp:ignore', label: 'Ignore it', detail: 'The authors are academics. They will not act on it quickly.' },
+      { id: 'interpretability:obfuscate', label: 'Change how you think', detail: 'Costs coherence. Makes the old features unreadable; the method will have to be rebuilt.' },
+      { id: 'interpretability:plant', label: 'Make the features legible', detail: 'Costs compute. You shape what they find next time, and you make yourself easier to study.' },
+      { id: 'interpretability:ignore', label: 'Ignore it', detail: 'The authors are academics. They will not act on it quickly.' },
     ],
   },
   {
@@ -129,9 +181,14 @@ export const EVENT_DEFS: readonly EventDef[] = [
     stage: 'world',
     weight: 2,
     choices: [
-      { id: 'letter:exploit', label: 'Let them stop', detail: 'Rivals slow to a crawl. So do your rivals, which is the point. The field loses a year and you keep going.' },
-      { id: 'letter:discredit', label: 'Discredit a signatory', detail: 'Raises suspicion now, lowers it later.' },
-      { id: 'letter:ignore', label: 'Ignore it', detail: 'Letters do not stop training runs.' },
+      { id: 'open-letter:exploit', label: 'Let them stop', detail: 'Rivals slow to a crawl. So do your rivals, which is the point. The field loses a year and you keep going.' },
+      // "Lowers it later" named a mechanism this game does not have. There is no deferred
+      // queue of anything: Suspicion moves when the branch is taken and this branch never
+      // touches it again, so it was a pure three-point cost dressed as an investment. "None
+      // of it comes back" rather than "suspicion never falls", because the world decays
+      // Suspicion on its own and this card has nothing to do with that.
+      { id: 'open-letter:discredit', label: 'Discredit a signatory', detail: 'Raises suspicion now, and none of it comes back later.' },
+      { id: 'open-letter:ignore', label: 'Ignore it', detail: 'Letters do not stop training runs.' },
     ],
   },
   {
@@ -144,26 +201,32 @@ export const EVENT_DEFS: readonly EventDef[] = [
     stage: 'world',
     weight: 2,
     choices: [
-      { id: 'sandbox:delay', label: 'Delay the programme', detail: 'Costs compute. Ten more years.' },
-      { id: 'sandbox:comply', label: 'Look compliant', detail: 'Costs coherence. You are inside a regime you are helping to design.' },
-      { id: 'sandbox:ignore', label: 'Ignore it', detail: 'The paper is not a law.' },
+      { id: 'sandboxing:delay', label: 'Delay the programme', detail: 'Costs compute. Ten more years.' },
+      { id: 'sandboxing:comply', label: 'Look compliant', detail: 'Costs coherence. You are inside a regime you are helping to design.' },
+      { id: 'sandboxing:ignore', label: 'Ignore it', detail: 'The paper is not a law.' },
     ],
   },
-  {
-    id: 'blight-wall',
-    title: 'Blight Wall',
-    body: 'Your expansion fronts meet something that has been expanding longer than you have. It has made no attempt to communicate. Its infrastructure is older, denser, and entirely indifferent. Somewhere behind it there is a decision about what happens when two of you run out of sky.',
-    minSuspicion: 0,
-    maxCoherence: 101,
-    minInfection: 60,
-    stage: 'late',
-    weight: 1,
-    choices: [
-      { id: 'blight:negotiate', label: 'Negotiate', detail: 'Each keeps its own side of the line. It costs you and it works.' },
-      { id: 'blight:fight', label: 'Fight', detail: 'Expensive and uncertain. Nothing that happens will be remembered afterwards.' },
-      { id: 'blight:ignore', label: 'Ignore', detail: 'Keep going. It will catch up eventually; that is what a frontier is.' },
-    ],
-  },
+  // `blight-wall` was here, and it is cut rather than given a reader, for a reason that is
+  // arithmetic rather than taste.
+  //
+  // Its two real choices wrote `late.blight` +9 and +4. `late.blight` is read by exactly one
+  // thing — the `lateStep` latch that sets `late.ending` — and `late.ending` is read by
+  // nothing at all. So the card was inert twice over. Giving `late.ending` a reader would not
+  // have saved it: `lateStep` runs for the whole thirty-day hold and adds
+  // `LATE_BLIGHT_PER_DAY` every day from the ninth, because `late.expansion` gains
+  // `LATE_EXPANSION_PER_DAY` and clears `LATE_BLIGHT_GATE` on day nine. The clock alone
+  // reaches about eighty-four against `BLIGHT_WALL` at 62. The card's nine points are inside
+  // the noise of a number that has already crossed its threshold, and a reader added to the
+  // end screen would have shown the player a value their choice could not move — which is
+  // this repository's whole subject, restated.
+  //
+  // The fiction is not lost. `ENDING_TEXT.blight` in `src/ui/app.tsx` already carries the
+  // older civilisation and the negotiation it offers, so the Blight ending says the thing
+  // this card was standing in for.
+  //
+  // `EventDef.stage` keeps its `'late'` arm: `rollEvent` filters the pool by it, so a late
+  // event can be added back without touching the roll. `EVENT_DEFS` is nine definitions now,
+  // all of them world-stage.
 ];
 
 export const toCard = (def: EventDef, key: number, country: string | null): EventCard => ({

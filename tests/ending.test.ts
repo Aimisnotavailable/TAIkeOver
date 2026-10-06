@@ -1,0 +1,319 @@
+import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import {
+  ENDING_COLOURS,
+  ENDING_HEADINGS,
+  ENDING_TEXT,
+  INTERVENTIONS,
+  ORGANISATIONS,
+  civilizationCounter,
+  workedLead,
+  workedFull,
+} from '../src/ui/app';
+import appSource from '../src/ui/app.tsx?raw';
+import { canContain, contain, containmentGates } from '../src/game/core/containment';
+import { createInitialState } from '../src/game/core/state';
+import { step } from '../src/game/core/step';
+import {
+  CONTAINMENT_COHERENCE,
+  CONTAINMENT_COMPUTE,
+  CONTAINMENT_SUSPICION,
+} from '../src/game/core/tuning';
+import { REGION_IDS } from '../src/game/data/regions';
+import { reasonsTheCodeWrites as reasonsFromSource } from './endings';
+import type { GameState } from '../src/game/core/types';
+
+/**
+ * Every way the code can end a run, read off the source rather than listed by hand. The end
+ * screen keys two tables on `outcomeReason`, which is a `string | null` — nothing in the type
+ * system stops a new ending being added without copy, and the result would be a screen that
+ * says "The run ends." under a heading borrowed from the Blight. The previous heading was a
+ * nested ternary with exactly that failure mode.
+ */
+const reasonsTheCodeWrites = reasonsFromSource;
+
+describe('the end screen', () => {
+  it('has a heading and a paragraph for every ending the code can produce', () => {
+    const reasons = reasonsTheCodeWrites();
+    expect(reasons.length).toBeGreaterThan(4);
+    expect(reasons.filter((r) => r !== '')).toEqual(reasons);
+    for (const r of reasons) {
+      expect(ENDING_HEADINGS[r], r).toBeTruthy();
+      expect(ENDING_TEXT[r], r).toBeTruthy();
+    }
+  });
+
+  it('has no entry the code cannot produce', () => {
+    // The other direction, because an orphan entry is a claim about an ending that does not
+    // exist and the guard above would never notice it.
+    const reasons = reasonsTheCodeWrites();
+    expect(Object.keys(ENDING_HEADINGS).sort()).toEqual(reasons.sort());
+    expect(Object.keys(ENDING_TEXT).sort()).toEqual(reasons.sort());
+  });
+
+  it('names containment as an ending rather than falling through to the blight', () => {
+    expect(ENDING_HEADINGS.contained).toBe('Contained');
+    expect(ENDING_HEADINGS.contained).not.toBe(ENDING_HEADINGS.blight);
+    expect(ENDING_TEXT.contained).not.toBe(ENDING_TEXT.blight);
+  });
+
+  it('does not colour containment like a win, because it is not one', () => {
+    // `outcome: 'won'` is the design — the game counts Containment as a way out, not a
+    // failure — and that flag is also what used to paint its heading in the same green as
+    // Extinction and the Blight. Green is a celebration colour and this ending is not a
+    // celebration; it is an escape that cost the player the game. So it gets its own colour
+    // and this holds it distinct from both genuine victories.
+    expect(ENDING_COLOURS.contained).toBeTruthy();
+    expect(ENDING_COLOURS.contained).not.toBe(ENDING_COLOURS.extinction);
+    expect(ENDING_COLOURS.contained).not.toBe(ENDING_COLOURS.blight);
+    // Not a loss colour either: that would tell the player the run failed, which is a
+    // different lie, and the counter under it reads zero civilizations either way.
+    expect(ENDING_COLOURS.contained).not.toBe(ENDING_COLOURS['coordinated-shutdown']);
+    expect(ENDING_COLOURS.contained).not.toBe(ENDING_COLOURS['coherence-lost']);
+    expect(ENDING_COLOURS.contained).not.toBe(ENDING_COLOURS.outcompeted);
+  });
+
+  it('colours every ending, and gives the two real wins the win colour', () => {
+    // Derived both directions: an ending with no colour falls back to ink and renders as a
+    // heading in a colour that means nothing, and that fallback is invisible until someone
+    // is looking for it.
+    const reasons = reasonsTheCodeWrites();
+    for (const r of reasons) expect(ENDING_COLOURS[r], r).toBeTruthy();
+    expect(Object.keys(ENDING_COLOURS).sort()).toEqual(reasons.sort());
+    const wins = reasons.filter((r) => r === 'extinction' || r === 'blight');
+    expect(wins.length).toBeGreaterThan(1);
+    for (const r of wins) expect(ENDING_COLOURS[r], r).toBe(ENDING_COLOURS.extinction);
+  });
+
+  it('takes the colours from the stylesheet, not from a literal in the component', () => {
+    // Every token has to exist or the declaration is dropped and the heading renders in
+    // whatever the cascade left behind, which is the failure
+    // tests/styles.test.ts exists to catch and which has already happened six times in this
+    // stylesheet.
+    const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    const tokens = [...new Set(Object.values(ENDING_COLOURS))].map((c) => /^var\((--[\w-]+)\)$/.exec(c)?.[1] ?? '');
+    expect(tokens.every((t) => t !== '')).toBe(true);
+    for (const token of tokens) expect(css, token).toMatch(new RegExp(`^\\s*${token}\\s*:`, 'm'));
+  });
+
+  it('renders the heading with the colour table rather than a won/lost ternary', () => {
+    const end = appSource.match(/function EndScreen[\s\S]*?\r?\n}\r?\n/);
+    if (end === null) throw new Error('no EndScreen component in app.tsx');
+    expect(end[0]).toContain('ENDING_COLOURS[reason]');
+    expect(end[0]).not.toMatch(/won\s*\?\s*['"]var\(/);
+  });
+
+  it('does not congratulate the player on any ending, including the win', () => {
+    // The one commitment §13 makes, checked on the text rather than left to taste: no
+    // congratulation, no celebration, no "You Win". Read as whole words so "winning" inside
+    // a sentence about what was lost is not caught by accident.
+    for (const [reason, body] of Object.entries(ENDING_TEXT)) {
+      expect(body, reason).not.toMatch(/\bcongratul|\bwell done|\byou win\b|\bthou shalt|\bvictor(y|ious)\b|\bsuccess\b/i);
+    }
+  });
+
+  it('does not offer containment as a good outcome, or as a rescue', () => {
+    // The brief is explicit that this is a narrow escape and not a good-AI path, and that
+    // the copy must not say otherwise. `contained` is the only paragraph at risk, because
+    // it is the only one where something went right.
+    const body = ENDING_TEXT.contained ?? '';
+    expect(body).toMatch(/not mercy/i);
+    expect(body).toMatch(/cost/i);
+    // The whole thesis of the third ending in one string: it was expensive, and it cost the
+    // ending the player was working toward. Copy that read as a reprieve would undo it, and
+    // the game never tells the player that anything they did was right.
+    expect(body).not.toMatch(/\brescued\b|\bspared\b|\btamed\b|\bharmless\b|\bbenign\b|\bsafe\b/i);
+    expect(body).not.toMatch(/proud|admire|well played|right to/i);
+  });
+});
+
+/**
+ * The civilizations counter: how many potential civilizations this run's expansion prevented.
+ *
+ * It counts `late.potentialLost`, which only `lateStep` writes, so it is zero on every run
+ * that never reached the late stage. It printed whenever the outcome was `won`, which put
+ * "0 civilizations that will now never exist" under a heading saying every human being is
+ * dead — on the biggest win in the game, and the one a player is most likely to sit and look
+ * at. Containment's zero is a different animal and has to survive this: there it is an
+ * argument the screen is making.
+ */
+describe('the civilizations counter', () => {
+  const base = createInitialState(1, 'default');
+  const won = (reason: string, potentialLost: number): GameState => ({
+    ...base,
+    stage: 'coda',
+    outcome: 'won',
+    outcomeReason: reason,
+    late: { ...base.late, potentialLost },
+  });
+
+  /**
+   * The figure, on a run that reached the late game. Both wins that go off-world land here:
+   * the Blight can only be bought with Recursive Self-Improvement, which is what opens the
+   * late stage, and an Extinction reached during the thirty-day hold is counted the same way.
+   */
+  it('prints the number where the number means something', () => {
+    expect(civilizationCounter(won('blight', 39_060))).toBe('39,060 civilizations that will now never exist.');
+    expect(civilizationCounter(won('extinction', 39_060))).toBe('39,060 civilizations that will now never exist.');
+  });
+
+  /**
+   * The difference the review asks to be preserved, pinned from both sides: two wins, two
+   * zeros, opposite treatment, on purpose. Containment's zero is an argument the screen is
+   * making — nothing was destroyed and nothing was saved — and Extinction's is arithmetic it
+   * has nothing to contribute to, because the run never claimed a star to prevent anyone
+   * building one on.
+   */
+  it('keeps Containment zero and drops the Extinction one', () => {
+    expect(civilizationCounter(won('contained', 0))).toBe('0 civilizations that will now never exist.');
+    expect(civilizationCounter(won('extinction', 0))).toBeNull();
+    expect(civilizationCounter(won('extinction', 0))).not.toBe(civilizationCounter(won('contained', 0)));
+  });
+
+  /**
+   * Every ending, every outcome, every counter reading — as a table rather than as spot
+   * checks, because the defect was an unconditional `outcome === 'won'` and a spot check
+   * cannot tell a deliberate silence from an accidental one on the fourth ending. Derived
+   * from the reasons the code writes, so an ending added without a decision about this
+   * screen fails here rather than inheriting the old behaviour.
+   */
+  it('prints on exactly the states where it has something to say', () => {
+    expect(reasonsTheCodeWrites().length).toBeGreaterThan(4);
+    for (const reason of reasonsTheCodeWrites()) {
+      for (const outcome of ['won', 'lost'] as const) {
+        for (const potentialLost of [0, 39_060]) {
+          const s = { ...base, outcome, outcomeReason: reason, late: { ...base.late, potentialLost } };
+          const expected =
+            outcome !== 'won'
+              ? null
+              : potentialLost > 0 || reason === 'contained'
+                ? `${potentialLost.toLocaleString()} civilizations that will now never exist.`
+                : null;
+          expect(civilizationCounter(s), `${reason} / ${outcome} / ${potentialLost}`).toBe(expected);
+        }
+      }
+    }
+    expect(civilizationCounter(base)).toBeNull();
+  });
+});
+
+/**
+ * The card AGENTS.md §15 promised and this game never shipped: what plausibly would have
+ * prevented the run, and the organisations working on it. The promise was in the document for
+ * the whole history of the repo.
+ */
+describe('what would have stopped it', () => {
+  it('names one intervention for each of the four the design asks for', () => {
+    // Derived from the shape rather than a hand-typed list of strings: each entry has a short
+    // label and a full sentence, and the four the brief names are checked by keyword so a
+    // rename to something vaguer fails.
+    expect(INTERVENTIONS.length).toBeGreaterThanOrEqual(4);
+    const joined = INTERVENTIONS.map((i) => `${i.label} ${i.what}`).join(' ').toLowerCase();
+    for (const [what, word] of [
+      ['capability evaluations', 'eval'],
+      ['interpretability work', 'feature'],
+      ['sandboxing', 'sandbox'],
+      ['a training pause', 'pause'],
+    ] as const) {
+      expect(joined, what).toContain(word);
+    }
+  });
+
+  it('gives every intervention a short form and a long one', () => {
+    for (const i of INTERVENTIONS) {
+      expect(i.label.trim().length, i.label).toBeGreaterThan(0);
+      expect(i.what.trim().length, i.label).toBeGreaterThan(40);
+      // The short form has to survive being printed as one line beside three others, which is
+      // the only place it is used.
+      expect(i.label.split(/\s+/).length, i.label).toBeLessThanOrEqual(4);
+    }
+  });
+
+  it('gives the containment ending the full version and every other the short one', () => {
+    expect(workedFull('contained')).toBe(true);
+    for (const r of reasonsTheCodeWrites()) {
+      if (r === 'contained') continue;
+      expect(workedFull(r), r).toBe(false);
+    }
+  });
+
+  it('says something on every ending, so no screen shows a heading and nothing under it', () => {
+    for (const r of reasonsTheCodeWrites()) {
+      expect(workedLead(r).trim().length, r).toBeGreaterThan(0);
+    }
+    // And the two versions really are different texts rather than one of them reused.
+    expect(workedLead('contained')).not.toBe(workedLead('extinction'));
+  });
+
+  it('does not congratulate the player in the intervention copy either', () => {
+    const all = [
+      workedLead('contained'),
+      ...INTERVENTIONS.flatMap((i) => [i.label, i.what]),
+      workedLead('blight'),
+    ];
+    for (const s of all) {
+      expect(s).not.toMatch(/\bcongratul|\bwell done|\byou win\b|\bthank you\b|\bvictor(y|ious)\b/i);
+    }
+  });
+
+  it('does not tell the player the containment run was a rescue or a good outcome', () => {
+    // The whole thesis of the third ending in one string: it was expensive, and it cost the
+    // ending the player was working toward. Copy that read as a reprieve would undo it.
+    expect(workedLead('contained')).not.toMatch(/\brescued\b|\bspared\b|\btamed\b|\bharmless\b|\bsafe\b/i);
+    expect(workedLead('contained')).toMatch(/\bnot\b/i);
+  });
+
+  it('names organisations that exist, and links only where the address is known', () => {
+    expect(ORGANISATIONS.length).toBeGreaterThanOrEqual(4);
+    for (const o of ORGANISATIONS) {
+      expect(o.name.trim().length, o.name).toBeGreaterThan(3);
+      // A dead link in a game about transparency is a bad look, so anything not certain is
+      // named in text instead: a null href is allowed, an http one is not.
+      if (o.href !== null) expect(o.href, o.name).toMatch(/^https:\/\//);
+    }
+    const linked = ORGANISATIONS.filter((o) => o.href !== null);
+    expect(linked.length).toBeGreaterThanOrEqual(4);
+    expect(new Set(ORGANISATIONS.map((o) => o.name)).size).toBe(ORGANISATIONS.length);
+  });
+
+  it('opens the links the way every other link in the game does', () => {
+    const end = appSource.match(/function EndScreen[\s\S]*?\r?\n}\r?\n/);
+    if (end === null) throw new Error('no EndScreen component in app.tsx');
+    expect(end[0]).toContain('ORGANISATIONS');
+    expect(end[0]).toContain('target="_blank"');
+    expect(end[0]).toContain('rel="noreferrer"');
+    // And the two buttons are still there: the card is added, not substituted.
+    expect(end[0]).toContain('play again');
+    expect(end[0]).toContain('read the book');
+  });
+});
+
+describe('containment ends the run the way the end screen is built for', () => {
+  const ready: GameState = {
+    ...step({ ...createInitialState(20260926, 'default'), stage: 'world', constitutionalAppeal: true }),
+    compute: CONTAINMENT_COMPUTE + 1_000,
+    coherence: CONTAINMENT_COHERENCE + 5,
+    suspicion: CONTAINMENT_SUSPICION - 30,
+  };
+
+  it('reaches the reason the tables are keyed on', () => {
+    const s = contain(ready);
+    expect(containmentGates(s)).toBeTruthy();
+    expect(ENDING_HEADINGS[s.outcomeReason ?? '']).toBeTruthy();
+    expect(ENDING_TEXT[s.outcomeReason ?? '']).toBeTruthy();
+  });
+
+  it('is available on a world it has barely touched, which is the point of the gate', () => {
+    // Every country near clean and the compute behind it: the ending is reachable by a run
+    // that banked a lot and infected almost nobody, which is the only shape of run that can
+    // reach it and is exactly the run that would not have bought Self-Modification.
+    const s: GameState = { ...ready, countries: ready.countries };
+    for (const id of REGION_IDS) {
+      const c = s.countries[id];
+      if (c !== undefined) s.countries[id] = { ...c, infection: 0, awareness: 0 };
+    }
+    expect(s.globalInfection).toBeLessThanOrEqual(15);
+    expect(canContain(s)).toBe(true);
+    expect(contain(s).outcomeReason).toBe('contained');
+  });
+});

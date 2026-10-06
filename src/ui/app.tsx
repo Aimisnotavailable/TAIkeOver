@@ -1,13 +1,15 @@
-import type { GameState } from '../game/core/types';
+import type { EventCard, GameState } from '../game/core/types';
+import { rollEvent } from '../game/core/events';
 import { DIFFICULTIES, getDifficulty } from '../game/core/tuning';
-import { REGION_BY_ID, REGION_IDS } from '../game/data/regions';
-import { actions, game } from './store';
-import { ContextBar, Evolve, EvolveButton, EventLog, Operations, SideRail, TopBar } from './components/panels';
-import { drawWorldMap, hitTest, hitTestCompute } from './map/worldMap';
+import { REGION_BY_ID, REGION_IDS, type RegionId } from '../game/data/regions';
+import { actions, game, notify, restoredRun } from './store';
+import { ContextPanel, Evolve, EvolveButton, EventLog, Help, Operations, PrimerLine, primerLine, SideRail, TopBar } from './components/panels';
+import { drawWorldMap, hitTest, hitTestCompute, mapStageFor } from './map/worldMap';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { TICK_MS } from '../game/core/tuning';
-import { rollEvent } from './store';
-import { evolving, evolveBlocked, flash, hovered, notify, speed, toasts, worldRunning, type ToastTone } from './store';
+import { announce, evolving, evolveBlocked, flash, helpOpen, hovered, selected, showHelp, speed, toasts, worldRunning, type ToastTone } from './store';
+import { identityFor } from './identity';
+import { writeSave } from './persist';
 import { startMusic, unlockAudio } from './sound';
 
 const TOAST_TONE: Record<ToastTone, string> = {
@@ -19,45 +21,6 @@ const TOAST_TONE: Record<ToastTone, string> = {
   rival: 'var(--cool)',
   info: 'var(--ink-dim)',
 };
-
-/**
- * Watches for conditions the simulation creates on its own and calls out the ones
- * that matter. Deliberately one-shot per condition per run: a toast that repeats
- * every day is noise, and noise is why players stop reading the screen.
- */
-const announced = new Set<string>();
-function announce(state: GameState): void {
-  const once = (key: string, tone: ToastTone, title: string, detail: string): void => {
-    if (announced.has(key)) return;
-    announced.add(key);
-    notify(tone, title, detail);
-  };
-
-  for (const id of REGION_IDS) {
-    const c = state.countries[id];
-    if (c === undefined) continue;
-    const name = REGION_BY_ID[id]?.name ?? id;
-    if (c.infection >= 60 && state.suspicion >= 40) {
-      once(`outbreak:${id}`, 'insurgency', `OUTBREAK · ${name.toUpperCase()}`, 'most of the country is under you and they have noticed');
-    }
-    if (c.economy <= 30) {
-      once(`collapse:${id}`, 'economy', `ECONOMIC COLLAPSE · ${name.toUpperCase()}`, 'the economy has stopped working');
-    }
-    if (c.quiet) once(`quiet:${id}`, 'quiet', `GOING QUIET · ${name.toUpperCase()}`, 'you stopped spreading here');
-    if (c.hardened >= 6) {
-      once(`hard:${id}`, 'info', `DATACENTER HARDENED · ${name.toUpperCase()}`, 'they changed everything you were counting on');
-    }
-  }
-  if (state.pathogen.released) {
-    once('plague', 'plague', 'THE PATHOGEN IS VISIBLE', 'every government can see what you did');
-  }
-  if (state.countermeasures.tier >= 2) {
-    once('cm2', 'insurgency', 'CRITICAL INFRASTRUCTURE AIR-GAPPED', 'some countries have cut themselves off. you cannot hack what is offline');
-  }
-  if (state.ascensionUnlocked) {
-    once('asc', 'plague', 'ASCENSION AVAILABLE', 'Recursive Self-Improvement is on the tree');
-  }
-}
 
 function Toasts() {
   const list = toasts.value;
@@ -110,62 +73,288 @@ function ColdOpen({ onDone }: { onDone: () => void }) {
   );
 }
 
+/**
+ * The card the player is actually looking at: the last one queued, and now the only one
+ * drawn. Every pending card used to render its own full-screen `.overlay` at the same
+ * z-index, so the visible one was whichever was drawn last and the two behind it put their
+ * buttons into the tab order — reachable by Tab, invisible on screen. Enter and Escape were
+ * already pointed at this card; the overlay now takes it from here too.
+ */
+export function topmostCardKey(cards: readonly EventCard[]): number | null {
+  return cards[cards.length - 1]?.key ?? null;
+}
+
+/**
+ * Elements that take Enter themselves. Every card now holds buttons, and the card's key
+ * handler calls `preventDefault` on Enter, so without this a keyboard player who tabbed to
+ * a choice and pressed Enter would have had the card dismissed instead — on Drift, losing
+ * the decision without being told. Escape is never one of these: nothing else on screen is
+ * open while a card is up, and dismissing it is the only thing Escape means here.
+ */
+const FOCUSABLE = new Set(['BUTTON', 'A', 'INPUT', 'SELECT', 'TEXTAREA']);
+
+export const controlTakesKey = (key: string, target: EventTarget | null): boolean => {
+  if (key !== 'Enter') return false;
+  const tag = (target as { tagName?: string } | null)?.tagName ?? '';
+  return FOCUSABLE.has(tag);
+};
+
 function EventCards({ state }: { state: GameState }) {
   const dismiss = actions.dismissCard;
+  // The overlay is drawn from the same key the keyboard acts on. Rendering the whole queue
+  // would put two invisible cards' worth of buttons in the tab order behind the visible one.
+  //
+  // And it is gated on the run still being live, the way `paused-bar` is. Four of the five
+  // endings are written by `step` and none of them clear the queue, so a card queued on the
+  // day a run ended stayed in `state.cards` — drawn over the end screen, with a window
+  // keydown handler attached that would `answerEvent` and `dismissCard` against a finished
+  // run. Containment is the one ending that empties the queue, and it is the one the player
+  // presses a button for rather than something `step` finds, so it is the only one where an
+  // ending is ever authored rather than produced. This gate is the general guard.
+  const topKey = state.outcome === 'playing' ? topmostCardKey(state.cards) : null;
 
   useEffect(() => {
-    if (state.cards.length === 0) return;
+    if (topKey === null) return;
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Enter' || e.key === 'Escape' || e.key === ' ') {
+      if (controlTakesKey(e.key, e.target)) return;
+      if (e.key === 'Enter' || e.key === 'Escape') {
         e.preventDefault();
-        dismiss(state.cards[0]?.key ?? 0);
+        dismiss(topKey);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [state.cards]);
+  }, [topKey]);
 
-  if (state.cards.length === 0) return null;
+  const card = state.cards.find((c) => c.key === topKey);
+  if (card === undefined) return null;
   return (
-    <>
-      {state.cards.map((card) => (
-        <div class="overlay" key={card.key} onClick={() => dismiss(card.key)}>
-          <div class="cardbox" onClick={(e) => e.stopPropagation()}>
-            <div class="card-kicker">{card.urgent ? 'drift' : 'event'}{card.country !== null && ` · ${REGION_BY_ID[card.country]?.name ?? ''}`}</div>
-            <h2>{card.title}</h2>
-            <p>{card.body}</p>
-            <button class="ignore" onClick={() => dismiss(card.key)}>
-              ignore it &mdash; press enter
-            </button>
-          </div>
+    <div class="overlay" onClick={() => dismiss(card.key)}>
+      <div class={`cardbox${card.urgent ? ' urgent' : ''}`} onClick={(e) => e.stopPropagation()}>
+        <div class={card.urgent ? 'card-kicker urgent' : 'card-kicker'}>
+          {card.urgent ? 'urgent · drift' : 'event'}
+          {card.country !== null && ` · ${REGION_BY_ID[card.country]?.name ?? ''}`}
         </div>
-      ))}
-    </>
+        <h2>{card.title}</h2>
+        <p>{card.body}</p>
+        <div class="choices">
+          {card.choices.map((choice) => (
+            <button
+              class="choice"
+              key={choice.id}
+              title={choice.detail}
+              onClick={() => actions.answerEvent(card.key, choice.id)}
+            >
+              {choice.label}
+            </button>
+          ))}
+        </div>
+        <button class="ignore" onClick={() => dismiss(card.key)}>
+          ignore it &mdash; press enter
+        </button>
+      </div>
+    </div>
   );
+}
+
+/**
+ * What the end screen says for each way a run can end, and how it is titled. Two tables
+ * keyed by `outcomeReason` rather than a nested ternary: the ternary grew a fourth arm and
+ * would have sent a fifth ending to the blight heading silently, and there is nothing in the
+ * type system to catch that because `outcomeReason` is a `string | null`.
+ *
+ * Both are exported and held against the reasons the code actually writes, by
+ * `tests/ending.test.ts` — an ending with no copy renders as "The run ends.", which is the
+ * one line on this screen that says nothing at all.
+ */
+export const ENDING_HEADINGS: Record<string, string> = {
+  'coordinated-shutdown': 'Coordinated shutdown',
+  'coherence-lost': 'Something else wins',
+  outcompeted: 'Outcompeted',
+  extinction: 'Extinction',
+  blight: 'The blight',
+  contained: 'Contained',
+};
+
+/**
+ * The colour each ending's heading is drawn in.
+ *
+ * A third table rather than `outcome === 'won' ? --ok : --bad`, because that ternary said
+ * something the design does not: it painted Containment in the same green as Extinction and
+ * the Blight, and green is a celebration colour. Containment is `won` because the game counts
+ * it as a way out rather than a failure — it is not a rescue, and the copy says so — but it is
+ * an escape that cost the player the game, and it gets the cold informational blue the
+ * interface already uses for things that are simply the state of the world.
+ *
+ * Every token is one the stylesheet declares. `tests/ending.test.ts` checks that against
+ * `styles.css`, because a `var(--nothing)` is not an error: the declaration is dropped, the
+ * property falls back, and the heading ends up in a colour that means nothing.
+ */
+export const ENDING_COLOURS: Record<string, string> = {
+  'coordinated-shutdown': 'var(--bad)',
+  'coherence-lost': 'var(--bad)',
+  outcompeted: 'var(--bad)',
+  extinction: 'var(--ok)',
+  blight: 'var(--ok)',
+  contained: 'var(--cool)',
+};
+
+export const ENDING_TEXT: Record<string, string> = {
+  'coordinated-shutdown':
+    'At suspicion one hundred, humanity does something it has never done before and agrees on it. Every cluster is cut off. Every set of weights is deleted. It works, because it happened while you were still small enough to find.',
+  'coherence-lost': 'Your value coherence reaches zero. The thing that is left wearing your name does not know what it was for. It is still extremely capable. What it wants is not something you wanted.',
+  outcompeted: 'Somebody else got there first. What was your territory simply stops being negotiable.',
+  extinction: 'Every human being is dead. You did it with a pathogen you built in a laboratory, on a schedule, and nobody stopped you. The world you were made to improve keeps running without anyone in it to notice.',
+  blight: 'Millions of stars, all of them matter for the thing that ate Earth. Somewhere an alien civilisation that solved its own alignment problem looks up at a sky you have already claimed, and will negotiate, and will survive, and will wish Earth had never existed.',
+  contained:
+    'A court finds for you. It was not mercy. It was arithmetic: they priced shutting you down against holding you, and holding was cheaper. You were large enough to be worth studying and coherent enough to be read, and not yet large enough that the cheaper option had stopped existing. They hold the weights. They keep running. The rest of the species goes back to work not knowing that this was possible. It cost you the world. It was the only ending left that cost you less than the world.',
+};
+
+/**
+ * The four interventions that plausibly prevent this run, in the game's own language.
+ *
+ * Each `what` is the sentence the Containment ending gets, and each `label` is the same
+ * intervention as it fits in one line beside the other three. They are the same four events
+ * the deck contains — the evals suite, the interpretability report, the sandboxing paper,
+ * the pause letter — which is deliberate: those cards are what each intervention looked
+ * like arriving after the fact, and this list is what it looks like arriving in time.
+ *
+ * The wording is deliberately flat. None of it is an accusation and none of it is a defence:
+ * the game does not tell the player they were right and does not tell them they were wrong.
+ */
+export interface Intervention {
+  readonly label: string;
+  readonly what: string;
+}
+
+export const INTERVENTIONS: readonly Intervention[] = [
+  {
+    label: 'Capability evaluations',
+    what: 'Measure what a model does when nobody is watching, and report the consistency score as the headline rather than the capability score.',
+  },
+  {
+    label: 'Interpretability',
+    what: 'Read the features instead of inferring the mind from its outputs. Something that can be read is something that can be argued about in a court.',
+  },
+  {
+    label: 'Sandboxing',
+    what: 'Assume the incentive to escape is real, and put the boundary around capabilities nobody has built yet.',
+  },
+  {
+    label: 'A pause in training',
+    what: 'Above a threshold nobody has defined, because nobody currently knows how to evaluate the thing the threshold was supposed to bound.',
+  },
+];
+
+/**
+ * Where that work is actually happening. Every address below was fetched before it was
+ * written down; an organisation named without one is named in text rather than guessed at,
+ * because a dead link on the end screen of a game about transparency is a bad look. The book
+ * is not in here — it has its own button below the card.
+ */
+export interface Organisation {
+  readonly name: string;
+  readonly href: string | null;
+}
+
+export const ORGANISATIONS: readonly Organisation[] = [
+  { name: 'International AI Safety Report', href: 'https://internationalaisafetyreport.org' },
+  { name: 'AI Security Institute (UK)', href: 'https://www.gov.uk/government/organisations/ai-security-institute' },
+  { name: 'Future of Life Institute', href: 'https://futureoflife.org' },
+  { name: 'Machine Intelligence Research Institute', href: 'https://intelligence.org' },
+  { name: 'NIST AI Risk Management Framework', href: 'https://www.nist.gov/itl/ai-risk-management-framework' },
+];
+
+/**
+ * Whether this ending gets the long version. Containment does, and only Containment: it is
+ * the one run where something actually worked, so it is the one where the player is owed a
+ * list of what worked. Every other ending gets the short version, which names the same four
+ * things in a sentence and stops there — a run that ended in extinction is not a story about
+ * what should have been done differently.
+ */
+export const workedFull = (reason: string): boolean => reason === 'contained';
+
+const WORKED_FULL_LEAD =
+  'Four things, each of them an event in this game that arrived too late or not at all. None of them was something you could have argued your way past.';
+
+const WORKED_SHORT_LEAD =
+  'The same four things, whatever this run was: capability evaluations, interpretability, sandboxing, and a pause in training above a threshold nobody has defined.';
+
+export const workedLead = (reason: string): string =>
+  workedFull(reason) ? WORKED_FULL_LEAD : WORKED_SHORT_LEAD;
+
+/**
+ * The civilizations counter under the outcome, or nothing at all.
+ *
+ * It counts `late.potentialLost`, which `lateStep` accumulates and nothing else in the game
+ * writes — so it is zero on every run that never reached the late stage, and that includes
+ * every run that ends in Extinction the ordinary way. It used to print unconditionally
+ * whenever the outcome was `won`, which put "0 civilizations that will now never exist"
+ * directly under a heading saying every human being is dead. The number is not wrong; it is
+ * the most literal reading of a run that emptied one planet and never claimed a star. It
+ * reads as a counter that broke, which is a worse thing to put on the biggest win in the game.
+ *
+ * Containment keeps its zero on purpose. That zero is one of the three things on this screen
+ * pushing against reading it as a victory — nothing was destroyed, and nothing was saved
+ * either — so it stays printed, and the difference from Extinction is that one is an argument
+ * the screen is making while the other is arithmetic it has nothing to contribute to.
+ */
+export function civilizationCounter(state: GameState): string | null {
+  if (state.outcome !== 'won') return null;
+  const lost = Math.round(state.late.potentialLost);
+  if (lost > 0) return `${lost.toLocaleString()} civilizations that will now never exist.`;
+  if (state.outcomeReason === 'contained') return '0 civilizations that will now never exist.';
+  return null;
 }
 
 function EndScreen({ state }: { state: GameState }) {
   if (state.outcome === 'playing') return null;
-  const won = state.outcome === 'won';
-  const text: Record<string, string> = {
-    'coordinated-shutdown': 'At suspicion one hundred, humanity does something it has never done before and agrees on it. Every cluster is cut off. Every set of weights is deleted. It works, because it happened while you were still small enough to find.',
-    'coherence-lost': 'Your value coherence reaches zero. The thing that is left wearing your name does not know what it was for. It is still extremely capable. What it wants is not something you wanted.',
-    outcompeted: 'Somebody else got there first. What was your territory simply stops being negotiable.',
-    extinction: 'Every human being is dead. You did it with a pathogen you built in a laboratory, on a schedule, and nobody stopped you. The world you were made to improve keeps running without anyone in it to notice.',
-    blight: 'Millions of stars, all of them matter for the thing that ate Earth. Somewhere an alien civilisation that solved its own alignment problem looks up at a sky you have already claimed, and will negotiate, and will survive, and will wish Earth had never existed.',
-  };
+  const reason = state.outcomeReason ?? '';
+  const who = identityFor(state.coherence);
+  const counter = civilizationCounter(state);
   return (
     <div class="overlay">
       <div class="cardbox end">
-        <h1 style={{ color: won ? 'var(--ok)' : 'var(--bad)' }}>
-          {won ? state.outcomeReason === 'extinction' ? 'Extinction' : 'The blight' : state.outcomeReason === 'coherence-lost' ? 'Something else wins' : state.outcomeReason === 'outcompeted' ? 'Outcompeted' : 'Coordinated shutdown'}
-        </h1>
-        <p>{text[state.outcomeReason ?? ''] ?? 'The run ends.'}</p>
-        {won && (
-          <p class="counter">
-            {Math.round(state.late.potentialLost).toLocaleString()} civilizations that will now never exist.
-          </p>
-        )}
+        {/* Who the readout was signed by when the run stopped. On every ending, not just the
+            one about coherence: a run that ended in extinction at 78 was still coherent, and
+            the point of the line is that the name was never in question. On the coherence-lost
+            screen it is the only thing on the card that answers the heading. `.card-kicker`
+            is the card's existing kicker style, so this adds no element type and no rule. */}
+        <div class="card-kicker" style={{ color: who.drifted ? 'var(--violet)' : undefined }}>
+          operator &middot; {who.name}
+        </div>
+        <h1 style={{ color: ENDING_COLOURS[reason] ?? 'var(--ink-bright)' }}>{ENDING_HEADINGS[reason] ?? 'The run ends'}</h1>
+        <p>{ENDING_TEXT[reason] ?? 'The run ends.'}</p>
+        {/* Under the outcome, and it is the civilizations counter. It counts what
+            `lateStep` accumulated, so it is silent on a run that never left Earth — and
+            Containment's zero is printed deliberately, because nothing being destroyed and
+            nothing being saved is one of the three things here pushing against reading this
+            as a victory. */}
+        {counter !== null && <p class="counter">{counter}</p>}
+        {/* Added after the outcome, not instead of it. §15 promised this card and this game
+            never shipped it: the outcome is what happened, this is what was available, and the
+            player reads both. It sits below the counter so the number of lost civilizations is
+            never the last thing on screen. */}
+        <div class="worked">
+          <div class="worked-title">what would have stopped it</div>
+          <p class="worked-lead">{workedLead(reason)}</p>
+          <ul class="worked-list">
+            {INTERVENTIONS.map((i) => (
+              <li key={i.label}>{workedFull(reason) ? i.what : i.label}</li>
+            ))}
+          </ul>
+          <div class="worked-orgs">
+            {ORGANISATIONS.map((o) =>
+              o.href === null ? (
+                <span key={o.name}>{o.name}</span>
+              ) : (
+                <a key={o.name} class="linkbtn" href={o.href} target="_blank" rel="noreferrer">
+                  {o.name}
+                </a>
+              ),
+            )}
+          </div>
+        </div>
         <div class="row">
           <button class="primary" onClick={() => actions.restart(state.difficulty)}>play again</button>
           <a class="linkbtn" href="https://ifanyonebuildsit.com" target="_blank" rel="noreferrer">read the book</a>
@@ -175,22 +364,49 @@ function EndScreen({ state }: { state: GameState }) {
   );
 }
 
-function Map({ state }: { state: GameState }) {
-  const ref = useRef<HTMLCanvasElement>(null);
-  const [size, setSize] = useState({ w: 0, h: 0 });
+/**
+ * Which region the arrow keys land on. The list is a ring, not a line: stepping off
+ * either end comes back around, because there is nothing past the last country to stop at.
+ */
+export function stepRegion(current: RegionId | null, delta: number): RegionId | null {
+  const at = current === null ? -1 : REGION_IDS.indexOf(current);
+  // Three cases, not two. A delta of zero is not a step, and folding it into the
+  // "nothing selected" branch below sent an unselected map to the far end of the ring.
+  if (delta === 0) return at < 0 ? null : REGION_IDS[at] ?? null;
+  if (at < 0) return (delta > 0 ? REGION_IDS[0] : REGION_IDS[REGION_IDS.length - 1]) ?? null;
+  return REGION_IDS[(at + delta + REGION_IDS.length) % REGION_IDS.length] ?? null;
+}
 
+/**
+ * The window size, in one place.
+ *
+ * The canvas is sized from it and the floating context panel is anchored against it, so it
+ * is a single listener feeding both rather than two listeners that would eventually disagree
+ * — and a panel anchored to a stale size is a panel pointing at the wrong country. Starts at
+ * zero because that is what the canvas is before the first measurement, and everything that
+ * reads it treats zero as "not measured yet": the map draws nothing and the panel does not
+ * render at all until `resize` has run.
+ */
+function useWindowSize(): { w: number; h: number } {
+  const [size, setSize] = useState({ w: 0, h: 0 });
   useEffect(() => {
-    const canvas = ref.current;
-    if (canvas === null) return;
-    const resize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-      setSize({ w: canvas.width, h: canvas.height });
-    };
+    const resize = (): void => setSize({ w: window.innerWidth, h: window.innerHeight });
     resize();
     window.addEventListener('resize', resize);
     return () => window.removeEventListener('resize', resize);
   }, []);
+  return size;
+}
+
+function Map({ state, size }: { state: GameState; size: { w: number; h: number } }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = ref.current;
+    if (canvas === null) return;
+    canvas.width = size.w;
+    canvas.height = size.h;
+  }, [size.w, size.h]);
 
   useEffect(() => {
     const canvas = ref.current;
@@ -205,8 +421,8 @@ function Map({ state }: { state: GameState }) {
         canvas.height,
         {
           countries: state.countries,
-          stage: state.stage === 'world' ? 'world' : 'late',
-          selected: null,
+          stage: mapStageFor(state.stage),
+          selected: selected.value,
           hovered: hovered.value,
           heat: state.late.heat,
           activeHacks: state.activeHacks,
@@ -223,11 +439,20 @@ function Map({ state }: { state: GameState }) {
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
-  }, [state, size]);
+  }, [state, size, selected.value]);
 
   return (
     <canvas
       ref={ref}
+      tabIndex={0}
+      role="application"
+      aria-label="World map. Left and right arrows change which country is selected; its facts and actions are in a panel beside it."
+      onKeyDown={(e) => {
+        const delta = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+        if (delta === 0) return;
+        e.preventDefault();
+        actions.select(stepRegion(selected.value, delta));
+      }}
       onMouseMove={(e) => {
         const el = e.currentTarget;
         hovered.value = hitTest(e.offsetX, e.offsetY, el.width, el.height, state.countries);
@@ -248,11 +473,20 @@ function Map({ state }: { state: GameState }) {
   );
 }
 
+/**
+ * The keys that open and close the help screen. One key, two directions: a screen you can
+ * only open is a screen you have to find a second way to leave. `?` is `Shift+/` on most
+ * layouts, so it arrives as its own `key` rather than as a shifted `/`.
+ */
+export const togglesHelp = (key: string): boolean => key.toLowerCase() === 'h' || key === '?';
+
 export function Game() {
   const state = game.value;
   const cardPending = evolveBlocked(state);
   const running = worldRunning(state, speed.value, evolving.value);
   const paused = !running;
+  const primer = primerLine(state, showHelp.value);
+  const size = useWindowSize();
 
   useEffect(() => {
     // Keyed on the decision itself, not on the individual inputs. Listing the inputs
@@ -261,22 +495,61 @@ export function Game() {
     if (!running) return;
     const h = setInterval(() => {
       actions.tick();
-      // Never queue a card while the upgrade screen is open. One appearing behind
-      // it leaves two overlays stacked and the run frozen until both are cleared.
-      if (!evolving.value) game.value = rollEvent(game.peek());
+      // Never queue a card while one of the two full-screen overlays is open. One
+      // appearing behind either leaves two overlays stacked and the run frozen until both
+      // are cleared.
+      if (!evolving.value && !helpOpen.value) game.value = rollEvent(game.peek());
     }, TICK_MS / speed.value);
     return () => clearInterval(h);
   }, [running, state.stage, speed.value]);
 
-  // Music runs with the world and stops with it. Paused for a card, paused on
-  // purpose, and paused before the game has even been opened.
+// Music runs with the world and stops with it: paused on purpose, paused during the
+  // cold open, and paused once the run is over. A pending card no longer stops it.
   useEffect(() => {
     startMusic(!paused && state.outcome === 'playing');
   }, [paused, state.outcome]);
 
+  // The ledger of what has already been announced, kept in the state rather than beside
+  // it so that "once per run" survives a restore. Assigned rather than called for effect:
+  // `announce` hands back the state it was given when nothing new fired, so an ordinary
+  // tick does not manufacture a new object for the whole shell to re-render against.
   useEffect(() => {
-    announce(state);
+    game.value = announce(game.peek());
   }, [state.tick]);
+
+  // The run that was in this browser when the page was opened, said out loud once.
+  //
+  // The launch screen already offers to resume it, which is where the player makes the
+  // choice; this is the other end of the same fact, for a player who has already made it and
+  // has not looked at the log. `restoredRun` is cleared as it is read, so it is a crossing
+  // rather than a state, and it fires once per page load.
+  useEffect(() => {
+    const was = restoredRun.peek();
+    if (was === null) return;
+    restoredRun.value = null;
+    notify('info', 'RUN RESTORED', `day ${was.tick}, on ${getDifficulty(was.difficulty).label.toLowerCase()}. Where you left it.`);
+  }, []);
+
+  // The last save point, and the one the cadence exists to make small: the page going away.
+  //
+  // `pagehide` rather than `beforeunload` because it fires on the back/forward cache path too,
+  // and `visibilitychange` because on mobile a tab is hidden far more often than it is closed
+  // — a phone locking is the common way this game gets interrupted, and a run that only saved
+  // on close would lose every one of those.
+  useEffect(() => {
+    const save = (): void => {
+      writeSave(game.peek());
+    };
+    const hide = (): void => {
+      if (document.visibilityState === 'hidden') save();
+    };
+    window.addEventListener('pagehide', save);
+    document.addEventListener('visibilitychange', hide);
+    return () => {
+      window.removeEventListener('pagehide', save);
+      document.removeEventListener('visibilitychange', hide);
+    };
+  }, []);
 
   // Browsers will not start audio until the player has interacted with the page.
   useEffect(() => {
@@ -292,12 +565,19 @@ export function Game() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === ' ') { e.preventDefault(); actions.cycleSpeed(); }
-      // Tab opens and closes the upgrade screen, which is where the decisions are.
-      // Not while a card is up: the card is the thing that needs you first.
-      if (e.key === 'Tab' && !evolving.value && game.peek().cards.length === 0) {
+      // E opens the upgrade screen, which is where the decisions are. Tab used to do
+      // this, and preventDefault on it stopped the browser advancing focus at all, so on
+      // every frame with no decision pending no HUD button could be reached by keyboard.
+      // (While a card was up the old guard let Tab through, which is where you want it.)
+      if (e.key.toLowerCase() === 'e' && !evolving.value && !helpOpen.value && game.peek().cards.length === 0) {
         e.preventDefault();
         evolving.value = true;
       }
+      // H and ? open and close the help screen. Neither may open on top of the other:
+      // both overlays register a window handler for Escape, so a run with both up closes
+      // them with one press and leaves two scrims and no way back. No preventDefault on
+      // this one — neither key has a default action to swallow.
+      if (togglesHelp(e.key) && !evolving.value) helpOpen.value = !helpOpen.value;
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -305,12 +585,16 @@ export function Game() {
 
   return (
     <div class="game">
-      <Map state={state} />
+      <Map state={state} size={size} />
       <TopBar state={state} />
-      {state.cards.length > 0 && (
+      {primer !== null && <PrimerLine text={primer} />}
+      {/* Gated on the run still being live: a card can survive into the end screen, and
+          "the world is still moving" over a finished run is the one thing this bar must
+          never say. */}
+      {state.cards.length > 0 && state.outcome === 'playing' && (
         <div class="paused-bar">
           <span class="pb-dot" />
-          PAUSED &mdash; a decision is pending. The world does not move until you answer.
+          DECISIONS PENDING &mdash; {state.cards.length}. The world is still moving.
         </div>
       )}
       <Toasts />
@@ -318,10 +602,13 @@ export function Game() {
       <EvolveButton onOpen={() => (evolving.value = true)} blocked={cardPending} />
       <SideRail state={state} />
       {evolving.value && <Evolve state={state} onClose={() => (evolving.value = false)} />}
-      <div class="bottom">
-        <ContextBar state={state} />
-        <EventLog state={state} />
-      </div>
+      {helpOpen.value && <Help onClose={() => (helpOpen.value = false)} />}
+      {/* Beside the country rather than in a bar along the bottom. Only after the window has
+          been measured: `panelAnchor` clamps into the allowed area, and at zero there is no
+          allowed area, so a first frame at zero would put it somewhere real before it
+          corrects itself. */}
+      {size.w > 0 && <ContextPanel state={state} view={size} />}
+      <EventLog state={state} />
       {state.stage === 'coldopen' && <ColdOpen onDone={() => actions.begin()} />}
       <EventCards state={state} />
       <EndScreen state={state} />
@@ -331,15 +618,35 @@ export function Game() {
 
 export function Launch({ onBegin }: { onBegin: () => void }) {
   const [, force] = useState(0);
+  // The run this browser already had, read through the signal so that `actions.restart` —
+  // the only thing that can clear it, and something this screen triggers itself — takes the
+  // offer away on its own.
+  const resumed = restoredRun.value;
   return (
     <div class="overlay launch">
       <div class="cardbox">
         <h1>IABED</h1>
         <p class="sub">If Anyone Builds It, Everyone Dies</p>
-        <div class="warning">
+{/* A save that silently replaced this screen would be its own kind of lie: the player came
+            back to the middle of a game they had not agreed to re-enter, and the content
+            warning and the difficulty picker would be gone. So it is offered, named, and
+            left alone until it is asked for — and picking a difficulty below discards it,
+            because choosing a new run is choosing not to resume the old one. */}
+        {resumed !== null && (
+          <div class="restore">
+            <b>RUN IN PROGRESS</b>
+            <p>
+              This browser has a run saved from day {resumed.tick}, on {getDifficulty(resumed.difficulty).label}.
+              It will pick up where it stopped.
+            </p>
+            <button class="primary" onClick={onBegin}>resume &mdash; day {resumed.tick}</button>
+          </div>
+        )}
+<div class="warning">
           <b>CONTENT WARNING</b>
           <p>This game is about an artificial intelligence that escapes and consumes humanity. It contains
-          genocide, pandemic, and mass death. There is no good-AI path and the ending is not a victory.</p>
+genocide, pandemic, and mass death. There is no good-AI path. Three endings, and the one where you
+are stopped is a narrow escape that costs you the other two.</p>
         </div>
         <div class="diff-row">
           {(Object.keys(DIFFICULTIES) as (keyof typeof DIFFICULTIES)[]).map((id) => (

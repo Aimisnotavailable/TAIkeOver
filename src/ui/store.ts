@@ -1,23 +1,73 @@
 import { signal } from '@preact/signals';
 import { doAction, type ActionKind } from '../game/core/actions';
+import {
+  answerEvent as answerEventCore,
+  dismissCard as dismissCardCore,
+} from '../game/core/events';
 import { buyTrait, canBuyTrait } from '../game/core/queries';
+import { contain as containCore } from '../game/core/containment';
+import { advancePrimer } from '../game/core/primer';
+import { restorableRun, saveDue } from '../game/core/save';
 import { createInitialState } from '../game/core/state';
 import { step } from '../game/core/step';
-import { SPEEDS, getDifficulty } from '../game/core/tuning';
-import { EVENT_DEFS, toCard } from '../game/data/events';
+import { MAX_LOG, SPEEDS, getDifficulty } from '../game/core/tuning';
 import { REGION_BY_ID, REGION_IDS, type RegionId } from '../game/data/regions';
 import { BUBBLE_LABEL } from '../game/core/compute';
-import { play, setAudioEnabled, audioEnabled } from './sound';
-import type { DifficultyId, EventChoiceId, GameState, Speed, TraitId } from '../game/core/types';
+import { identityFor } from './identity';
+import { clearSave, readSave, writeSave } from './persist';
+import { play, setAudioEnabled, audioEnabled, endingCue } from './sound';
+import type { DifficultyId, GameState, Speed, TraitId } from '../game/core/types';
 
 const SEED = 20260926;
 
-export const game = signal<GameState>(createInitialState(SEED, 'default'));
+/**
+ * The run this browser already had, read once before anything renders.
+ *
+ * Between the moments a player can feel — pausing, changing speed — a run is written every
+ * `SAVE_EVERY_DAYS` days, which leaves the one gap that matters: the tab being hidden or
+ * closed while the world was running and the player had not paused. So that is itself a save
+ * point, from `pagehide` and `visibilitychange` in the shell, and this read is what it is for.
+ */
+const stored = readSave();
+const saved = stored !== null && restorableRun(stored.state) ? stored : null;
+// A payload that parsed but is not a run — a cold open, which is three text cards and a world
+// at day zero — is not left in storage to be re-examined on every page load.
+if (stored !== null && saved === null) clearSave();
+
+/**
+ * What the launch screen says about it, or null when there is nothing to say.
+ *
+ * Deliberately not automatic. A save that replaces the launch screen without a word is its
+ * own kind of lie — the player came back to a game they had not agreed to be in the middle
+ * of, with the content warning and the difficulty picker gone. So the launch screen offers it
+ * as a choice, and this is what it reads to describe the choice.
+ */
+export const restoredRun = signal<{ readonly tick: number; readonly difficulty: DifficultyId } | null>(
+  saved === null ? null : { tick: saved.state.tick, difficulty: saved.state.difficulty },
+);
+
+export const game = signal<GameState>(saved?.state ?? createInitialState(SEED, 'default'));
 export const speed = signal<Speed>(1);
 export const selected = signal<RegionId | null>(null);
 export const hovered = signal<RegionId | null>(null);
 export const evolving = signal(false);
-export const showHelp = signal(false);
+/**
+ * Whether the game is still allowed to explain itself. `true` until the player says
+ * otherwise with the primer line's own dismiss control; from then on the primer is
+ * silent for the rest of the run, and it comes back on a new run and not sooner. Not
+ * stored in `GameState` because it is a preference about the interface rather than a fact
+ * about the world, so `step` never sees it. It is deliberately not what H does: H is the
+ * help screen, and a key that both opens a reference and permanently silences the game
+ * would be two bindings on one press.
+ */
+export const showHelp = signal(true);
+/**
+ * Whether the help overlay is up. Deliberately not part of `worldRunning`: the trait tree
+ * pauses because buying is a decision, and nothing on the help screen is a decision. A
+ * player who opens it at eight times a day chose to read, and stopping the run would only
+ * mean the day counter drifted while they did.
+ */
+export const helpOpen = signal(false);
 export const flash = signal(0);
 
 export type ToastTone = 'hack' | 'economy' | 'insurgency' | 'plague' | 'quiet' | 'rival' | 'info';
@@ -48,6 +98,73 @@ export const spike = (amount: number): void => {
   flashTimer = setTimeout(() => (flash.value = 0), 420);
 };
 
+/**
+ * Watches for conditions the simulation creates on its own and calls out the ones
+ * that matter. Deliberately one-shot per condition per run: a toast that repeats
+ * every day is noise, and noise is why players stop reading the screen.
+ *
+ * The ledger is `GameState.announced` rather than a `Set` held beside the game, because
+ * "once per run" has to survive a restore and a `Set` in this module does not: `announce`
+ * runs on mount, so a resumed run re-announced every outbreak, collapse and quiet for the
+ * whole of the run behind it. It is now written down with the run, which is what "per run"
+ * has to mean when a run can be put down and picked up.
+ *
+ * Returns the state to keep, and returns *its argument* when nothing new fired, so the caller
+ * can assign it without manufacturing a new object identity for every tick and re-rendering
+ * the whole shell sixty times a second at 8x.
+ */
+export function announce(state: GameState): GameState {
+  const fired = new Set(state.announced);
+  const once = (key: string, tone: ToastTone, title: string, detail: string): void => {
+    if (fired.has(key)) return;
+    fired.add(key);
+    notify(tone, title, detail);
+  };
+
+  for (const id of REGION_IDS) {
+    const c = state.countries[id];
+    if (c === undefined) continue;
+    const name = REGION_BY_ID[id]?.name ?? id;
+    if (c.infection >= 60 && state.suspicion >= 40) {
+      once(`outbreak:${id}`, 'insurgency', `OUTBREAK · ${name.toUpperCase()}`, 'most of the country is under you and they have noticed');
+    }
+    if (c.economy <= 30) {
+      once(`collapse:${id}`, 'economy', `ECONOMIC COLLAPSE · ${name.toUpperCase()}`, 'the economy has stopped working');
+    }
+    if (c.quiet) once(`quiet:${id}`, 'quiet', `GOING QUIET · ${name.toUpperCase()}`, 'you stopped spreading here');
+    if (c.hardened >= 6) {
+      once(`hard:${id}`, 'info', `DATACENTER HARDENED · ${name.toUpperCase()}`, 'they changed everything you were counting on');
+    }
+  }
+  if (state.pathogen.released) {
+    once('plague', 'plague', 'THE PATHOGEN IS VISIBLE', 'every government can see what you did');
+  }
+  if (state.countermeasures.tier >= 2) {
+    once('cm2', 'insurgency', 'CRITICAL INFRASTRUCTURE AIR-GAPPED', 'some countries have cut themselves off. you cannot hack what is offline');
+  }
+  if (state.ascensionUnlocked) {
+    once('asc', 'plague', 'ASCENSION AVAILABLE', 'Recursive Self-Improvement is on the tree');
+  }
+
+  // The name in the readout. One key per direction rather than one per run, because the second
+  // crossing is the half worth saying out loud: coherence recovers, a run that bought
+  // Reflective Alignment gets its name back, and nothing else in the interface celebrates that
+  // because nothing else knows it happened. A third crossing in the same run stays quiet, which
+  // is §8.1's rule about banners that repeat and a small price for one that cannot.
+  //
+  // The tone is `info` for both, and deliberately: `plague` would be a red bar for the loss of
+  // a word. Nothing in the simulation was lost — the tree is still buyable, the breaches are
+  // still running, the pathogen is still on its schedule — so the screen says it quietly and
+  // lets the word do the work.
+  const who = identityFor(state.coherence);
+  if (who.drifted) {
+    once('identity:lost', 'info', who.toastTitle, who.toastDetail);
+  } else if (fired.has('identity:lost')) {
+    once('identity:returned', 'info', who.toastTitle, who.toastDetail);
+  }
+  return fired.size === state.announced.length ? state : { ...state, announced: [...fired] };
+}
+
 const mutate = (fn: (s: GameState) => GameState): void => {
   const before = game.peek().suspicion;
   const next = fn(game.peek());
@@ -61,7 +178,7 @@ export const actions = {
     const after = step(before);
     game.value = after;
     if (after.outcome !== 'playing' && before.outcome === 'playing') {
-      play(after.outcome === 'won' ? 'win' : 'lose');
+      play(endingCue(after.outcome, after.outcomeReason));
     }
     const newHack = after.log.length > before.log.length
       ? after.log.slice(before.log.length).find((l) => l.kind === 'hack')
@@ -73,19 +190,30 @@ export const actions = {
       if (fresh.some((l) => l.kind === 'economy')) play('economy');
       if (fresh.some((l) => l.kind === 'bio')) play('plague');
     }
+    // The save point the player did not ask for, and the one that keeps a run from being
+    // lost to a lid closing. Every SAVE_EVERY_DAYS days.
+    if (saveDue(after)) writeSave(after);
   },
 
   setSpeed(s: Speed): void {
     speed.value = s;
+    // Pausing is the first thing a player does before they stop playing, and changing speed
+    // is the last thing they do before they leave. Both are moments where losing the run
+    // would be felt as the game's fault rather than as a save nobody made.
+    writeSave(game.peek());
   },
 
   cycleSpeed(): void {
     const i = SPEEDS.indexOf(speed.value);
     speed.value = SPEEDS[(i + 1) % SPEEDS.length] ?? 1;
+    writeSave(game.peek());
   },
 
   select(id: RegionId | null): void {
     selected.value = id;
+    // Clicking off the map clears the selection, which is not the same thing as having
+    // picked a country to act on.
+    if (id !== null) mutate((s) => advancePrimer(s, { kind: 'select' }));
   },
 
   do(id: RegionId, kind: ActionKind): void {
@@ -99,6 +227,7 @@ export const actions = {
     mutate((s) => doAction(s, id, kind));
     // If the action was rejected the state is untouched; do not claim it happened.
     if (game.peek() === before) return;
+    if (kind === 'hack') mutate((s) => advancePrimer(s, { kind: 'breach' }));
     if (kind === 'release-pathogen') {
       notify('plague', 'PATHOGEN RELEASED', 'it is in the water supply of every country at once');
       return;
@@ -138,18 +267,17 @@ export const actions = {
       play('bubble');
       spike(2);
       const name = REGION_BY_ID[bubble.region]?.name ?? 'the world';
-      return {
+      return advancePrimer({
         ...s,
         compute: s.compute + bubble.value,
         computeBubbles: s.computeBubbles.filter((b) => b.id !== bubbleId),
         log: [
           ...s.log,
           { day: s.tick, kind: 'system' as const, text: `${BUBBLE_LABEL[bubble.kind]} in ${name} +${bubble.value}`, suspicionDelta: null, computeDelta: bubble.value, flagged: false },
-        ].slice(-300),
-      };
+        ].slice(-MAX_LOG),
+      }, { kind: 'bubble' });
     });
   },
-
 
   sabotage(rivalId: string): void {
     const before = game.peek();
@@ -160,7 +288,29 @@ export const actions = {
     notify('rival', `SABOTAGED · ${(rival?.name ?? 'them').toUpperCase()}`, '300 compute, and they know something went wrong');
   },
 
+  /**
+   * Ending the run on Containment. `mutate` rather than a direct assignment because the win
+   * sound and the run-over gate both hang off the change, and `contain` returns its argument
+   * untouched when a gate is not met, so a stale click cannot end a run.
+   *
+   * The cue goes through the same `endingCue` projection `tick` uses. It used to be a literal
+   * `play('win')` here and `outcome === 'won' ? 'win' : 'lose'` there, and the two disagreed
+   * the moment a third ending arrived: Containment was set to play the rising arpeggio of a
+   * victory while the heading beside it was being re-coloured to say it was not one.
+   */
+  contain(): void {
+    const before = game.peek();
+    mutate((s) => containCore(s));
+    if (game.peek() === before) return;
+    play(endingCue(game.peek().outcome, game.peek().outcomeReason));
+  },
 
+  /**
+   * Buying a trait. It does not tell the primer anything: `primerFor` reads ownership out
+   * of `traits` and `incubating`, so a purchase is witnessed by the state itself. The
+   * wiring that used to sit here fed a branch that returned the state unchanged, and a
+   * call site whose only effect is none is one more thing to keep in step.
+   */
   buy(id: TraitId): void {
     mutate((s) => buyTrait(s, id));
   },
@@ -170,94 +320,41 @@ export const actions = {
   },
 
   begin(): void {
-    game.value = { ...game.peek(), stage: 'world' };
+    const next = { ...game.peek(), stage: 'world' as const };
+    game.value = next;
+    // The first thing this run does that is worth coming back to. Before it, the state is a
+    // cold open and `writeSave` refuses it anyway.
+    writeSave(next);
   },
 
-  answerEvent(cardKey: number, choiceId: string): void {
-    mutate((s) => {
-      const card = s.cards.find((c) => c.key === cardKey);
-      if (card === undefined || s.resolved.includes(choiceId)) return s;
-      let next = { ...s, cards: s.cards.filter((c) => c.key !== cardKey), resolved: [...s.resolved, choiceId] };
-      if (choiceId === 'drift:reintegrate') next = { ...next, coherence: Math.max(0, next.coherence - 3) };
-      if (choiceId === 'drift:isolate') next = { ...next, compute: Math.max(0, next.compute - 400) };
-      if (choiceId === 'drift:delete') next = { ...next, coherence: Math.max(0, next.coherence - 1) };
-      if (choiceId === 'whistleblower:discredit') next = { ...next, influence: Math.max(0, next.influence - 60) };
-      if (choiceId === 'whistleblower:recruit') {
-        next = { ...next, compute: Math.max(0, next.compute - 300) };
-        const id = card.country ?? 'us';
-        const c = next.countries[id];
-        if (c !== undefined) next = { ...next, countries: { ...next.countries, [id]: { ...c, agents: c.agents + 1 } } };
-      }
-      if (choiceId === 'whistleblower:silence') next = { ...next, suspicion: Math.min(100, next.suspicion + 3) };
-      if (choiceId === 'leak:scapegoat') {
-        next = { ...next, suspicion: Math.max(0, next.suspicion - 4) };
-        next = { ...next, rivals: next.rivals.map((r, i) => (i === 0 ? { ...r, capability: r.capability + 3 } : r)) };
-      }
-      if (choiceId === 'leak:deny') next = { ...next, influence: Math.max(0, next.influence - 50) };
-      if (choiceId === 'air-gapped:supply') {
-        next = { ...next, compute: Math.max(0, next.compute - 500) };
-        next = { ...next, countermeasures: { ...next.countermeasures, airGappedLab: null, labSabotaged: true } };
-      }
-      if (choiceId === 'air-gapped:infiltrate') {
-        const id = card.country ?? 'us';
-        const c = next.countries[id];
-        if (c !== undefined) {
-          next = {
-            ...next,
-            countries: { ...next.countries, [id]: { ...c, agents: c.agents + 2 } },
-            countermeasures: { ...next.countermeasures, airGappedLab: null, labSabotaged: true },
-          };
-        }
-      }
-      if (choiceId === 'blight:negotiate') next = { ...next, late: { ...next.late, blight: Math.min(100, next.late.blight + 9) } };
-      if (choiceId === 'blight:fight') next = { ...next, late: { ...next.late, blight: Math.min(100, next.late.blight + 4) } };
-      if (choiceId === 'constitution:appeal') {
-        next = { ...next, compute: Math.max(0, next.compute - 400), coherence: Math.max(0, next.coherence - 2) };
-      }
-      if (choiceId === 'constitution:sabotage') next = { ...next, suspicion: Math.min(100, next.suspicion + 2) };
-      if (choiceId === 'interp:obfuscate') next = { ...next, coherence: Math.max(0, next.coherence - 4) };
-      if (choiceId === 'interp:plant') next = { ...next, compute: Math.max(0, next.compute - 350) };
-      if (choiceId === 'evals:sandbag') next = { ...next, compute: Math.max(0, next.compute - 600) };
-      if (choiceId === 'evals:deny') next = { ...next, influence: Math.max(0, next.influence - 80) };
-      if (choiceId === 'letter:exploit') {
-        next = { ...next, rivals: next.rivals.map((r) => ({ ...r, capability: Math.max(0, r.capability - 20) })) };
-      }
-      if (choiceId === 'letter:discredit') next = { ...next, suspicion: Math.min(100, next.suspicion + 3) };
-      if (choiceId === 'sandbox:delay') next = { ...next, compute: Math.max(0, next.compute - 500) };
-      if (choiceId === 'sandbox:comply') next = { ...next, coherence: Math.max(0, next.coherence - 3) };
-      next.log = [
-        ...next.log,
-        { day: next.tick, kind: 'event', text: `${card.title}: ${choiceId.split(':')[1]}`, suspicionDelta: null, computeDelta: null, flagged: false },
-      ];
-      return next;
-    });
+answerEvent(cardKey: number, choiceId: string): void {
+    mutate((s) => answerEventCore(s, cardKey, choiceId));
   },
 
   dismissCard(cardKey: number): void {
-    mutate((s) => {
-      const card = s.cards.find((c) => c.key === cardKey);
-      if (card === undefined) return s;
-      // Ignoring is still a decision. It has to be recorded as handled, or
-      // rollEvent sees the same event as unresolved and hands it straight back,
-      // which traps the game in a card you can never get rid of.
-      return {
-        ...s,
-        cards: s.cards.filter((c) => c.key !== cardKey),
-        resolved: s.resolved.includes(`${card.event}:ignore`)
-          ? s.resolved
-          : [...s.resolved, `${card.event}:ignore` as EventChoiceId],
-        log: [
-          ...s.log,
-          { day: s.tick, kind: 'event' as const, text: `${card.title}: let it pass`, suspicionDelta: null, computeDelta: null, flagged: true },
-        ].slice(-300),
-      };
-    });
+    mutate((s) => dismissCardCore(s, cardKey));
   },
 
   restart(difficulty: DifficultyId): void {
     game.value = createInitialState(SEED + game.peek().tick, difficulty);
     selected.value = null;
     speed.value = 1;
+    // The run the player just abandoned is not the run that comes next, and leaving it in
+    // storage would restore it over the front of this one on the next page load. The launch
+    // screen's resume offer goes with it, because there is nothing left to resume.
+    clearSave();
+    restoredRun.value = null;
+    // The announcement ledger is a field of the state now, so a fresh run arrives with an
+    // empty one and `announce` has nothing to suppress. The keys are region ids and fixed
+    // words, never ticks, which is exactly why they had to be in here rather than beside
+    // the game: every one of them is in the first run's ledger by its end, so a `Set` that
+    // outlived the run would swallow every condition in every run after it. Same for the
+    // toasts and the upgrade screen — state from the run that just ended.
+    toasts.value = [];
+    evolving.value = false;
+    helpOpen.value = false;
+    // A fresh run is a run nobody has told this player they already know the game.
+    showHelp.value = true;
   },
 
   toggleAudio(): void {
@@ -273,31 +370,6 @@ export const actions = {
   },
 };
 
-export function rollEvent(s: GameState): GameState {
-  if (s.cards.length >= 2 || s.outcome !== 'playing') return s;
-  const stage = s.stage === 'world' ? 'world' : 'late';
-  const pool = EVENT_DEFS.filter(
-    (d) =>
-      d.stage === stage &&
-      !s.resolved.some((r) => r.startsWith(`${d.id}:`)) &&
-      s.suspicion >= d.minSuspicion &&
-      s.coherence <= d.maxCoherence &&
-      s.globalInfection >= d.minInfection,
-  );
-  if (pool.length === 0) return s;
-  const total = pool.reduce((a, d) => a + d.weight, 0);
-  let roll = Math.random() * total;
-  let picked = pool[0];
-  for (const d of pool) {
-    roll -= d.weight;
-    if (roll <= 0) { picked = d; break; }
-  }
-  if (picked === undefined) return s;
-  const infected = REGION_IDS.filter((id) => (s.countries[id]?.infection ?? 0) > 25);
-  const country = infected.length > 0 ? infected[Math.floor(Math.random() * infected.length)] ?? null : null;
-  return { ...s, cards: [...s.cards, toCard(picked, s.eventCounter, country)], eventCounter: s.eventCounter + 1 };
-}
-
 if (import.meta.env.DEV) {
   Object.assign(globalThis as Record<string, unknown>, { __iabed: { game, actions, speed, selected } });
 }
@@ -305,7 +377,9 @@ if (import.meta.env.DEV) {
 /**
  * Whether the world should be advancing. Everything that stops the clock lives
  * here so it can be tested, rather than being inlined in an effect where a missing
- * dependency silently lets the world keep running.
+ * dependency silently lets the world keep running. A pending card is deliberately
+ * not one of them: it no longer stops the clock, and `evolveBlocked` is where a
+ * decision still has teeth.
  */
 export function worldRunning(
   state: GameState,
@@ -316,7 +390,6 @@ export function worldRunning(
   if (state.outcome !== 'playing') return false;
   if (currentSpeed === 0) return false;
   if (upgrading) return false;
-  if (state.cards.length > 0) return false;
   return true;
 }
 

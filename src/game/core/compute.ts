@@ -20,10 +20,16 @@ import {
 } from './tuning';
 import type { ComputeBubble, ComputeBubbleKind, GameState, RegionId } from './types';
 
-const SALT_KIND = 0x5eed01;
-const SALT_WHERE = 0x5eed02;
-const SALT_VALUE = 0x5eed03;
-const SALT_PHASE = 0x5eed04;
+// Each roll gets its own number. The three kind rolls used to be SALT_KIND, SALT_KIND + 1
+// and SALT_KIND + 2, and those last two are exactly SALT_WHERE and SALT_VALUE: the kind
+// of a bubble was being decided by the same draw that decided where it landed and what it
+// paid. Named separately so the offsets cannot walk back into their neighbours.
+export const SALT_KIND_BLUE = 0x5ef001;
+export const SALT_KIND_ORANGE = 0x5ef002;
+export const SALT_KIND_RED = 0x5ef003;
+export const SALT_WHERE = 0x5eed02;
+export const SALT_VALUE = 0x5eed03;
+export const SALT_PHASE = 0x5eed04;
 
 /** Red pays least, blue sits in between, orange pays most and is the rarest. */
 const RANGE: Record<ComputeBubbleKind, readonly [number, number]> = {
@@ -43,11 +49,11 @@ function anythingInfected(state: GameState): boolean {
 
 /** Which bubble is worth spawning right now, or null if nothing deserves one. */
 export function pickBubbleKind(state: GameState): ComputeBubbleKind | null {
-  if (state.countermeasures.tier > 0 && rand(state.seed, state.tick, SALT_KIND) < COMPUTE_BUBBLE_CHANCE_BLUE) {
+  if (state.countermeasures.tier > 0 && rand(state.seed, state.tick, SALT_KIND_BLUE) < COMPUTE_BUBBLE_CHANCE_BLUE) {
     return 'blue';
   }
-  if (state.bio > 0 && rand(state.seed, state.tick, SALT_KIND + 1) < COMPUTE_BUBBLE_CHANCE_ORANGE) return 'orange';
-  if (anythingInfected(state) && rand(state.seed, state.tick, SALT_KIND + 2) < COMPUTE_BUBBLE_CHANCE_RED) return 'red';
+  if (state.bio > 0 && rand(state.seed, state.tick, SALT_KIND_ORANGE) < COMPUTE_BUBBLE_CHANCE_ORANGE) return 'orange';
+  if (anythingInfected(state) && rand(state.seed, state.tick, SALT_KIND_RED) < COMPUTE_BUBBLE_CHANCE_RED) return 'red';
   return null;
 }
 /**
@@ -104,6 +110,12 @@ export function infectedPopulation(state: GameState): number {
  * The passive share, paid per in-game day. Scales with how many people you are
  * riding and how many you have killed, and stays small enough that tapping is
  * still the faster way to get rich.
+ *
+ * No trait multiplies this. `compute-regen` did, for one commit, and it moved not one cell
+ * of a 65-run measurement in `tests/winnable.test.ts`: the trickle pays a few thousand across
+ * a whole run, and both winning lines are already on the compute ceiling by the time they
+ * win, so a multiplier on it has nowhere to go. The Self-Modification branch now multiplies
+ * `hack-yield` instead, which is where the compute is.
  */
 export function computePassive(state: GameState): number {
   const infectedBillion = infectedPopulation(state) / 1000;

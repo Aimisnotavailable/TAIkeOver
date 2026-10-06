@@ -1,6 +1,6 @@
 import { COUNTRIES, type CountryShape } from '../../game/data/countries';
 import { REGIONS, type RegionId } from '../../game/data/regions';
-import type { Country, ComputeBubble, ComputeBubbleKind, HackProgress } from '../../game/core/types';
+import type { Country, ComputeBubble, ComputeBubbleKind, HackProgress, Stage } from '../../game/core/types';
 import { COMPUTE_BUBBLE_RADIUS } from '../../game/core/tuning';
 
 const RAD = Math.PI / 180;
@@ -9,6 +9,13 @@ const MILLER_MAX = 1.25 * Math.log(Math.tan(Math.PI / 4 + 0.4 * (84 * RAD)));
 export interface Projection {
   x(lon: number): number;
   y(lat: number): number;
+  /**
+   * What size this projection was built for, as `WIDTHxHEIGHT`. Both `x` and `y` move when
+   * either argument does, so anything that caches a point in *screen* pixels has to key on
+   * this rather than on the region — see `labelFor`, which did not, and drew every label
+   * and every bubble at the coordinates of whatever window size first asked.
+   */
+  readonly size: string;
 }
 
 export function makeProjection(width: number, height: number): Projection {
@@ -17,10 +24,20 @@ export function makeProjection(width: number, height: number): Projection {
   return {
     x: (lon) => (lon + 180) * scaleX,
     y: (lat) => height / 2 - 1.25 * Math.log(Math.tan(Math.PI / 4 + 0.4 * lat * RAD)) * scaleY,
+    size: `${width}x${height}`,
   };
 }
 
 const paths = new Map<string, Path2D>();
+/**
+ * Region label points, in screen pixels, keyed by `${projection.size}:${region}`.
+ *
+ * The size is in the key and used not to be. `p.x` and `p.y` are both functions of the
+ * width and height the projection was built with, so a point cached against one window and
+ * read back after a resize is a point in the wrong place — and the label it belongs to is
+ * then drawn at that wrong place too, because the label is the cached point. The path cache
+ * directly below already keys on `${width}x${height}`; this one did not.
+ */
 const labels = new Map<string, { x: number; y: number }>();
 
 function pathFor(country: CountryShape, p: Projection, key: string): Path2D {
@@ -47,8 +64,9 @@ function pathFor(country: CountryShape, p: Projection, key: string): Path2D {
   return path;
 }
 
-function labelFor(id: RegionId, p: Projection): { x: number; y: number } {
-  const cached = labels.get(id);
+export function labelFor(id: RegionId, p: Projection): { x: number; y: number } {
+  const key = `${p.size}:${id}`;
+  const cached = labels.get(key);
   if (cached !== undefined) return cached;
   const region = REGIONS.find((r) => r.id === id);
   let biggest: readonly (readonly [number, number])[] | null = null;
@@ -62,13 +80,13 @@ function labelFor(id: RegionId, p: Projection): { x: number; y: number } {
   if (biggest !== null) {
     let sx = 0;
     let sy = 0;
-    for (const [lon, lat] of biggest) {
+for (const [lon, lat] of biggest) {
       sx += p.x(lon);
       sy += p.y(lat);
     }
     point = { x: sx / biggest.length, y: sy / biggest.length };
   }
-  labels.set(id, point);
+  labels.set(key, point);
   return point;
 }
 
@@ -122,6 +140,12 @@ const ramp = (stops: readonly (readonly [number, string])[], value: number): str
 
 export type MapStage = 'world' | 'late' | 'coda';
 
+/**
+ * The cold open is not a map stage. It was previously mapped to 'late', which meant the
+ * map behind the three opening cards drew the heat ramp with nothing converted yet.
+ */
+export const mapStageFor = (stage: Stage): MapStage => (stage === 'coldopen' ? 'world' : stage);
+
 export interface MapFrame {
   countries: Record<RegionId, Country>;
   stage: MapStage;
@@ -137,10 +161,21 @@ export interface MapFrame {
   tick: number;
 }
 
-const BUBBLE_FILL: Record<ComputeBubbleKind, string> = {
+export const BUBBLE_FILL: Record<ComputeBubbleKind, string> = {
   red: '#e8402a',
   orange: '#f0912a',
   blue: '#3aa0d8',
+};
+
+// The three kinds were three identical circles told apart only by fill colour, with no
+// legend anywhere. The glyph is the part that survives a colourblind palette and a
+// greyscale print, and it is what the HUD legend keys off. The fills are exported for
+// the same reason: the legend used to name its own three hexes, which is a second copy
+// of this table that nothing could check.
+export const BUBBLE_GLYPH: Record<ComputeBubbleKind, string> = {
+  red: '+',
+  orange: '/',
+  blue: '?',
 };
 
 const BUBBLE_RING: Record<ComputeBubbleKind, string> = {
@@ -210,9 +245,10 @@ function drawComputeBubbles(
     ctx.stroke();
 
     ctx.fillStyle = BUBBLE_FILL[b.kind];
-    ctx.beginPath();
-    ctx.arc(pos.x, pos.y + bob, r * 0.34, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.font = `700 ${Math.round(r * 0.95)}px ui-monospace, monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(BUBBLE_GLYPH[b.kind], pos.x, pos.y + bob);
 
     ctx.globalAlpha = 0.9 * remain;
     ctx.fillStyle = '#dfe9ee';
@@ -321,6 +357,22 @@ export function drawWorldMap(
     ctx.strokeText(sub, at.x, at.y + 10);
     ctx.fillStyle = value > 45 ? '#04141a' : '#9fd0dd';
     ctx.fillText(sub, at.x, at.y + 10);
+    // Hover, and only hover. The map showed infection but never opportunity, and a
+    // datacenter tier is not the same thing as a hacking tier: `HACK_YIELD` is indexed by
+    // the tier the trait tree grants, and the datacenter's own tier multiplies that row by
+    // `1 + 0.6 * (tier - 1)` on top of it — so Hack III into a tier-5 datacenter pays
+    // 3.4x the 500-2,000 the table says, and it is the datacenter tier doing that, not a
+    // fourth row of the table. Nothing on screen said where those regions were. Thirty
+    // permanent markers is the noise the legend already covers, so the number appears
+    // under the label the cursor is on, read off the country rather than recomputed from
+    // the region table.
+    if (frame.hovered === region.id) {
+      const tier = `tier ${state.tier}`;
+      ctx.font = '700 8px ui-monospace, Consolas, monospace';
+      ctx.strokeText(tier, at.x, at.y + 20);
+      ctx.fillStyle = '#e0a83c';
+      ctx.fillText(tier, at.x, at.y + 20);
+    }
   }
 }
 

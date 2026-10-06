@@ -7,7 +7,9 @@ import {
   ASCENSION_COHERENCE,
   ASCENSION_INFECTION,
   COMPUTE_CEILING,
+  RSI_SURVIVE_DAYS,
 } from '../src/game/core/tuning';
+import { buyTrait } from '../src/game/core/queries';
 import { REGION_IDS } from '../src/game/data/regions';
 import { TRAIT_BY_ID } from '../src/game/data/traits';
 import type { GameState } from '../src/game/core/types';
@@ -144,5 +146,119 @@ describe('ascension', () => {
 describe('the compute ceiling leaves room for ascension', () => {
   it('holds more than the ascension gate needs', () => {
     expect(COMPUTE_CEILING).toBeGreaterThan(ASCENSION_COMPUTE);
+  });
+});
+
+describe('the blight is reachable', () => {
+  const holding: GameState = { ...start(), stage: 'world', traits: ['rsi'], outcome: 'playing' };
+
+  it('turns the world late on purchase and wins after the hold', () => {
+    let s = step(holding);
+    expect(s.stage).toBe('late');
+    expect(s.outcome).toBe('playing');
+
+    // The win lands on the thirtieth tick, so the twenty-ninth is still mid-hold.
+    for (let i = 0; i < RSI_SURVIVE_DAYS - 2; i++) s = step(s);
+    expect(s.surviveTicks).toBe(RSI_SURVIVE_DAYS - 1);
+    expect(s.outcome).toBe('playing');
+
+    s = step(s);
+    expect(s.outcome).toBe('won');
+    expect(s.outcomeReason).toBe('blight');
+    expect(s.stage).toBe('coda');
+  });
+
+  it('is reachable by actually buying it', () => {
+    let s: GameState = { ...start(), stage: 'world', compute: 99_999, traits: ['hack-1', 'hack-2'] };
+    s = buyTrait(s, 'rsi'); // does nothing: ascension is not open yet
+    expect(s.incubating).toHaveLength(0);
+
+    s = { ...s, ascensionUnlocked: true };
+    s = buyTrait(s, 'rsi');
+    expect(s.incubating.map((i) => i.trait)).toContain('rsi');
+
+    let guard = 0;
+    while (!s.traits.includes('rsi') && guard++ < 10) s = step(s);
+    expect(s.traits).toContain('rsi');
+
+    while (s.outcome === 'playing' && guard++ < 200) s = step(s);
+    expect(s.outcome).toBe('won');
+    expect(s.outcomeReason).toBe('blight');
+    // The stage guard is the only thing keeping this from being written on every one
+    // of the thirty hold ticks, and a log line nobody reads twice is still thirty
+    // lines of noise in the one panel the player is watching.
+    expect(s.log.filter((e) => e.text === 'the recursion closes. the map begins to heat')).toHaveLength(1);
+  });
+
+  it('accumulates heat across the whole hold rather than one tick', () => {
+    let s = holding;
+    for (let i = 0; i < 10; i++) s = step(s);
+    const heatAfterTen = s.late.heat;
+    expect(heatAfterTen).toBeGreaterThan(0);
+    for (let i = 0; i < 10; i++) s = step(s);
+    expect(s.late.heat).toBeGreaterThan(heatAfterTen);
+  });
+
+  it('still returns the identical reference once finished', () => {
+    let s = holding;
+    for (let i = 0; i < RSI_SURVIVE_DAYS; i++) s = step(s);
+    expect(step(s)).toBe(s);
+  });
+
+  it('loses rather than wins if suspicion hits 100 on the last day of the hold', () => {
+    // The win is set first on the thirtieth tick and the shutdown check runs after
+    // it, so a run deleted on the day its recursion closed did not survive. The
+    // reach of 100 is asserted going into that tick rather than by seeding a
+    // number that happens to drift there, because on a clean world suspicion only
+    // ever falls.
+    let s = holding;
+    for (let i = 0; i < RSI_SURVIVE_DAYS - 1; i++) s = step(s);
+    expect(s.surviveTicks).toBe(RSI_SURVIVE_DAYS - 1);
+
+    s = step({ ...s, suspicion: 100 });
+    expect(s.outcome).toBe('lost');
+    expect(s.outcomeReason).toBe('coordinated-shutdown');
+  });
+});
+
+describe('the late game has an arc', () => {
+  const hold = (days: number) => {
+    let s = start({ stage: 'world', traits: ['rsi'] });
+    for (let i = 0; i < days; i++) s = step(s);
+    return s;
+  };
+
+  it('boils the oceans partway through', () => {
+    expect(hold(12).late.oceansBoiled).toBe(false);
+    expect(hold(20).late.oceansBoiled).toBe(true);
+  });
+
+  it('asks humanity before it exterminates anyone', () => {
+    const mid = hold(10);
+    expect(mid.late.askedHumanity).toBe(true);
+    expect(mid.late.exterminated).toBe(false);
+    expect(hold(RSI_SURVIVE_DAYS).late.exterminated).toBe(true);
+  });
+
+  it('counts encounters and reaches the blight ending', () => {
+    const end = hold(RSI_SURVIVE_DAYS);
+    expect(end.late.encounters).toBeGreaterThan(0);
+    expect(end.late.ending).toBe('blight');
+  });
+
+  it('accumulates civilizations across the hold', () => {
+    expect(hold(RSI_SURVIVE_DAYS).late.potentialLost).toBeGreaterThan(30_000);
+  });
+
+  it('fills the late map by writing converted', () => {
+    expect(hold(RSI_SURVIVE_DAYS).countries.us?.converted ?? 0).toBeGreaterThan(0);
+  });
+
+  it('reaches the blight from lateStep alone, with no event card in the arithmetic', () => {
+    const end = hold(RSI_SURVIVE_DAYS);
+    // 21 accrual days at LATE_BLIGHT_PER_DAY = 4. Exact, because lateStep has no
+    // randomness. This is the value a blight-wall card would perturb (+9 or +4), so it
+    // also proves no card was answered.
+    expect(end.late.blight).toBe(84);
   });
 });

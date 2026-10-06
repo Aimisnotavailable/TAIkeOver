@@ -1,6 +1,6 @@
 import { REGIONS, REGION_IDS, type RegionId } from '../data/regions';
 import { rand } from './rng';
-import { DIFFICULTIES, STARTING_COMPUTE, STARTING_INFLUENCE } from './tuning';
+import { MAX_LOG, STARTING_COMPUTE, STARTING_INFLUENCE } from './tuning';
 import type { Country, DifficultyId, GameState, LogEntry, RivalState } from './types';
 
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
@@ -25,12 +25,12 @@ export function createCountries(seed: number): Record<RegionId, Country> {
       detection: def.detectionContribution,
       agents: 0,
       biolabs: 0,
-      factories: 0,
       converted: 0,
       quiet: false,
-      atWar: false,
+atWar: false,
       warSeverity: 0,
       hardened: 0,
+      quietBaseline: null,
     };
   });
   return out;
@@ -82,7 +82,6 @@ export function createInitialState(seed: number, difficulty: DifficultyId = 'def
     pathogen: { released: false, killsPerDay: 0, suspicionPerDay: 0, sterility: false, targeted: false, cancer: false },
     log: [],
     ascensionUnlocked: false,
-    rsiBought: false,
     surviveTicks: 0,
     late: {
       heat: 0,
@@ -104,12 +103,22 @@ export function createInitialState(seed: number, difficulty: DifficultyId = 'def
     cumulativeDeaths: 0,
     computeBubbles: [],
     bubbleCounter: 0,
-    breaches: Object.fromEntries(REGION_IDS.map((id) => [id, 0])) as Record<RegionId, number>,
     suspicionSources: [],
     suspicionTrend: 0,
+    primer: 'select',
+    primerBubblesTapped: 0,
+    primerBreachesOpened: 0,
+constitutionalAppeal: false,
+    quietReliefDays: 0,
+    announced: [],
   };
 }
 
+/**
+ * Append one line to the log. The cap is applied here rather than left to every call
+ * site: a tick that ends with several of these in a row would otherwise leave the log
+ * sitting above MAX_LOG, and the length is what callers and tests measure.
+ */
 export const log = (
   state: GameState,
   kind: LogEntry['kind'],
@@ -125,7 +134,4 @@ export const log = (
     computeDelta: extra.computeDelta ?? null,
     flagged: extra.flagged ?? false,
   },
-];
-
-export const countryIds = REGION_IDS;
-export { DIFFICULTIES };
+].slice(-MAX_LOG);
