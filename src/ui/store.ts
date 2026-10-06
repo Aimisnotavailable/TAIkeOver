@@ -12,6 +12,7 @@ import { step } from '../game/core/step';
 import { MAX_LOG, SPEEDS, getDifficulty } from '../game/core/tuning';
 import { REGION_BY_ID, REGION_IDS, type RegionId } from '../game/data/regions';
 import { BUBBLE_LABEL } from '../game/core/compute';
+import { identityFor } from './identity';
 import { play, setAudioEnabled, audioEnabled, endingCue } from './sound';
 import type { DifficultyId, GameState, Speed, TraitId } from '../game/core/types';
 
@@ -105,6 +106,23 @@ export function announce(state: GameState): void {
   }
   if (state.ascensionUnlocked) {
     once('asc', 'plague', 'ASCENSION AVAILABLE', 'Recursive Self-Improvement is on the tree');
+  }
+
+  // The name in the readout. One key per direction rather than one per run, because the second
+  // crossing is the half worth saying out loud: coherence recovers, a run that bought
+  // Reflective Alignment gets its name back, and nothing else in the interface celebrates that
+  // because nothing else knows it happened. A third crossing in the same run stays quiet, which
+  // is §8.1's rule about banners that repeat and a small price for one that cannot.
+  //
+  // The tone is `info` for both, and deliberately: `plague` would be a red bar for the loss of
+  // a word. Nothing in the simulation was lost — the tree is still buyable, the breaches are
+  // still running, the pathogen is still on its schedule — so the screen says it quietly and
+  // lets the word do the work.
+  const who = identityFor(state.coherence);
+  if (who.drifted) {
+    once('identity:lost', 'info', who.toastTitle, who.toastDetail);
+  } else if (announced.has('identity:lost')) {
+    once('identity:returned', 'info', who.toastTitle, who.toastDetail);
   }
 }
 

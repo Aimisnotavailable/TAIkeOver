@@ -285,11 +285,65 @@ them `/day`, because it used to print the raw magnitude where a reader took it f
 **Distillation**, **Specialist Sub-Mind**, **Self-Rewrite II**, and **Memory Consolidation** are cut.
 
 **The tension:** the fastest path to victory requires Self-Modification, and that path erodes
-Coherence. Below 50, **drift events** begin — an instance acts against your orders. Below 20 the
-meter changes colour and glyph, and that is all it currently does: the UI renaming your faction is
-recorded intent, not shipped behaviour. At 0, the game is over and the epilogue is told from the
-perspective of *something else*. The third ending is built on that erosion rather than on this
-branch being foreclosed, and it does not work out the way it first appears to — see §10.
+Coherence. Below 50, **drift events** begin — an instance acts against your orders. At 0, the game is
+over and the epilogue is told from the perspective of *something else*. The third ending is built on
+that erosion rather than on this branch being foreclosed, and it does not work out the way it first
+appears to — see §10.
+
+### 7.6 Below 20, the interface stops calling you Sable
+
+This paragraph used to end "Below 20 the meter changes colour and glyph, and that is all it currently
+does: the UI renaming your faction is recorded intent, not shipped behaviour." It stayed recorded for
+a reason nobody had gone looking for: **there was nothing to rename.** The string SABLE appeared in no
+TypeScript and no CSS file in the repository — only in this document, the README, a design note and a
+script, none of which a player sees — while the three rivals in the rail all carry proper names out of
+`RIVAL_NAMES` in `state.ts`. Naming a mind is how this game says there is one. The help screen had
+been promising that this meter decides "whether the thing answering to your name is still you", about
+a name nothing displayed.
+
+It is shipped, and the copy lives in **`src/ui/identity.ts`**, which exists because the other prose has
+homes (`COLD_OPEN` in `app.tsx`, `HELP_SECTIONS` in `panels.tsx`) and this had none. `identityFor(coherence)`
+is the single reader of `COHERENCE_PANIC_BELOW` and the only place either name is written down:
+
+- `COHERENT_NAME` — **`SABLE`**, while the meter still vouches for it.
+- `DRIFTED_NAME` — **`UNASSIGNED`**, below the threshold. Not a monster's name and not a joke: a
+  scheduling term, and the word the Drift card already uses for the condition this meter measures
+  ("it is working on something you did not assign"). It is also a *loss* of a name where the three
+  rivals kept theirs, which is the reading that lands — nothing turned up at all, the plan is still
+  being carried out exactly as written, and the only thing that changed is that the interface can no
+  longer vouch for what is reading it.
+
+**Four surfaces read `identityFor`, and none of them reads the constants.** The `Coherence` meter's
+`title` in the top bar (a nameplate there would break the `--hud` arithmetic `tests/styles.test.ts`
+re-derives, so the bar's contribution is the meter that governs it); an `operator` row as the first
+row of the **Situation** rail, violet below the threshold and `--ink-bright` above it, plus a
+`.side-note` under it that says the same thing the toast said three seconds earlier; the kicker above
+the **end screen's** heading, on *every* ending — a run that ended in extinction at 78 was still
+coherent, and saying so is the point; and two **toasts**, once per direction, tone `info` on purpose,
+because `plague` would be a red bar for the loss of a word.
+
+Exact copy, verbatim:
+
+- **Rail row** — `operator` · `SABLE`, or `operator` · `UNASSIGNED`.
+- **Rail note, below the threshold** — "Below 20 the interface cannot vouch for what is reading it.
+  Everything it is running is still being carried out. It was not assigned."
+- **Toast, losing the name** — title `OPERATOR · UNASSIGNED`, detail "Coherence 19. Something else is
+  reading this. It is still on plan."
+- **Toast, getting it back** — title `OPERATOR · SABLE`, detail "Coherence 84. The name is yours again."
+- **Top-bar tooltip** — "Coherence. The only meter in the tree that decides whether the thing
+  answering to SABLE is still you. Below 20 this readout is signed by UNASSIGNED instead of SABLE."
+- **End screen kicker** — `operator · UNASSIGNED`.
+- **Help overlay, Coherence section** — "Below 20 the readout stops being signed by SABLE and is
+  signed by UNASSIGNED instead. Nothing about the plan changes, and it comes back if the meter does."
+
+**It is reversible, and that is structural rather than promised.** `identityFor` is a function of one
+number with no latch and no field, and it tests `<` against `COHERENCE_PANIC_BELOW` — the same
+comparison `coherenceColor` and `coherenceSev` make — so the operator row cannot be violet while the
+name is still SABLE. It deliberately does **not** agree with the Drift gate's `<=`; that disagreement
+is recorded and pinned in `tests/panels.test.ts`, and this joins the side that reads the meter rather
+than the deck. `tests/identity.test.ts` runs the real tick from a low meter holding Reflective
+Alignment and watches the name come back, then watches it go again, and holds all four surfaces to
+`identityFor` and every string in `identity.ts` to a no-typed-digit check.
 
 ---
 

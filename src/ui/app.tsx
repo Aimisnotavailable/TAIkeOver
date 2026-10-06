@@ -8,6 +8,7 @@ import { drawWorldMap, hitTest, hitTestCompute, mapStageFor } from './map/worldM
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { TICK_MS } from '../game/core/tuning';
 import { announce, evolving, evolveBlocked, flash, helpOpen, hovered, selected, showHelp, speed, toasts, worldRunning, type ToastTone } from './store';
+import { identityFor } from './identity';
 import { startMusic, unlockAudio } from './sound';
 
 const TOAST_TONE: Record<ToastTone, string> = {
@@ -276,9 +277,18 @@ export const workedLead = (reason: string): string =>
 function EndScreen({ state }: { state: GameState }) {
   if (state.outcome === 'playing') return null;
   const reason = state.outcomeReason ?? '';
+  const who = identityFor(state.coherence);
   return (
     <div class="overlay">
       <div class="cardbox end">
+        {/* Who the readout was signed by when the run stopped. On every ending, not just the
+            one about coherence: a run that ended in extinction at 78 was still coherent, and
+            the point of the line is that the name was never in question. On the coherence-lost
+            screen it is the only thing on the card that answers the heading. `.card-kicker`
+            is the card's existing kicker style, so this adds no element type and no rule. */}
+        <div class="card-kicker" style={{ color: who.drifted ? 'var(--violet)' : undefined }}>
+          operator &middot; {who.name}
+        </div>
         <h1 style={{ color: ENDING_COLOURS[reason] ?? 'var(--ink-bright)' }}>{ENDING_HEADINGS[reason] ?? 'The run ends'}</h1>
         <p>{ENDING_TEXT[reason] ?? 'The run ends.'}</p>
         {/* Under the outcome, and it is the civilizations counter. For Containment it reads

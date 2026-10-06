@@ -36,6 +36,7 @@ import {
 import { REGION_IDS } from '../../game/data/regions';
 import { SPEEDS } from '../../game/core/tuning';
 import { BUBBLE_LABEL, quietFactor } from '../../game/core/compute';
+import { coherenceTooltip, identityFor, IDENTITY_LOST, COHERENT_NAME, DRIFTED_NAME } from '../identity';
 import type { ComputeBubbleKind, Country, GameState, RegionId, Speed } from '../../game/core/types';
 import { actions, helpOpen, selected, showHelp, speed } from '../store';
 
@@ -63,9 +64,9 @@ export const SUSPICION_CRITICAL = 70;
 export const SUSPICION_ELEVATED = 40;
 export const SUSPICION_WATCHED = 20;
 
-function meter(label: string, value: number, max: number, colour: string, extra = '') {
+function meter(label: string, value: number, max: number, colour: string, extra = '', title = '') {
   return (
-    <div style={{ minWidth: 76 }}>
+    <div style={{ minWidth: 76 }} title={title}>
       <div class="stat-label">{label}</div>
       <div class="stat-value" style={{ color: colour }}>
         {Math.round(value)}
@@ -374,7 +375,20 @@ export function TopBar({ state }: { state: GameState }) {
           <div class="stat-value" style={{ color: 'var(--ok)' }}>{fmt(state.compute)}</div>
         </div>
         {meter('Suspicion', state.suspicion, 100, suspicionColor(state.suspicion), suspicionSev(state.suspicion))}
-        {meter('Coherence', state.coherence, 100, coherenceColor(state.coherence), coherenceSev(state.coherence))}
+        {/* The tooltip, not a nameplate. The objective block fills `--hud` to the pixel and
+            `tests/styles.test.ts` re-derives that arithmetic from the declarations, so the one
+            place the top bar can say who is holding the controls without a layout is on the
+            meter that decides it. `coherenceTooltip` reads the same `identityFor` the rail row
+            and the end screen kicker read, so the bar cannot describe one name and show
+            another. */}
+        {meter(
+          'Coherence',
+          state.coherence,
+          100,
+          coherenceColor(state.coherence),
+          coherenceSev(state.coherence),
+          coherenceTooltip(state.coherence),
+        )}
         <div class="quiet-note" title="Propaganda, captured media, and cults make the world slower to notice you. This is how much of each suspicion increase actually lands.">
           quiet &times;{quiet.toFixed(2)}
         </div>
@@ -629,6 +643,9 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
       { text: `No trait outside ${COHERENCE_BRANCH} moves it. The rates are per day, not one-off costs:` },
       ...COHERENCE_ROWS,
       { text: `At or below ${COHERENCE_DRIFT_BELOW}, drift cards start appearing: an instance working on something you did not assign it.` },
+      // Both names come out of `identity.ts` and the threshold out of the tuning file, so this
+      // row cannot survive a rename or a retune and still describe what the screen does.
+      { text: `Below ${COHERENCE_PANIC_BELOW} the readout stops being signed by ${COHERENT_NAME} and is signed by ${DRIFTED_NAME} instead. Nothing about the plan changes, and it comes back if the meter does.` },
       { text: 'At zero the run ends, and the epilogue is told by whatever is left.' },
     ],
   },
@@ -964,6 +981,7 @@ export function Operations({ state }: { state: GameState }) {
 
 export function Situation({ state }: { state: GameState }) {
   const trend = state.suspicionTrend;
+  const who = identityFor(state.coherence);
   const leaders = REGION_IDS.map((id) => state.countries[id])
     .filter((c) => c !== undefined)
     .sort((a, b) => (b?.infection ?? 0) - (a?.infection ?? 0))
@@ -975,6 +993,14 @@ export function Situation({ state }: { state: GameState }) {
     <div class="side-block">
       <div class="side-title">Situation</div>
       <div class="sit">
+        {/* First row of the block, because it is the frame around everything below it, and the
+            only row on screen that is about who is playing rather than about the world. The
+            colour is the coherence meter's own at this reading — violet below
+            COHERENCE_PANIC_BELOW — so a row and the meter it is derived from cannot disagree. */}
+        <div class="sit-row">
+          <span>operator</span>
+          <b style={{ color: who.drifted ? 'var(--violet)' : 'var(--ink-bright)' }}>{who.name}</b>
+        </div>
         <div class="sit-row">
           <span>detection</span>
           <b style={{ color: state.suspicion >= SUSPICION_CRITICAL ? 'var(--bad)' : state.suspicion >= SUSPICION_ELEVATED ? 'var(--warn)' : 'var(--ok)' }}>
@@ -1004,6 +1030,10 @@ export function Situation({ state }: { state: GameState }) {
           <div class="sit-row"><span>RSI survival</span><b style={{ color: 'var(--warn)' }}>{state.surviveTicks}/{RSI_SURVIVE_DAYS}</b></div>
         )}
       </div>
+      {/* What the toast said, three seconds later, still true. A player who looked away finds it
+          here rather than having to remember it, and the class is the one the Containment panel
+          already uses for a line the rail owes the player. */}
+      {who.drifted && <div class="side-note" style={{ color: 'var(--violet)' }}>{IDENTITY_LOST}</div>}
       <Containment state={state} />
     </div>
   );

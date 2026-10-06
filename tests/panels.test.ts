@@ -215,14 +215,21 @@ const unlisted = (s: string, prose: Set<string> = PROSE_WORDS): string[] =>
  * handful of capitalised nouns. Each word below is one that is not a trait, not a branch,
  * and not a typo — the check that matters is that none of them can drift into a trait name
  * that the tree does not have, which is the failure this whole guard exists for.
+ *
+ * `Below` is the Coherence section's new word and `SABLE` / `UNASSIGNED` are the two names
+ * from `identity.ts`, which the section now quotes rather than describing. They belong here for
+ * the same reason `Datacenters` does: they are words the screen prints, they are not traits,
+ * and leaving them off this list would have meant either a failing guard or a rename nobody
+ * could make. Asserted in `tests/identity.test.ts` that none of them is a trait name either,
+ * so the list cannot be used as a place to hide one.
  */
 const HELP_PROSE = new Set([
-  'A', 'Ascension', 'At', 'Awareness', 'Blight', 'Both', 'Buy', 'Click', 'Close', 'Coherence',
+  'A', 'Ascension', 'At', 'Awareness', 'Below', 'Blight', 'Both', 'Buy', 'Click', 'Close', 'Coherence',
   'Compute', 'Containment', 'Coordinated', 'Cycle', 'Datacenters', 'Decay', 'Dismiss', 'Escape',
   'Enter', 'Every', 'Extinction', 'Funding', 'H', 'Hover', 'How', 'Influence', 'It', 'Keys',
-  'Left', 'Move', 'No', 'Nothing', 'One', 'Outcompeted', 'Past', 'Right', 'Situation', 'So',
-  'Something', 'Space', 'Step', 'Suspicion', 'Tab', 'The', 'There', 'They', 'This', 'Under',
-  'Your',
+  'Left', 'Move', 'No', 'Nothing', 'One', 'Outcompeted', 'Past', 'Right', 'SABLE', 'Situation', 'So',
+  'Something', 'Space', 'Step', 'Suspicion', 'Tab', 'The', 'There', 'They', 'This', 'UNASSIGNED',
+  'Under', 'Your',
 ]);
 
 describe('the help overlay', () => {
