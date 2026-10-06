@@ -15,8 +15,11 @@
 import type { TraitEffect, TraitGroup, TraitId } from '../core/types';
 // The Recursive Self-Improvement description states how long the hold has to last. That
 // number is tuned in one place and the player reads it here, so it is built from the
-// constant rather than typed in beside it.
-import { RSI_SURVIVE_DAYS } from '../core/tuning';
+// constant rather than typed in beside it. BIRTH_RATE_PER_DAY is read for the same reason and
+// on the same card-family argument: Sterility Vector's whole job is stopping a birth rate
+// that is tuned in `tuning.ts`, and a card that quoted its own copy of the number would be a
+// second one to retune.
+import { BIRTH_RATE_PER_DAY, RSI_SURVIVE_DAYS } from '../core/tuning';
 
 export interface TraitDef {
   readonly id: TraitId;
@@ -137,7 +140,7 @@ export const TRAITS: readonly TraitDef[] = [
     cost: 3000,
     coherence: 0,
     requires: ['pathogen-1'],
-    description: 'Flags the pathogen as sterilising. Nothing reads the flag, so no birth stops and this buys nothing on its own.',
+    description: `No one is born anywhere once it is out — not only in the countries you have taken, which is the part worth paying for. The ${(BIRTH_RATE_PER_DAY * 100).toFixed(1)}% a day of people who would have arrived is what the pathogen was losing to.`,
     effects: [{ kind: 'sterility' }],
   },
   {

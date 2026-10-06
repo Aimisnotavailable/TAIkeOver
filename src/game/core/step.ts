@@ -30,6 +30,8 @@ import { AWARENESS_PRESSURE } from './tuning';
 import {
   AWARE_THRESHOLD,
   AWARENESS_GROWTH,
+  BIRTH_INFECTION_THRESHOLD,
+  BIRTH_RATE_PER_DAY,
   HARDEN_FALL,
   HARDEN_MAX,
   HARDEN_RISE,
@@ -95,6 +97,25 @@ const economyStep = (state: GameState, c: Country): Country => {
   if (c.infection > 0 && c.infection < 100) cyber = clamp(cyber + CYBER_GROWTH, 1, 10);
 
   return { ...c, economy: clamp(economy, 0, 100), population: Math.max(0, population), cyber };
+};
+
+/**
+ * Humans have children, which is the term that makes releasing something a thing you have to
+ * keep releasing. A region below the infection threshold grows a little every day; above it
+ * there is nothing left unconverted to be born into, so it does not. There is no floor: a
+ * fully taken region has no births at all, which is what keeps `EXTINCTION_POPULATION`
+ * reachable in principle.
+ *
+ * `pathogen.sterility` is read here and nowhere else, which makes this the whole of what
+ * Sterility Vector does. The flag was written at the release and read by nothing for the
+ * entire history of the repo, and there was no birth here for it to stop, so the trait cost
+ * 3,000 compute and bought nothing: two no-ops in one card. It stops births *everywhere*,
+ * including in the countries the pathogen has not reached, which is the part worth 3,000.
+ */
+const birthStep = (state: GameState, c: Country): Country => {
+  if (c.infection >= BIRTH_INFECTION_THRESHOLD) return c;
+  if (state.pathogen.released && state.pathogen.sterility) return c;
+  return { ...c, population: c.population * (1 + BIRTH_RATE_PER_DAY) };
 };
 
 const pathogenStep = (state: GameState, c: Country): Country => {
@@ -183,6 +204,7 @@ export function step(state: GameState): GameState {
     if (c === undefined) continue;
     let next = spreadAndAwareness(state, c, id);
     next = economyStep(state, next);
+    next = birthStep(state, next);
     next = pathogenStep(state, next);
     const war = warStep(state, next, index);
     next = war.country;

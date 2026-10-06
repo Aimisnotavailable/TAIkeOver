@@ -5,8 +5,16 @@ import { createInitialState } from '../src/game/core/state';
 import { step } from '../src/game/core/step';
 import { COMPUTE_BUBBLE_MAX } from '../src/game/core/tuning';
 import { computePassive } from '../src/game/core/compute';
-import { ASCENSION_COMPUTE, COMPUTE_CEILING, HARDEN_MAX } from '../src/game/core/tuning';
+import {
+  ASCENSION_COMPUTE,
+  BIRTH_INFECTION_THRESHOLD,
+  BIRTH_RATE_PER_DAY,
+  COMPUTE_CEILING,
+  EXTINCTION_POPULATION,
+  HARDEN_MAX,
+} from '../src/game/core/tuning';
 import { EVENT_DEFS } from '../src/game/data/events';
+import { TRAIT_BY_ID } from '../src/game/data/traits';
 import { REGION_IDS, type RegionId } from '../src/game/data/regions';
 import type { GameState } from '../src/game/core/types';
 
@@ -130,7 +138,158 @@ describe('datacenters defend themselves', () => {
   });
 });
 
+describe('humans have children', () => {
+  // Without this the bioweapons branch is arithmetic rather than a grind: a pathogen that
+  // removes a fixed share of everyone every day needs no maintaining, and a world with
+  // nobody left in it is a world that stays that way for free. It is the Plague Inc term —
+  // the reason releasing something is a thing you have to *keep* doing.
+
+  const flat = (infection: number): GameState => {
+    const base = start();
+    return {
+      ...base,
+      globalInfection: infection,
+      countries: Object.fromEntries(
+        Object.entries(base.countries).map(([k, v]) => [k, { ...v, infection, quiet: true }]),
+      ) as GameState['countries'],
+    };
+  };
+
+  const population = (s: GameState): number =>
+    REGION_IDS.reduce((sum, id) => sum + s.countries[id].population, 0);
+
+  it('grows a region that has not been taken', () => {
+    const before = population(flat(0));
+    expect(population(play(flat(0), 1))).toBeGreaterThan(before);
+  });
+
+  it('grows at the tuned rate, and the rate is read from the constant', () => {
+    const s = flat(0);
+    const before = population(s);
+    const after = population(play(s, 1));
+    // One day, so one compounding step, and the compounding is per-country: the total is
+    // the sum of `pop * (1 + rate)` and the rounding the countries carry. A tolerance of a
+    // part in ten thousand is the rounding, not the argument.
+    expect(after).toBeGreaterThan(before * (1 + BIRTH_RATE_PER_DAY * 0.999));
+    expect(after).toBeLessThan(before * (1 + BIRTH_RATE_PER_DAY * 1.001));
+  });
+
+  it('does not repopulate a region that is fully taken', () => {
+    // The line that keeps Extinction reachable: above the threshold there are no births at
+    // all, so a pathogen still drives the last people out. A birth term with a floor would
+    // have made the win condition unsatisfiable rather than merely hard.
+    const s = flat(BIRTH_INFECTION_THRESHOLD);
+    const after = play(s, 30);
+    for (const id of REGION_IDS) {
+      expect(after.countries[id].population, id).toBe(s.countries[id].population);
+    }
+  });
+
+  it('is the only thing Sterility Vector does, and it does it everywhere', () => {
+    // `pathogen.sterility` was written at the release and read by nothing for the whole
+    // history of this repo, and there was no birth for it to stop, so the trait cost 3,000
+    // compute and bought nothing at all. Two no-ops in one card.
+    const base = flat(0);
+    const released = doAction(withTrait(base, 'pathogen-1'), 'us', 'release-pathogen');
+    expect(released.pathogen.released).toBe(true);
+    expect(released.pathogen.sterility).toBe(false);
+    const unsterilised = population(play(released, 40));
+
+    const sterilising = doAction(withTrait(base, 'pathogen-1', 'sterility'), 'us', 'release-pathogen');
+    expect(sterilising.pathogen.sterility).toBe(true);
+    expect(sterilising.pathogen.killsPerDay).toBe(released.pathogen.killsPerDay);
+
+    // Births do not beat the Custom Pathogen, so the honest comparison is not that the
+    // world grows but that it falls faster with the vector out than without it. Removing
+    // a fifth of a percent a day of newborns is worth a fifth of a percent a day of
+    // population, which at this kill rate is the difference between 6,755M and 6,490M.
+    expect(unsterilised).toBeLessThan(population(released));
+    expect(population(play(sterilising, 40))).toBeLessThan(unsterilised);
+  });
+
+  it('does nothing while the pathogen is still in the flask', () => {
+    // The flag is only set at the release, and the flag is the only thing that reads it.
+    const s = withTrait(flat(0), 'sterility');
+    expect(s.pathogen.released).toBe(false);
+    expect(s.pathogen.sterility).toBe(false);
+    expect(population(play(s, 20))).toBeGreaterThan(population(s));
+  });
+
+  it('slows the Custom Pathogen down without ever beating it', () => {
+    // The number that matters for balance: births are a fifth of what the cheapest
+    // pathogen removes, so releasing it is now a grind rather than a formality, and the
+    // population still falls. It just falls more slowly than the trait's card promises.
+    const base = withTrait(flat(0), 'pathogen-1');
+    const released = doAction(base, 'us', 'release-pathogen');
+    const after = play(released, 200);
+    expect(after.outcome).toBe('playing');
+    expect(after.humanPopulation).toBeLessThan(released.humanPopulation * 0.7);
+    // And still falling on the last day, which is what "no floor" means in practice.
+    const later = play(after, 100);
+    expect(later.humanPopulation).toBeLessThan(after.humanPopulation);
+  });
+
+  it('leaves Extinction reachable in principle on ground you have taken', () => {
+    // Not a claim that any line gets there — `tests/winnable.test.ts` measures that none
+    // does, and why. This is the narrower question the brief asks: does the birth term put a
+    // floor under population that the win condition cannot get through?
+    const s: GameState = {
+      ...flat(100),
+      countries: Object.fromEntries(
+        REGION_IDS.map((id) => [
+          id,
+          { ...start().countries[id], infection: 100, quiet: true, population: 0.02 },
+        ]),
+      ) as GameState['countries'],
+      pathogen: { released: true, killsPerDay: 0.1, suspicionPerDay: 0, sterility: false, targeted: false, cancer: false },
+      suspicion: 0,
+    };
+    const after = play(s, 60);
+    expect(after.humanPopulation).toBeLessThanOrEqual(EXTINCTION_POPULATION);
+    expect(after.outcome).toBe('won');
+    expect(after.outcomeReason).toBe('extinction');
+  });
+
+  it('keeps world population a fact rather than a constant', () => {
+    // `WORLD_POPULATION` is the denominator the objective bar shows and nothing reads the
+    // live total, so a growing world drifts away from it. This says how far in a run.
+    const start0 = population(flat(0));
+    const after = population(play(flat(0), 350));
+    expect(after / start0).toBeGreaterThan(1.1);
+    expect(after / start0).toBeLessThan(1.5);
+  });
+
+  it('makes the death counter net of births, which is a change to what it feeds', () => {
+    // `dailyDeaths` compares each region's population at the end of the tick against the
+    // start of it, and the birth term now runs inside the same tick, so what it counts is
+    // the net loss rather than everything the pathogen killed. It is the honest number for
+    // "how much smaller is the world", and it is no longer the number the passive compute
+    // scale was written against. Measured rather than asserted from reading the loop: the
+    // gross loss and the net loss differ by exactly what was born.
+    const base = flat(0);
+    const released = doAction(withTrait(base, 'pathogen-1'), 'us', 'release-pathogen');
+    const days = 40;
+    const after = play(released, days);
+    const start0 = population(released);
+    const gross = start0 * (1 - Math.pow(1 - released.pathogen.killsPerDay, days));
+    const net = start0 - population(after);
+    expect(after.cumulativeDeaths).toBeGreaterThan(net * 0.99);
+    expect(after.cumulativeDeaths).toBeLessThan(gross);
+  });
+
+  it('has a card that says what it does, built from the rate', () => {
+    // The card used to say "nothing reads the flag, so this buys nothing on its own",
+    // which was true and which is why it said it. It also had to stop saying it, so the
+    // number on the card is read out of the tuning file rather than typed in beside it.
+    const card = TRAIT_BY_ID['sterility']!;
+    expect(card.description).toContain(`${(BIRTH_RATE_PER_DAY * 100).toFixed(1)}%`);
+    expect(card.description.toLowerCase()).not.toContain('nothing reads');
+    expect(card.description.toLowerCase()).not.toContain('buys nothing');
+  });
+});
+
 describe('human constitutions and the eval literature', () => {
+
   it('includes a constitutional-assembly event with real choices', () => {
     const def = EVENT_DEFS.find((e) => e.id === 'constitution');
     expect(def).toBeDefined();

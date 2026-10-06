@@ -24,6 +24,7 @@ import { computePassive } from '../src/game/core/compute';
 import { REGION_IDS, type RegionId } from '../src/game/data/regions';
 import { TRAIT_TOTAL_COST } from '../src/game/data/traits';
 import {
+  ASCENSION_INFECTION,
   COMPUTE_CEILING,
   EXTINCTION_POPULATION,
   INFLUENCE_MAX,
@@ -34,6 +35,13 @@ import type { EventCard, GameState } from '../src/game/core/types';
 
 /** Enough in-game days to run out of rivals rather than out of loop. */
 const MAX_DAYS = 900;
+
+/**
+ * The world at the start of a run, in millions. Read off the game rather than typed in:
+ * `tests/economy.test.ts` adds a birth term, so a run can end in a larger world than it
+ * began in and a hard-coded population stops being the denominator anything should divide by.
+ */
+const WORLD = createInitialState(1, 'default').humanPopulation;
 
 /**
  * Thirteen seeds, not three. The Blight line and the Containment line both win on every one
@@ -467,9 +475,9 @@ describe('the lines that lose, and to what', () => {
     // This is the finding that matters most in the whole table. Cancer Plague is 10% of
     // everyone every day, which is more than enough to end the species given time — and the
     // tree will not give it time. Every seed buys it, waits between day 98 and day 212 to
-    // afford it, gets between one and four days out of it, and is deleted. The 34% of
-    // humanity that dies in those four days is the largest single loss of life any line in
-    // this table manages, and it is a rounding error against what the trait promises.
+    // afford it, gets between one and four days out of it, and is deleted. The third to two
+    // fifths of humanity that dies in those days is the largest single loss of life any line
+    // in this table manages, and it is a rounding error against what the trait promises.
     const rows = rowsFor('aggressive');
     for (const r of rows) {
       expect(r.reason, `seed ${r.seed}`).toBe('coordinated-shutdown');
@@ -478,9 +486,12 @@ describe('the lines that lose, and to what', () => {
       expect(r.aliveAfterRelease, `seed ${r.seed}`).toBeGreaterThan(0);
       expect(r.aliveAfterRelease, `seed ${r.seed}`).toBeLessThanOrEqual(5);
     }
-    const share = rows.map((r) => r.dead / 7932);
+    // The share is taken against the world's population at the start of a run, read off the
+    // game rather than typed in: the birth term means a run can end in a larger world than
+    // it began in, so a fixed 7,932 in the denominator stopped meaning a share.
+    const share = rows.map((r) => r.dead / WORLD);
     expect(Math.min(...share)).toBeGreaterThan(0.09);
-    expect(Math.max(...share)).toBeLessThan(0.4);
+    expect(Math.max(...share)).toBeLessThan(0.45);
   });
 });
 
@@ -589,6 +600,53 @@ describe('the passive trickle is not where the game is decided', () => {
     }
     for (const r of rowsFor('containment')) {
       expect(r.passiveTotal).toBeLessThan(COMPUTE_CEILING / 5);
+    }
+  });
+});
+
+describe('the world gets bigger where you have not been', () => {
+  // Part 3's whole effect, measured. A birth term changes what the map means rather than
+  // what the run costs: the regions you have not taken keep producing people, so a run ends
+  // in a larger world than it began in, and global Infection — which is population-weighted —
+  // is a harder gate to clear than it was.
+  //
+  // What it did to the ending days, from the measurement in the report: the Blight line
+  // moved one to two days later on ten of thirteen seeds and not at all on three; Containment
+  // moved one day later on five of thirteen and not at all on eight; the two losing lines did
+  // not move at all. Every winning line still wins on every seed, and Extinction is still
+  // exactly as unreachable as it was before the term went in.
+  it('leaves a run ending in a bigger world than it started in, even on the quietest line', () => {
+    // The quiet line kills nobody at all — `dead` is zero on every seed — and still ends
+    // with a quarter to a third more people than it began with. That is the term doing the
+    // only thing it was added to do.
+    for (const r of rowsFor('quiet')) {
+      expect(r.dead, `seed ${r.seed}`).toBe(0);
+      expect(r.population / WORLD, `seed ${r.seed}`).toBeGreaterThan(1.2);
+    }
+  });
+
+  it('outgrows even the loss on the two winning lines', () => {
+    // The Blight line kills a fifth of a billion people — the run has to sit through
+    // outbreaks and the occasional war to reach sixty per cent of humanity — and still
+    // finishes with more people than it began with, which is 0.1% a day adding up over a
+    // hundred and sixty. Containment kills between nobody and fourteen million, and gains
+    // about a tenth of the world.
+    for (const r of rowsFor('loud')) {
+      expect(r.dead, `seed ${r.seed}`).toBeGreaterThan(100);
+      expect(r.population / WORLD, `seed ${r.seed}`).toBeGreaterThan(1.05);
+    }
+    for (const r of rowsFor('containment')) {
+      expect(r.population / WORLD, `seed ${r.seed}`).toBeGreaterThan(1.05);
+    }
+  });
+
+  it('costs the Ascension gate rather than making it easier', () => {
+    // `globalInfection` is a share of people, so a bigger world in the regions you have not
+    // taken means the same absolute number of infections is a smaller share. The Blight line
+    // clears ASCENSION_INFECTION on every seed still, and it takes one to two days longer.
+    for (const r of rowsFor('loud')) {
+      expect(r.ascension, `seed ${r.seed}`).toBe(true);
+      expect(r.infection, `seed ${r.seed}`).toBeGreaterThan(ASCENSION_INFECTION);
     }
   });
 });

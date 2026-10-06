@@ -69,6 +69,32 @@ export const INSURGENCY_SUSPICION = 3.5;
 export const INSURGENCY_CYBER = 0.6;
 export const FAMINE_RATE = 0.005;
 export const ECONOMY_RECOVER = 0.25;
+
+/**
+ * Humans have children. This is the term that makes the bioweapons branch a grind rather than
+ * arithmetic: without it a pathogen that removes a fixed share of everyone every day needs no
+ * maintaining, and a world with nobody left in it stays that way for nothing.
+ *
+ * The rate is not a demographic figure and is not meant to be one. The day here is a day of a
+ * three-hundred-day run, and the Custom Pathogen already removes 0.5% of everyone daily, which
+ * is a hundred and eighty times the real annual crude death rate. A tenth of that in
+ * newborns means the cheapest pathogen still wins and just takes four times as long, and that
+ * a world you have not touched grows about thirty per cent across a whole run — which is the
+ * "people keep coming back" the branch is supposed to be about.
+ *
+ * The threshold is half. Below it there are enough people left unconverted that the region is
+ * still producing children; above it the two halves are the same people and there is nothing
+ * left to be born into. Anything between roughly a third and two thirds does the same job;
+ * the choice was measured rather than argued, in `tests/winnable.test.ts`.
+ *
+ * The important property is that there is no floor. Above the threshold a region has no births
+ * at all, so the pathogen still drives the last of them out and `EXTINCTION_POPULATION` is
+ * still reachable in principle. A birth term with a floor would have turned the Extinction win
+ * condition into something no run could satisfy.
+ */
+export const BIRTH_INFECTION_THRESHOLD = 50;
+export const BIRTH_RATE_PER_DAY = 0.001;
+
 export const CYBER_GROWTH = 0.02;
 export const COLLAPSED_THRESHOLD = 20;
 

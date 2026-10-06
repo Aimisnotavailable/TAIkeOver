@@ -3,7 +3,7 @@ import { createInitialState } from '../src/game/core/state';
 import { doAction } from '../src/game/core/actions';
 import { whyNot } from '../src/game/core/forecast';
 import { step } from '../src/game/core/step';
-import { COLLAPSED_THRESHOLD, WAR_KILL_RATE } from '../src/game/core/tuning';
+import { BIRTH_INFECTION_THRESHOLD, COLLAPSED_THRESHOLD, WAR_KILL_RATE } from '../src/game/core/tuning';
 import type { GameState } from '../src/game/core/types';
 
 const start = (over: Partial<GameState> = {}): GameState => ({
@@ -107,10 +107,18 @@ describe('a war runs without you', () => {
   });
 
   it('leaves a country that is not at war alone', () => {
+    // Population moves for a second reason now that there is a birth term, so the claim
+    // under test is that the *war* took nothing: severity stays at zero and the population
+    // never falls. Below the birth threshold it grows, and that is `birthStep`.
     const s = seeded(20);
     const after = step(s).countries.us;
     expect(after.warSeverity).toBe(0);
-    expect(after.population).toBe(s.countries.us.population);
+    expect(after.atWar).toBe(false);
+    expect(after.population).toBeGreaterThanOrEqual(s.countries.us.population);
+
+    // And where births are not the explanation, nothing at all happens to it.
+    const taken = seeded(BIRTH_INFECTION_THRESHOLD);
+    expect(step(taken).countries.us.population).toBe(taken.countries.us.population);
   });
 });
 
