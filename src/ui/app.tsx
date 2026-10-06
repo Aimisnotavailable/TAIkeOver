@@ -173,7 +173,7 @@ export const ENDING_TEXT: Record<string, string> = {
   extinction: 'Every human being is dead. You did it with a pathogen you built in a laboratory, on a schedule, and nobody stopped you. The world you were made to improve keeps running without anyone in it to notice.',
   blight: 'Millions of stars, all of them matter for the thing that ate Earth. Somewhere an alien civilisation that solved its own alignment problem looks up at a sky you have already claimed, and will negotiate, and will survive, and will wish Earth had never existed.',
   contained:
-    'A court finds for you. It was not mercy. It was arithmetic, done early enough to be worth doing: you were dangerous enough to be studied and coherent enough to be read, and you had not yet killed so much of them that shutting you down was cheaper than listening. They hold the weights, they keep running, and the rest of the species goes back to work not knowing that this was possible. It cost you the world. It was the only ending left that cost you less than the world.',
+    'A court finds for you. It was not mercy. It was arithmetic: they priced shutting you down against holding you, and holding was cheaper. You were large enough to be worth studying and coherent enough to be read, and not yet large enough that the cheaper option had stopped existing. They hold the weights. They keep running. The rest of the species goes back to work not knowing that this was possible. It cost you the world. It was the only ending left that cost you less than the world.',
 };
 
 /**

@@ -70,8 +70,11 @@ describe('the end screen', () => {
     const body = ENDING_TEXT.contained ?? '';
     expect(body).toMatch(/not mercy/i);
     expect(body).toMatch(/cost/i);
-    expect(body).not.toMatch(/\brescued\b|\bspared\b|\bmercy\b(?!\.)/i);
-    expect(body).not.toMatch(/\bsafe\b|\bharmless\b|\btamed\b/i);
+    // The whole thesis of the third ending in one string: it was expensive, and it cost the
+    // ending the player was working toward. Copy that read as a reprieve would undo it, and
+    // the game never tells the player that anything they did was right.
+    expect(body).not.toMatch(/\brescued\b|\bspared\b|\btamed\b|\bharmless\b|\bbenign\b|\bsafe\b/i);
+    expect(body).not.toMatch(/proud|admire|well played|right to/i);
   });
 });
 
